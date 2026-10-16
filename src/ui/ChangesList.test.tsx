@@ -1,0 +1,121 @@
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ChangeItem, ChangeKind } from '../model/changes';
+import { buildReviewList } from '../model/reviewList';
+import { ChangesList, type ListTotals } from './ChangesList';
+
+function item(id: string, kind: ChangeKind, order: number, fields: Partial<ChangeItem> = {}): ChangeItem {
+  return {
+    id,
+    kind,
+    revisionIds: [id],
+    removedText: '',
+    addedText: '',
+    location: { scope: 'body' },
+    wordDelta: { removed: 0, added: 0 },
+    order,
+    anchors: [],
+    ...fields,
+  };
+}
+
+const text = [
+  item('a', 'replaced', 0, { removedText: 'brown', addedText: 'red', wordDelta: { removed: 1, added: 1 } }),
+  item('b', 'deleted', 3, { removedText: 'x'.repeat(500), location: { scope: 'footnote', noteId: '2' } }),
+];
+const formatting = [item('f', 'formatting', 1, { text: 'Bold words', description: 'Bold added' }), item('g', 'formatting', 2, { text: 'More' })];
+const totals: ListTotals = { text: { total: 2, accepted: 0, rejected: 1, undecided: 1 }, formatting: 2, ignored: 3 };
+
+function renderList(expanded: boolean, overrides: Partial<Parameters<typeof ChangesList>[0]> = {}) {
+  const props = {
+    entries: buildReviewList(text, formatting, expanded),
+    decisions: { b: 'rejected' as const },
+    currentItemId: 'a',
+    onSelect: vi.fn(),
+    onDecide: vi.fn(),
+    onDecideAllUndecided: vi.fn(),
+    formattingChoice: 'edited' as const,
+    onFormattingChoice: vi.fn(),
+    formattingExpanded: expanded,
+    onFormattingExpanded: vi.fn(),
+    totals,
+    ...overrides,
+  };
+  render(<ChangesList {...props} />);
+  return props;
+}
+
+describe('ChangesList', () => {
+  afterEach(cleanup);
+
+  // jsdom has no layout; the virtualizer reads sizes from `offsetHeight`/`offsetWidth`.
+  const descriptors = ['offsetHeight', 'offsetWidth'].map((name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const);
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('changes__scroller') ? 800 : 100;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 320 });
+  });
+  afterAll(() => {
+    for (const [name, descriptor] of descriptors) if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor);
+  });
+
+  it('shows the text changes with their details, the collapsed formatting group and the totals', () => {
+    const props = renderList(false);
+    const cards = screen.getAllByTestId('change-card');
+    expect(cards).toHaveLength(2);
+    expect(cards[0]!.textContent).toMatch(/^1Replaced\s*Body−1 \+1Undecidedbrown red/);
+    expect(cards[0]!.getAttribute('aria-current')).toBe('true');
+    // Long text is truncated; the location names the note.
+    expect(cards[1]!.textContent).toContain('Footnote 2');
+    expect(cards[1]!.textContent).toContain('✗ Rejected');
+    expect(cards[1]!.querySelector('del')!.textContent!.length).toBeLessThan(200);
+    expect(screen.getByTestId('formatting-group').textContent).toContain('Formatting changes (2)');
+    expect(screen.getByTestId('changes-totals').textContent).toContain('2 text changes: 0 accepted, 1 rejected, 1 undecided');
+    expect(screen.getByTestId('changes-totals').textContent).toContain('3 ignored');
+
+    fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Accept' }));
+    expect(props.onDecide).toHaveBeenCalledWith('a', 'accepted');
+    expect(props.onSelect).not.toHaveBeenCalled();
+    fireEvent.click(within(cards[1]!).getByRole('button', { name: 'Reset' }));
+    expect(props.onDecide).toHaveBeenCalledWith('b', null);
+    fireEvent.click(cards[1]!);
+    expect(props.onSelect).toHaveBeenCalledWith('b');
+
+    fireEvent.click(screen.getByRole('button', { name: /Formatting changes/ }));
+    expect(props.onFormattingExpanded).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole('radio', { name: "Keep the Original's formatting" }));
+    expect(props.onFormattingChoice).toHaveBeenCalledWith('original');
+  });
+
+  it('shows formatting items without Accept/Reject when expanded', () => {
+    renderList(true);
+    const cards = screen.getAllByTestId('change-card');
+    expect(cards.map((card) => card.dataset.itemId)).toEqual(['a', 'f', 'g', 'b']);
+    expect(cards[1]!.textContent).toContain('Bold added');
+    expect(cards[2]!.textContent).toContain('Formatting changed');
+    expect(within(cards[1]!).queryByRole('button', { name: 'Accept' })).toBeNull();
+  });
+
+  it('asks before deciding all undecided changes', () => {
+    const props = renderList(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Reject all' }));
+    const dialog = screen.getByRole('dialog', { name: 'Reject all changes?' });
+    expect(dialog.textContent).toContain('rejects the 1 undecided text change.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(props.onDecideAllUndecided).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept all' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept all' }));
+    expect(props.onDecideAllUndecided).toHaveBeenCalledWith('accepted');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('disables the bulk actions when nothing is undecided', () => {
+    renderList(false, { totals: { ...totals, text: { total: 2, accepted: 1, rejected: 1, undecided: 0 } } });
+    expect((screen.getByRole('button', { name: 'Accept all' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

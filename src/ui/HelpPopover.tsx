@@ -1,0 +1,64 @@
+import { useEffect, useRef } from 'react';
+import { Legend } from './Legend';
+import { SHORTCUTS } from './useKeyboardShortcuts';
+
+const KEY_NAMES: Record<string, string> = { ArrowDown: '↓', ArrowUp: '↑' };
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+/** Help button with a popover listing the keyboard shortcuts and the legend (FR-34). */
+export function HelpPopover({ open, onOpenChange }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+    const onPointer = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) onOpenChange(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointer);
+    };
+  }, [open, onOpenChange]);
+
+  return (
+    <div className="help" ref={containerRef}>
+      <button type="button" className="button" aria-expanded={open} aria-controls="help-popover" onClick={() => onOpenChange(!open)}>
+        ? Help
+      </button>
+      {open && (
+        <div id="help-popover" className="help__popover" role="dialog" aria-label="Help">
+          <h2>Keyboard shortcuts</h2>
+          <dl className="help__shortcuts">
+            {SHORTCUTS.map(({ keys, label }) => (
+              <div key={label}>
+                <dt>
+                  {keys.map((key, i) => (
+                    <span key={key}>
+                      {i > 0 && ' or '}
+                      <kbd>{KEY_NAMES[key] ?? key}</kbd>
+                    </span>
+                  ))}
+                </dt>
+                <dd>{label}</dd>
+              </div>
+            ))}
+          </dl>
+          <h2>Colours</h2>
+          <Legend />
+          <p className="help__note">
+            Formatting changes are not marked in the panels; review them in the formatting group of the changes list. Accepted
+            changes are dimmed with ✓, rejected ones with ✗.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

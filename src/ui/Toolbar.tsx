@@ -1,4 +1,5 @@
 import { FileDropZone, type DocumentRole } from './FileDropZones';
+import { HelpPopover } from './HelpPopover';
 import { Legend } from './Legend';
 
 interface Props {
@@ -11,10 +12,17 @@ interface Props {
   onDownload: () => void;
   downloading: boolean;
   summary: { text: number; formatting: number; ignored: number };
+  onPrevious: () => void;
+  onNext: () => void;
+  /** No changes to step through. */
+  navigationDisabled: boolean;
+  helpOpen: boolean;
+  onHelpOpenChange: (open: boolean) => void;
 }
 
 /** The toolbar above the panels once a comparison is shown. */
-export function Toolbar({ original, edited, onFile, onSwap, scrollLock, onScrollLockChange, onDownload, downloading, summary }: Props) {
+export function Toolbar(props: Props) {
+  const { original, edited, onFile, onSwap, scrollLock, onScrollLockChange, onDownload, downloading, summary } = props;
   return (
     <div className="toolbar" role="toolbar" aria-label="Comparison">
       <FileDropZone role="original" file={original} onFile={onFile} compact />
@@ -32,6 +40,12 @@ export function Toolbar({ original, edited, onFile, onSwap, scrollLock, onScroll
       >
         {scrollLock ? '🔒' : '🔓'} Scroll lock
       </button>
+      <button type="button" className="button" onClick={props.onPrevious} disabled={props.navigationDisabled} title="Previous change (k or ↑)">
+        ↑ Previous
+      </button>
+      <button type="button" className="button" onClick={props.onNext} disabled={props.navigationDisabled} title="Next change (j or ↓)">
+        ↓ Next
+      </button>
       <button type="button" className="button button--primary" onClick={onDownload} disabled={downloading}>
         Download
       </button>
@@ -40,6 +54,7 @@ export function Toolbar({ original, edited, onFile, onSwap, scrollLock, onScroll
         {summary.text} changes · {summary.formatting} formatting · {summary.ignored} ignored
       </span>
       <Legend />
+      <HelpPopover open={props.helpOpen} onOpenChange={props.onHelpOpenChange} />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 // paired by their offsets; a scroll position between two paired blocks maps proportionally to the
 // same place between them in the other panel, so regions shown on one side only (an inserted
 // passage, a deleted tail) don't make the other panel jump.
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 
 export interface BlockOffset {
   anchor: string;
@@ -72,6 +72,18 @@ export function measureBlocks(scroller: HTMLElement): BlockOffset[] {
   return blocks;
 }
 
+/** Scrolling the panels from code, without the sync undoing it. */
+export interface ScrollController {
+  /** Sets a panel's scroll position; the scroll event it causes is not synced to the other panel. */
+  scrollQuietly(scroller: HTMLElement, top: number): void;
+  /** Aligns `target` with `source`'s current position (also while the sync is off). */
+  align(source: HTMLElement, target: HTMLElement): void;
+}
+
+function clampTop(scroller: HTMLElement, top: number): number {
+  return Math.round(Math.max(0, Math.min(top, scroller.scrollHeight - scroller.clientHeight)));
+}
+
 /**
  * Keeps the two panels aligned while `enabled`. `contentKey` changes whenever the panels get new
  * content. Offsets are measured lazily and again after any size change of either panel's content.
@@ -81,7 +93,25 @@ export function useScrollSync(
   right: RefObject<HTMLElement | null>,
   enabled: boolean,
   contentKey: unknown,
-): void {
+): ScrollController {
+  // Scroll positions we set ourselves; the scroll event they cause must not sync back.
+  const expectedRef = useRef(new Map<HTMLElement, number>());
+  const controller = useMemo<ScrollController>(() => {
+    const scrollQuietly = (scroller: HTMLElement, top: number) => {
+      const clamped = clampTop(scroller, top);
+      if (Math.abs(clamped - scroller.scrollTop) < 1) return;
+      expectedRef.current.set(scroller, clamped);
+      scroller.scrollTop = clamped;
+    };
+    return {
+      scrollQuietly,
+      align(source, target) {
+        const top = mapScrollTop(pairOffsets(measureBlocks(source), measureBlocks(target)), source.scrollTop);
+        if (top !== null) scrollQuietly(target, top);
+      },
+    };
+  }, []);
+
   useEffect(() => {
     const leftScroller = left.current;
     const rightScroller = right.current;
@@ -94,8 +124,8 @@ export function useScrollSync(
       return { leftToRight: pairOffsets(leftBlocks, rightBlocks), rightToLeft: pairOffsets(rightBlocks, leftBlocks) };
     };
 
-    // Scroll positions we set ourselves; the scroll event they cause must not sync back.
-    const expected = new Map<HTMLElement, number>();
+    const expected = expectedRef.current;
+    expected.clear();
     const sync = (source: HTMLElement, target: HTMLElement, direction: 'leftToRight' | 'rightToLeft') => {
       const seen = expected.get(source);
       if (seen !== undefined && Math.abs(source.scrollTop - seen) <= 1) {
@@ -106,10 +136,7 @@ export function useScrollSync(
       pairs ??= measure();
       const top = mapScrollTop(pairs[direction], source.scrollTop);
       if (top === null) return;
-      const clamped = Math.round(Math.max(0, Math.min(top, target.scrollHeight - target.clientHeight)));
-      if (Math.abs(clamped - target.scrollTop) < 1) return;
-      expected.set(target, clamped);
-      target.scrollTop = clamped;
+      controller.scrollQuietly(target, top);
     };
     const onLeftScroll = () => sync(leftScroller, rightScroller, 'leftToRight');
     const onRightScroll = () => sync(rightScroller, leftScroller, 'rightToLeft');
@@ -132,5 +159,7 @@ export function useScrollSync(
       rightScroller.removeEventListener('scroll', onRightScroll);
       resizeObserver.disconnect();
     };
-  }, [left, right, enabled, contentKey]);
+  }, [left, right, enabled, contentKey, controller]);
+
+  return controller;
 }

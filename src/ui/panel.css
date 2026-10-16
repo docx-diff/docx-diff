@@ -84,3 +84,39 @@
 .doc :is(.change-as-formatting, .change-ignored) > .rev-para-mark-del {
   display: none;
 }
+
+/* The current change (FR-28): an outline, also for formatting changes, which have no mark. */
+.doc .change-current {
+  outline: 2px solid var(--change-current);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* Decided changes (FR-25): dimmed, with ✓ or ✗ after the last insertion or deletion the panel shows.
+   Ignored changes are plain text whatever their decision. */
+.doc :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting) {
+  opacity: 0.5;
+}
+
+.doc :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+  display: inline-block;
+  margin-left: 0.15em;
+  font-size: 0.75em;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+  content: '✓';
+  color: #1a7f37;
+}
+
+.doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+  content: '✗';
+  color: #cf222e;
+}
+
+/* Changes can be clicked to select them in the list. */
+.doc :is(ins, del)[data-change-id]:not(.change-ignored) {
+  cursor: pointer;
+}

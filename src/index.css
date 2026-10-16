@@ -10,6 +10,7 @@
   --change-ins-line: #0b5cd5;
   --change-move-bg: #eadcff;
   --change-move-line: #8250df;
+  --change-current: #bf8700;
 
   --border: #d0d7de;
   --muted: #57606a;
@@ -253,11 +254,17 @@ body {
 
 /* Panels */
 
-.panels {
+.workspace {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) clamp(18rem, 26vw, 26rem);
+}
+
+.panels {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .document-panel {
@@ -284,11 +291,339 @@ body {
   white-space: nowrap;
 }
 
+.document-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .document-panel__scroller {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: #ffffff;
+  /* Its size comes from the layout around it, so changes elsewhere (e.g. the changes list) don't
+     lay out the long document again. */
+  contain: strict;
+}
+
+/* Overview bar */
+
+.overview-bar {
+  position: relative;
+  flex: none;
+  width: 14px;
+  background: #f6f8fa;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.overview-bar__viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  min-height: 4px;
+  background: rgb(31 35 40 / 8%);
+  border-block: 1px solid rgb(31 35 40 / 20%);
+  pointer-events: none;
+}
+
+.overview-bar__mark {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  margin-top: -1px;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.overview-bar__mark--del {
+  background: var(--change-del-line);
+}
+
+.overview-bar__mark--ins {
+  background: var(--change-ins-line);
+}
+
+.overview-bar__mark--move {
+  background: var(--change-move-line);
+}
+
+.overview-bar__mark--para {
+  background: var(--muted);
+}
+
+.overview-bar__mark--decided {
+  opacity: 0.35;
+}
+
+.overview-bar__mark--current {
+  left: 0;
+  right: 0;
+  height: 5px;
+  margin-top: -2px;
+  opacity: 1;
+  outline: 1px solid var(--change-current);
+}
+
+/* Changes list */
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: #f6f8fa;
+}
+
+.changes__bulk {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.changes__scroller {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  contain: strict;
+}
+
+.changes__inner {
+  position: relative;
+  width: 100%;
+}
+
+.changes__row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+}
+
+.changes__empty {
+  padding: 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.changes__totals {
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.change-card {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
   background: #ffffff;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.change-card--accepted {
+  border-left-color: #1a7f37;
+}
+
+.change-card--rejected {
+  border-left-color: #cf222e;
+}
+
+.change-card--formatting {
+  border-left-color: #bf8700;
+}
+
+.change-card--current {
+  outline: 2px solid var(--change-current);
+  outline-offset: -1px;
+}
+
+.change-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.change-card__number {
+  font-weight: 600;
+  color: #1f2328;
+  font-variant-numeric: tabular-nums;
+}
+
+.change-card__kind {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.change-card__kind--deleted {
+  color: var(--change-del-line);
+}
+
+.change-card__kind--inserted {
+  color: var(--change-ins-line);
+}
+
+.change-card__kind--replaced {
+  color: #6639ba;
+}
+
+.change-card__kind--moved {
+  color: var(--change-move-line);
+}
+
+.change-card__state {
+  margin-left: auto;
+}
+
+.change-card--accepted .change-card__state {
+  color: #1a7f37;
+}
+
+.change-card--rejected .change-card__state {
+  color: #cf222e;
+}
+
+.change-card__text {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.change-card__removed {
+  background: var(--change-del-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--change-del-line);
+}
+
+.change-card__added {
+  background: var(--change-ins-bg);
+  text-decoration: underline;
+  text-decoration-color: var(--change-ins-line);
+}
+
+.change-card__moved {
+  background: var(--change-move-bg);
+}
+
+.change-card__description {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.change-card__actions {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+
+.button--small {
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.button--plain {
+  border-color: transparent;
+  background: none;
+}
+
+.change-card .button[aria-pressed='true'] {
+  font-weight: 600;
+}
+
+.formatting-group {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff8c5;
+  font-size: 0.8125rem;
+}
+
+.formatting-group__toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.formatting-group__choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0.375rem 0 0;
+  padding: 0;
+  border: none;
+}
+
+/* Help popover */
+
+.help {
+  position: relative;
+}
+
+.help__popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 5;
+  width: 22rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(31 35 40 / 20%);
+  font-size: 0.8125rem;
+}
+
+.help__popover h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+.help__popover h2:not(:first-child) {
+  margin-top: 0.75rem;
+}
+
+.help__shortcuts {
+  margin: 0;
+}
+
+.help__shortcuts div {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.help__shortcuts dd {
+  margin: 0;
+}
+
+.help__note {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+
+kbd {
+  padding: 0 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f6f8fa;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
 }
 
 /* Legend */
@@ -374,6 +709,7 @@ body {
 .modal__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 /* Loading modal: styled inline in index.html; the modal has its own spinner. */
