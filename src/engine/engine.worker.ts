@@ -14,17 +14,22 @@ import type {
 
 declare const self: DedicatedWorkerGlobalScope;
 
-function progress(stage: ProgressStage, detail?: string): void {
-  const event: ProgressEvent = { type: 'progress', stage, detail };
-  self.postMessage(event);
+/** Reports progress of one request. */
+type Report = (stage: ProgressStage, detail?: string) => void;
+
+function reporter(requestId: number): Report {
+  return (stage, detail) => {
+    const event: ProgressEvent = { type: 'progress', requestId, stage, detail };
+    self.postMessage(event);
+  };
 }
 
 type Handlers = {
-  [K in WorkerRequestType]: (payload: WorkerRequests[K]['payload']) => Promise<WorkerRequests[K]['result']>;
+  [K in WorkerRequestType]: (payload: WorkerRequests[K]['payload'], progress: Report) => Promise<WorkerRequests[K]['result']>;
 };
 
 const handlers: Handlers = {
-  async init({ appBaseUrl }) {
+  async init({ appBaseUrl }, progress) {
     progress('loading-engine');
     await initEngine(appBaseUrl);
     progress('warming-up');
@@ -34,11 +39,11 @@ const handlers: Handlers = {
   async version() {
     return engineVersion();
   },
-  async compare({ original, edited }) {
+  async compare({ original, edited }, progress) {
     const result = await runCompare(new Uint8Array(original), new Uint8Array(edited), (stage) => progress(stage));
     return { ...result, redline: ownBuffer(result.redline) };
   },
-  async export({ redline, revisions, decisions }) {
+  async export({ redline, revisions, decisions }, progress) {
     progress('exporting');
     return ownBuffer(await exportDocx(new Uint8Array(redline), revisions, new Map(Object.entries(decisions))));
   },
@@ -55,9 +60,9 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
   const { id, type, payload } = event.data;
   let response: WorkerResponse;
   try {
-    const handler = handlers[type] as (payload: unknown) => Promise<unknown>;
+    const handler = handlers[type] as (payload: unknown, progress: Report) => Promise<unknown>;
     if (!handler) throw new Error(`Unknown request type: ${type}`);
-    response = { id, ok: true, result: await handler(payload) };
+    response = { id, ok: true, result: await handler(payload, reporter(id)) };
   } catch (error) {
     response = {
       id,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import type { ChangeItem, ChangeKind } from './changes';
+import type { RevisionListEntry } from '../engine/types';
+import { buildChangeItems, type ChangeItem, type ChangeKind } from './changes';
 import { buildDocIndex } from './docIndex';
 import { blockPositions, classify, detectTrailingRegion } from './range';
 
@@ -28,22 +29,55 @@ describe('blockPositions', () => {
   });
 });
 
+// An Edited document that ends within paragraph p1: it keeps "Kept", adds a note there, and lacks
+// the rest of p1 and all of p2 and p3 (deletion d1). Original body paragraphs: p0 p1 p2 p3.
+const TAIL_HTML = `<html><body>
+<p data-anchor="p0" data-source-anchor-id="p:body:p0">Intro <del class="rev-del" data-author="rev:d0">word</del></p>
+<p data-anchor="p1" data-source-anchor-id="p:body:p1">Kept <ins class="rev-ins" data-author="rev:i1">(reviewed up to here)</ins><del class="rev-del" data-author="rev:d1">rest of the paragraph</del></p>
+<p data-anchor="p2" data-source-anchor-id="p:body:p2"><del class="rev-del" data-author="rev:d1">Tail one</del></p>
+<table><tr><td><p data-anchor="p3" data-source-anchor-id="p:body:p3"><del class="rev-del" data-author="rev:d1">Tail two</del></p></td></tr></table>
+</body></html>`;
+const tailIndex = buildDocIndex(TAIL_HTML);
+
+function revision(id: string, family: 'content_insert' | 'content_delete', anchors: string[]): RevisionListEntry {
+  return {
+    id,
+    type: family === 'content_insert' ? 'insert' : 'delete',
+    family,
+    constituentKeys: [],
+    text: id,
+    partUri: '/word/document.xml',
+    scope: 'body',
+    affectedAnchors: anchors.map((unid) => ({ id: `p:body:${unid}`, kind: 'p', scope: 'body', unid })),
+    resolutionStatus: 'supported',
+  };
+}
+
 describe('detectTrailingRegion', () => {
-  it('returns the first paragraph of the body deletion that covers the last Original paragraph', () => {
-    const items = [item('1', 'replaced', ['a']), item('2', 'deleted', ['d', 'e', 't']), item('3', 'paragraph', ['t'])];
-    expect(detectTrailingRegion(items, index)).toBe(2);
+  it('returns the first wholly deleted paragraph of the deletion that covers the wholly deleted last paragraph', () => {
+    const items = [item('d0', 'deleted', ['p0']), item('i1', 'inserted', ['p1']), item('d1', 'deleted', ['p1', 'p2', 'p3']), item('x', 'paragraph', ['p3'])];
+    expect(detectTrailingRegion(items, tailIndex)).toBe(2);
   });
 
-  it('accepts a table paragraph as the last paragraph and later items after the deletion', () => {
-    const items = [item('1', 'deleted', ['e', 't'], 'table'), item('2', 'inserted', ['t']), item('3', 'formatting', ['t'])];
-    expect(detectTrailingRegion(items, index)).toBe(3);
+  it('keeps the tail deletion out of a Replaced pair with an insertion that touches it', () => {
+    const items = buildChangeItems([revision('i1', 'content_insert', ['p1']), revision('d1', 'content_delete', ['p1', 'p2', 'p3'])], tailIndex);
+    expect(items.map((i) => i.kind)).toEqual(['inserted', 'deleted']);
+    expect(detectTrailingRegion(items, tailIndex)).toBe(2);
+    // The deletion spans the end point, so all of it is outside; the note in p1 stays inside.
+    expect(Object.fromEntries(classify(items, tailIndex, 2))).toEqual({ i1: 'inRange', d1: 'outOfRange' });
   });
 
-  it('is null when no deletion covers the last paragraph, for insertions, and for a deletion of everything', () => {
-    expect(detectTrailingRegion([item('1', 'deleted', ['d', 'e'])], index)).toBeNull();
-    expect(detectTrailingRegion([item('1', 'inserted', ['t'])], index)).toBeNull();
-    expect(detectTrailingRegion([item('1', 'deleted', ['n'], 'footnote')], index)).toBeNull();
-    expect(detectTrailingRegion([item('1', 'deleted', ['a', 'c', 'd', 'e', 't'])], index)).toBeNull();
+  it('is null when the last paragraph keeps any text, e.g. a word deleted from it', () => {
+    // SMALL_HTML's last Original paragraph (t, in a table) is in the Edited document.
+    expect(detectTrailingRegion([item('1', 'deleted', ['d', 'e', 't'], 'table')], index)).toBeNull();
+  });
+
+  it('is null without a covering deletion, for insertions, notes, and a deletion of everything', () => {
+    expect(detectTrailingRegion([item('1', 'deleted', ['p2'])], tailIndex)).toBeNull();
+    expect(detectTrailingRegion([item('1', 'inserted', ['p3'])], tailIndex)).toBeNull();
+    expect(detectTrailingRegion([item('1', 'deleted', ['p3'], 'footnote')], tailIndex)).toBeNull();
+    const everything = buildDocIndex('<p data-anchor="q" data-source-anchor-id="p:body:q"><del class="rev-del" data-author="rev:d">All</del></p>');
+    expect(detectTrailingRegion([item('1', 'deleted', ['q'])], everything)).toBeNull();
   });
 });
 

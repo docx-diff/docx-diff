@@ -1,7 +1,7 @@
 // The comparison range for partially edited documents (FR-14 – FR-19, PRD §7.5).
 // The end point is an index into `DocIndex.bodyParagraphs`: Original body paragraphs at or after
 // it are outside the range. Changing it only reclassifies items; nothing is compared again.
-import type { ChangeItem } from './changes';
+import { deletedLastParagraph, type ChangeItem } from './changes';
 import type { DocIndex } from './docIndex';
 import { noteKey } from './docIndex';
 
@@ -34,12 +34,16 @@ export function blockPositions(index: DocIndex): Map<string, number> {
 }
 
 /**
- * The proposed end point: the first Original paragraph of the body deletion that covers the last
- * Original body paragraph, or `null` when there is none. The deletion need not be the last item
- * (on the sample, small paragraph-mark inserts and a formatting change follow it).
+ * The proposed end point, when the last Original body paragraph is wholly deleted: the first
+ * wholly deleted Original paragraph of the body deletion that covers it, or `null` when there is
+ * none. A deletion that only touches the last paragraph (a word deleted from it) is an ordinary
+ * edit. When the deletion starts within a paragraph the Edited document keeps part of, the end
+ * point is the next paragraph; the deletion then spans it and is outside the range as a whole.
+ * The deletion need not be the last item (on the sample, small paragraph-mark inserts and a
+ * formatting change follow it).
  */
 export function detectTrailingRegion(items: readonly ChangeItem[], index: DocIndex): number | null {
-  const lastParagraph = index.bodyParagraphs.at(-1);
+  const lastParagraph = deletedLastParagraph(index);
   if (lastParagraph === undefined) return null;
   const tail = items.find(
     (item) =>
@@ -49,7 +53,10 @@ export function detectTrailingRegion(items: readonly ChangeItem[], index: DocInd
   );
   if (!tail) return null;
   const paragraphIndex = new Map(index.bodyParagraphs.map((unid, i) => [unid, i]));
-  const starts = tail.anchors.map((unid) => paragraphIndex.get(unid)).filter((i) => i !== undefined);
+  const starts = tail.anchors
+    .filter((unid) => index.blockByUnid.get(unid)?.inEdited === false)
+    .map((unid) => paragraphIndex.get(unid))
+    .filter((i) => i !== undefined);
   const start = Math.min(...starts);
   // A deletion of the whole document is not a trailing region.
   return start > 0 ? start : null;

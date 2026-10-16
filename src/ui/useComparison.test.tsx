@@ -1,20 +1,21 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import type { CompareResult, ComparisonEngine, EngineVersion, ProgressEvent } from '../engine/types';
+import type { CompareResult, ComparisonEngine, EngineVersion, ProgressListener, ProgressStage } from '../engine/types';
 import { useComparison } from './useComparison';
 
 /** A fake engine whose compare the test settles by hand. */
 class FakeEngine implements ComparisonEngine {
   settle!: (result: CompareResult) => void;
-  private readonly listeners = new Set<(event: ProgressEvent) => void>();
+  private listener: ProgressListener | undefined;
   init(): Promise<EngineVersion> {
     return Promise.reject(new Error('not used'));
   }
   version(): Promise<EngineVersion> {
     return Promise.reject(new Error('not used'));
   }
-  compare(): Promise<CompareResult> {
+  compare(_original: ArrayBuffer, _edited: ArrayBuffer, onProgress?: ProgressListener): Promise<CompareResult> {
+    this.listener = onProgress;
     return new Promise((resolve) => {
       this.settle = resolve;
     });
@@ -22,13 +23,12 @@ class FakeEngine implements ComparisonEngine {
   exportDocx(): Promise<ArrayBuffer> {
     return Promise.reject(new Error('not used'));
   }
-  onProgress(listener: (event: ProgressEvent) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  onFailure(): () => void {
+    return () => {};
   }
   dispose(): void {}
-  progress(event: ProgressEvent): void {
-    for (const listener of this.listeners) listener(event);
+  progress(stage: ProgressStage): void {
+    this.listener?.({ type: 'progress', requestId: 1, stage });
   }
 }
 
@@ -40,12 +40,12 @@ function Harness({ engine, files }: { engine: ComparisonEngine; files: [File, Fi
 describe('useComparison', () => {
   afterEach(cleanup);
 
-  it('reports compare progress, then the result, and ignores progress of later requests', async () => {
+  it('reports compare progress, then the result', async () => {
     const engine = new FakeEngine();
     const files: [File, File] = [new File(['a'], 'a.docx'), new File(['b'], 'b.docx')];
     render(<Harness engine={engine} files={files} />);
     await act(async () => {});
-    act(() => engine.progress({ type: 'progress', stage: 'listing' }));
+    act(() => engine.progress('listing'));
     expect(screen.getByTestId('state').textContent).toBe('running listing');
 
     await act(async () =>
@@ -57,9 +57,6 @@ describe('useComparison', () => {
         timings: { normalize: 0, checkInputs: 0, compare: 0, list: 0, tag: 0, render: 0 },
       }),
     );
-    expect(screen.getByTestId('state').textContent).toBe('done');
-
-    act(() => engine.progress({ type: 'progress', stage: 'exporting' }));
     expect(screen.getByTestId('state').textContent).toBe('done');
   });
 });

@@ -24,7 +24,11 @@ export interface DocIndex {
   blockByUnid: Map<string, IndexBlock>;
   /** Unids of the Original's body paragraphs, in order; a paragraph's position is its index here. */
   bodyParagraphs: string[];
-  /** `noteKey(scope, noteId)` → unid of the body block that references the note. */
+  /**
+   * `noteKey(scope, noteId)` → unid of the body block that references the note; the first one in
+   * document order when several do, so a note is outside the range only when all of its
+   * references are.
+   */
   noteRefs: Map<string, string>;
   /** Revision id → the phrases of its elements' `title` attributes (formatting descriptions), without duplicates. */
   revisionTitles: Map<string, string[]>;
@@ -79,7 +83,8 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
     const isFootnote = ref.classList.contains('footnote-ref');
     const noteId = isFootnote ? ref.dataset.footnoteId! : (ref.getAttribute('href') ?? '').replace(/^#en-/, '');
     const block = ref.closest<HTMLElement>('[data-anchor]');
-    if (block && noteId) noteRefs.set(noteKey(isFootnote ? 'fn' : 'en', noteId), block.dataset.anchor!);
+    const key = noteKey(isFootnote ? 'fn' : 'en', noteId);
+    if (block && noteId && !noteRefs.has(key)) noteRefs.set(key, block.dataset.anchor!);
   }
 
   const revisionTitles = new Map<string, string[]>();

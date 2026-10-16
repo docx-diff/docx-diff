@@ -12,7 +12,7 @@ The comparison engine is [Docxodus](https://github.com/JSv4/Docxodus) (MIT), a .
 
 ## Status
 
-Implementation has started: the project scaffold loads the engine in a Web Worker (task 1). Comparing and reviewing documents comes next.
+Work in progress. Two documents can be loaded and compared, and are shown side by side with synced scrolling; Download exports the Edited version (every change accepted). Compare settings ignore quote, dash and whitespace changes. Next: rejecting changes on export (task 3), then the changes list and review workflow, the comparison range UI, the export dialog, saving the review and deployment.
 
 - Requirements: [`tasks/2026-10-15-203451-prd---docx-diff.md`](tasks/2026-10-15-203451-prd---docx-diff.md)
 - Task list: [`tasks/2026-10-15-203451-tasks-docx-diff.md`](tasks/2026-10-15-203451-tasks-docx-diff.md)

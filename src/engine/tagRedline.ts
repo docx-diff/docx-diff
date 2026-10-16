@@ -18,7 +18,10 @@ export function revisionIdFromAuthor(author: string | null | undefined): string 
 
 export interface TaggedRedline {
   bytes: Uint8Array;
-  /** Constituent keys whose element was not found (expected empty; reported, not fatal, since tagging only affects display). */
+  /**
+   * Constituent keys whose element was not found, or not found uniquely (expected empty; reported,
+   * not fatal, since tagging only affects display).
+   */
   missingKeys: string[];
 }
 

@@ -4,7 +4,7 @@ import type {
   ComparisonEngine,
   EngineVersion,
   ExportRequest,
-  ProgressEvent,
+  ProgressListener,
   WorkerMessage,
   WorkerRequest,
   WorkerRequests,
@@ -42,12 +42,13 @@ export function appBaseUrl(): string {
 interface Pending {
   resolve(result: unknown): void;
   reject(error: Error): void;
+  onProgress?: ProgressListener;
 }
 
 export class EngineClient implements ComparisonEngine {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
-  private readonly progressListeners = new Set<(event: ProgressEvent) => void>();
+  private readonly failureListeners = new Set<(error: Error) => void>();
   private failure: EngineError | null = null;
 
   constructor(
@@ -56,33 +57,34 @@ export class EngineClient implements ComparisonEngine {
   ) {
     worker.addEventListener('message', (event) => this.handleMessage(event.data));
     worker.addEventListener('error', (event) => {
-      this.fail(new EngineError(event.message || 'The engine worker failed to start.', 'worker_error'));
+      this.fail(new EngineError(event.message || 'The engine worker failed.', 'worker_error'));
     });
   }
 
-  init(): Promise<EngineVersion> {
-    return this.request('init', { appBaseUrl: this.baseUrl });
+  init(onProgress?: ProgressListener): Promise<EngineVersion> {
+    return this.request('init', { appBaseUrl: this.baseUrl }, [], onProgress);
   }
 
   version(): Promise<EngineVersion> {
     return this.request('version', undefined);
   }
 
-  compare(original: ArrayBuffer, edited: ArrayBuffer): Promise<CompareResult> {
-    return this.request('compare', { original, edited }, [original, edited]);
+  compare(original: ArrayBuffer, edited: ArrayBuffer, onProgress?: ProgressListener): Promise<CompareResult> {
+    return this.request('compare', { original, edited }, [original, edited], onProgress);
   }
 
-  exportDocx(request: ExportRequest): Promise<ArrayBuffer> {
-    return this.request('export', request, [request.redline]);
+  exportDocx(request: ExportRequest, onProgress?: ProgressListener): Promise<ArrayBuffer> {
+    return this.request('export', request, [request.redline], onProgress);
   }
 
-  onProgress(listener: (event: ProgressEvent) => void): () => void {
-    this.progressListeners.add(listener);
-    return () => this.progressListeners.delete(listener);
+  onFailure(listener: (error: Error) => void): () => void {
+    this.failureListeners.add(listener);
+    return () => this.failureListeners.delete(listener);
   }
 
   dispose(): void {
     this.worker.terminate();
+    this.failureListeners.clear();
     this.fail(new EngineError('The engine was stopped.', 'disposed'));
   }
 
@@ -90,18 +92,20 @@ export class EngineClient implements ComparisonEngine {
     type: K,
     payload: WorkerRequests[K]['payload'],
     transfer: Transferable[] = [],
+    onProgress?: ProgressListener,
   ): Promise<WorkerRequests[K]['result']> {
     if (this.failure) return Promise.reject(this.failure);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject });
+      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject, onProgress });
       this.worker.postMessage({ id, type, payload } as WorkerRequest, transfer);
     });
   }
 
   private handleMessage(message: WorkerMessage): void {
     if ('type' in message) {
-      for (const listener of this.progressListeners) listener(message);
+      // Progress of a request that has settled or was never ours is dropped.
+      this.pending.get(message.requestId)?.onProgress?.(message);
       return;
     }
     const pending = this.pending.get(message.id);
@@ -111,10 +115,12 @@ export class EngineClient implements ComparisonEngine {
     else pending.reject(new EngineError(message.error.message, message.error.code));
   }
 
-  /** Rejects every pending request and all later ones. */
+  /** Rejects every pending request and all later ones, and tells the failure listeners (once). */
   private fail(error: EngineError): void {
-    this.failure ??= error;
+    if (this.failure) return;
+    this.failure = error;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
+    for (const listener of this.failureListeners) listener(error);
   }
 }

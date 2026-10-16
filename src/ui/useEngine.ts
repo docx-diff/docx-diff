@@ -8,8 +8,9 @@ export type EngineState =
   | { status: 'error'; message: string };
 
 /**
- * Starts the engine worker on mount and loads the engine. `retry` replaces the worker with a new one,
- * so it also recovers from a worker that failed to start.
+ * Starts the engine worker on mount and loads the engine. An engine that fails later (e.g. its worker
+ * crashed) turns the state into an error too. `retry` replaces the worker with a new one, so it also
+ * recovers from a worker that failed to start or crashed.
  */
 export function useEngine(createEngine: () => ComparisonEngine = () => new EngineClient()): {
   state: EngineState;
@@ -23,19 +24,17 @@ export function useEngine(createEngine: () => ComparisonEngine = () => new Engin
     let active = true;
     const engine = createEngine();
     setState({ status: 'loading', startedAt, stage: null });
-    const unsubscribe = engine.onProgress((event) => {
-      if (active) setState({ status: 'loading', startedAt, stage: event.stage });
-    });
-    engine.init().then(
-      (version) => {
-        // Later progress events belong to compare and export requests.
-        unsubscribe();
+    const fail = (error: unknown) => {
+      if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) });
+    };
+    const unsubscribe = engine.onFailure(fail);
+    engine
+      .init((event) => {
+        if (active) setState({ status: 'loading', startedAt, stage: event.stage });
+      })
+      .then((version) => {
         if (active) setState({ status: 'ready', engine, version, loadMs: performance.now() - startedAt });
-      },
-      (error: unknown) => {
-        if (active) setState({ status: 'error', message: error instanceof Error ? error.message : String(error) });
-      },
-    );
+      }, fail);
     return () => {
       active = false;
       unsubscribe();

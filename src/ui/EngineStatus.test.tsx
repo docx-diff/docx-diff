@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CompareResult, ComparisonEngine, EngineVersion, ProgressEvent } from '../engine/types';
+import type { CompareResult, ComparisonEngine, EngineVersion, ProgressListener, ProgressStage } from '../engine/types';
 import { EngineStatus } from './EngineStatus';
 import { useEngine } from './useEngine';
 
@@ -8,11 +8,19 @@ import { useEngine } from './useEngine';
 class FakeEngine implements ComparisonEngine {
   disposed = false;
   settle!: { resolve(version: EngineVersion): void; reject(error: Error): void };
-  private listener: ((event: ProgressEvent) => void) | null = null;
+  private listener: ProgressListener | undefined;
+  private failureListener: ((error: Error) => void) | null = null;
 
-  init(): Promise<EngineVersion> {
+  init(onProgress?: ProgressListener): Promise<EngineVersion> {
+    this.listener = onProgress;
     return new Promise((resolve, reject) => {
-      this.settle = { resolve, reject };
+      this.settle = {
+        resolve: (version) => {
+          this.listener = undefined;
+          resolve(version);
+        },
+        reject,
+      };
     });
   }
   version(): Promise<EngineVersion> {
@@ -24,17 +32,20 @@ class FakeEngine implements ComparisonEngine {
   exportDocx(): Promise<ArrayBuffer> {
     return Promise.reject(new Error('not used'));
   }
-  onProgress(listener: (event: ProgressEvent) => void): () => void {
-    this.listener = listener;
+  onFailure(listener: (error: Error) => void): () => void {
+    this.failureListener = listener;
     return () => {
-      this.listener = null;
+      this.failureListener = null;
     };
   }
   dispose(): void {
     this.disposed = true;
   }
-  progress(event: ProgressEvent): void {
-    this.listener?.(event);
+  progress(stage: ProgressStage): void {
+    this.listener?.({ type: 'progress', requestId: 1, stage });
+  }
+  crash(message: string): void {
+    this.failureListener?.(new Error(message));
   }
 }
 
@@ -55,7 +66,7 @@ describe('EngineStatus', () => {
     render(<Harness engines={engines} />);
     expect(screen.getByRole('status').textContent).toMatch(/Downloading the comparison engine… \d+\.\d s/);
 
-    act(() => engines[0]!.progress({ type: 'progress', stage: 'warming-up' }));
+    act(() => engines[0]!.progress('warming-up'));
     expect(screen.getByRole('status').textContent).toMatch(/Starting the comparison engine/);
 
     await act(async () => engines[0]!.settle.resolve({ docxodus: '13.0.0', dotnet: '10.0.12' }));
@@ -64,7 +75,7 @@ describe('EngineStatus', () => {
     // Not shown on screen once ready (screen readers still get it).
     expect(screen.getByRole('status').className).toContain('visually-hidden');
 
-    act(() => engines[0]!.progress({ type: 'progress', stage: 'comparing' }));
+    act(() => engines[0]!.progress('comparing'));
     expect(screen.getByRole('status').textContent).toBe('Engine ready · Docxodus 13.0.0');
   });
 
@@ -82,5 +93,17 @@ describe('EngineStatus', () => {
 
     await act(async () => engines[1]!.settle.resolve({ docxodus: '13.0.0', dotnet: '10.0.12' }));
     expect(screen.getByRole('status').textContent).toContain('Engine ready');
+  });
+
+  it('shows an error with Retry when a ready engine fails later', async () => {
+    const engines: FakeEngine[] = [];
+    render(<Harness engines={engines} />);
+    await act(async () => engines[0]!.settle.resolve({ docxodus: '13.0.0', dotnet: '10.0.12' }));
+    act(() => engines[0]!.crash('The engine worker failed.'));
+    expect(screen.getByRole('status').textContent).toContain('The engine worker failed.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(engines[0]!.disposed).toBe(true);
+    expect(engines).toHaveLength(2);
   });
 });

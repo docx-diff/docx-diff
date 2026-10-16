@@ -30,6 +30,14 @@ describe('buildDocIndex', () => {
     );
   });
 
+  it('maps a note referenced from several paragraphs to the first of them', () => {
+    const twice = SMALL_HTML.replace(
+      'Cell <a href="#en-2"',
+      'Cell <a href="#fn-3" class="footnote-ref" data-footnote-id="3"><sup>1</sup></a><a href="#en-2"',
+    );
+    expect(buildDocIndex(twice).noteRefs.get(noteKey('fn', '3'))).toBe('a');
+  });
+
   it('collects revision ids and unique title phrases', () => {
     expect([...index.revisionsInHtml].sort()).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7']);
     expect(index.revisionTitles.get('r4')).toEqual(['Bold removed', 'Font changed', 'Font size changed']);

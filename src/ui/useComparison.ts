@@ -37,15 +37,12 @@ export function useComparison(engine: ComparisonEngine | null, original: File | 
     let active = true;
     const startedAt = performance.now();
     setState({ status: 'running', startedAt, stage: null });
-    const unsubscribe = engine.onProgress((event) => {
-      if (active) setState({ status: 'running', startedAt, stage: event.stage });
-    });
 
     (async () => {
       const [originalBytes, editedBytes] = await Promise.all([original.arrayBuffer(), edited.arrayBuffer()]);
-      const result = await engine.compare(originalBytes, editedBytes);
-      // Later progress events belong to other requests (e.g. an export).
-      unsubscribe();
+      const result = await engine.compare(originalBytes, editedBytes, (event) => {
+        if (active) setState({ status: 'running', startedAt, stage: event.stage });
+      });
       const workerMs = performance.now() - startedAt;
       if (!active) return;
       const prepareStart = performance.now();
@@ -69,7 +66,6 @@ export function useComparison(engine: ComparisonEngine | null, original: File | 
 
     return () => {
       active = false;
-      unsubscribe();
     };
   }, [engine, original, edited]);
 

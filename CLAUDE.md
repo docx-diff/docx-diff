@@ -60,7 +60,7 @@ Verified during planning (PRD §7); don't re-derive them, and don't regress them
 ## Checks
 
 - Round trip: accept-all export ≡ Edited text, reject-all export ≡ Original text (`test/text.ts`).
-- Exports must pass `verifyDeliverable` (`passed` / `passedWithPreExistingFindings`) and convert with `scripts/check-libreoffice.sh` (LibreOffice; Word isn't available).
+- Exports must pass `verifyDeliverable` (`passed` / `passedWithPreExistingFindings`) and convert with `scripts/check-libreoffice.sh` (LibreOffice; Word isn't available; the script is written in task 3.8).
 
 ## Conventions
 

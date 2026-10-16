@@ -44,12 +44,29 @@ function shareAnchor(a: RevisionListEntry, b: RevisionListEntry): boolean {
 
 /**
  * A content deletion and insertion that replace one another: with the index, their text touches
- * (no unchanged text between them); without it, they share an anchor (the same paragraph).
+ * (no unchanged text between them); without it, they share an anchor (the same paragraph). A
+ * deletion of the unedited tail is never part of a replacement, even when an insertion touches
+ * its start: it must stay a deletion for the range detection (FR-14).
  */
 function isReplacePair(a: RevisionListEntry, b: RevisionListEntry, index: DocIndex | undefined): boolean {
   const families = new Set([a.family, b.family]);
   if (families.size !== 2 || !families.has('content_delete') || !families.has('content_insert')) return false;
-  return index ? index.adjacentRevisions.has(adjacencyKey(a.id, b.id)) : shareAnchor(a, b);
+  if (!index) return shareAnchor(a, b);
+  return index.adjacentRevisions.has(adjacencyKey(a.id, b.id)) && !removesLastParagraph(a, index) && !removesLastParagraph(b, index);
+}
+
+/**
+ * The last Original body paragraph, when the Edited document has nothing of it (it is wholly
+ * deleted): the sign of an unedited tail (FR-14). `undefined` otherwise.
+ */
+export function deletedLastParagraph(index: DocIndex): string | undefined {
+  const last = index.bodyParagraphs.at(-1);
+  return last !== undefined && index.blockByUnid.get(last)?.inEdited === false ? last : undefined;
+}
+
+function removesLastParagraph(revision: RevisionListEntry, index: DocIndex): boolean {
+  const last = deletedLastParagraph(index);
+  return revision.type === 'delete' && last !== undefined && revision.affectedAnchors.some((anchor) => anchor.unid === last);
 }
 
 export function countWords(text: string): number {

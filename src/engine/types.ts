@@ -12,9 +12,13 @@ export type ProgressStage = 'loading-engine' | 'warming-up' | 'comparing' | 'lis
 
 export interface ProgressEvent {
   type: 'progress';
+  /** The request the progress belongs to. */
+  requestId: number;
   stage: ProgressStage;
   detail?: string;
 }
+
+export type ProgressListener = (event: ProgressEvent) => void;
 
 /** Payload and result type of every worker request, by request type. */
 export interface WorkerRequests {
@@ -101,14 +105,18 @@ export interface CompareResult {
 
 /** The comparison engine as the UI sees it; implemented by `client.ts` over the worker. */
 export interface ComparisonEngine {
-  init(): Promise<EngineVersion>;
+  /** Loads the engine; `onProgress` receives this request's progress only (likewise below). */
+  init(onProgress?: ProgressListener): Promise<EngineVersion>;
   version(): Promise<EngineVersion>;
   /** Compares two `.docx` files. The buffers are transferred to the worker and unusable afterwards. */
-  compare(original: ArrayBuffer, edited: ArrayBuffer): Promise<CompareResult>;
+  compare(original: ArrayBuffer, edited: ArrayBuffer, onProgress?: ProgressListener): Promise<CompareResult>;
   /** Produces the reviewed `.docx`. The redline buffer is transferred to the worker and unusable afterwards. */
-  exportDocx(request: ExportRequest): Promise<ArrayBuffer>;
-  /** Subscribes to progress events; returns the unsubscribe function. */
-  onProgress(listener: (event: ProgressEvent) => void): () => void;
+  exportDocx(request: ExportRequest, onProgress?: ProgressListener): Promise<ArrayBuffer>;
+  /**
+   * Subscribes to the engine failing for good (e.g. the worker crashed); every later request is
+   * rejected. Not called on `dispose`. Returns the unsubscribe function.
+   */
+  onFailure(listener: (error: Error) => void): () => void;
   /** Stops the worker; pending requests are rejected. */
   dispose(): void;
 }

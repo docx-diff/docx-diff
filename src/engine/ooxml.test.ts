@@ -64,6 +64,18 @@ describe('XML helpers', () => {
     expect(index.get(W_NS, 'del', '2')?.textContent).toBe('old');
     expect(index.get(W_NS, 'del', '1')).toBeUndefined();
     expect(index.find(parseConstituentKey(`kind=Content:${W_NS}:ins:1`))?.localName).toBe('ins');
+    expect(index.isAmbiguous(parseConstituentKey(`kind=Content:${W_NS}:ins:1`))).toBe(false);
+  });
+
+  it('finds nothing for a name and id that more than one element has', () => {
+    const duplicated = `<w:document xmlns:w="${W_NS}"><w:body><w:p>
+      <w:pPr><w:rPr><w:ins w:id="7" w:author="A"/></w:rPr></w:pPr>
+      <w:ins w:id="7" w:author="A"><w:r><w:t>new</w:t></w:r></w:ins>
+    </w:p></w:body></w:document>`;
+    const index = new ElementIndex(parseXml(duplicated));
+    const key = parseConstituentKey(`kind=ParaMark:${W_NS}:ins:7`);
+    expect(index.find(key)).toBeUndefined();
+    expect(index.isAmbiguous(key)).toBe(true);
   });
 
   it('round-trips XML through serialize/parse', () => {

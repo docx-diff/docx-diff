@@ -90,32 +90,45 @@ describe('EngineClient', () => {
     await expect(result).rejects.toMatchObject({ message: 'Failed to load WASM', code: 'load_failed' });
   });
 
-  it('passes progress events to listeners until they unsubscribe', () => {
+  it('passes progress events to the listener of their request only, while it is pending', async () => {
     const worker = new FakeWorker();
     const client = new EngineClient(worker, 'http://localhost/');
-    const events: ProgressEvent[] = [];
-    const unsubscribe = client.onProgress((event) => events.push(event));
-    worker.reply({ type: 'progress', stage: 'loading-engine' });
-    unsubscribe();
-    worker.reply({ type: 'progress', stage: 'warming-up' });
-    expect(events).toEqual([{ type: 'progress', stage: 'loading-engine' }]);
+    const first: ProgressEvent[] = [];
+    const second: ProgressEvent[] = [];
+    const firstResult = client.compare(new ArrayBuffer(1), new ArrayBuffer(1), (event) => first.push(event));
+    void client.compare(new ArrayBuffer(1), new ArrayBuffer(1), (event) => second.push(event));
+    worker.reply({ type: 'progress', requestId: 1, stage: 'comparing' });
+    worker.reply({ type: 'progress', requestId: 2, stage: 'listing' });
+    worker.reply({ id: 1, ok: true, result: {} });
+    await firstResult;
+    worker.reply({ type: 'progress', requestId: 1, stage: 'rendering' });
+    expect(first).toEqual([{ type: 'progress', requestId: 1, stage: 'comparing' }]);
+    expect(second).toEqual([{ type: 'progress', requestId: 2, stage: 'listing' }]);
   });
 
-  it('rejects pending and later requests when the worker fails', async () => {
+  it('rejects pending and later requests when the worker fails, and tells the failure listeners once', async () => {
     const worker = new FakeWorker();
     const client = new EngineClient(worker, 'http://localhost/');
+    const failures: Error[] = [];
+    client.onFailure((error) => failures.push(error));
     const pending = client.init();
     worker.crash('Script error');
+    worker.crash('Again');
     await expect(pending).rejects.toMatchObject({ message: 'Script error', code: 'worker_error' });
     await expect(client.version()).rejects.toMatchObject({ code: 'worker_error' });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ message: 'Script error' });
   });
 
-  it('terminates the worker on dispose', async () => {
+  it('terminates the worker on dispose, without reporting a failure', async () => {
     const worker = new FakeWorker();
     const client = new EngineClient(worker, 'http://localhost/');
+    const failures: Error[] = [];
+    client.onFailure((error) => failures.push(error));
     const pending = client.init();
     client.dispose();
     expect(worker.terminated).toBe(true);
     await expect(pending).rejects.toMatchObject({ code: 'disposed' });
+    expect(failures).toEqual([]);
   });
 });

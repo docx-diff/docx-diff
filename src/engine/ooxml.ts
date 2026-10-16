@@ -93,16 +93,22 @@ export function parseConstituentKey(key: string): ConstituentKey {
 
 /**
  * Finds elements by namespace + local name + `w:id`, after one walk over the part.
- * `(element name, w:id)` is unique within a part (verified on the sample, PRD §7.3).
+ * `(element name, w:id)` is unique within a part on the sample (PRD §7.3), but nothing guarantees
+ * it: a content `w:ins`, a paragraph-mark `w:ins` and a table-row `w:ins` share the name. A key
+ * that names more than one element finds nothing and is reported by `isAmbiguous`, so that a
+ * rewrite never picks the wrong one.
  */
 export class ElementIndex {
   private readonly byKey = new Map<string, Element>();
+  private readonly duplicates = new Set<string>();
 
   constructor(document: Document) {
     const walk = (element: Element): void => {
       const id = element.getAttributeNS(W_NS, 'id');
       if (id !== null && id !== '') {
-        this.byKey.set(indexKey(element.namespaceURI ?? '', element.localName ?? '', id), element);
+        const key = indexKey(element.namespaceURI ?? '', element.localName ?? '', id);
+        if (this.byKey.has(key)) this.duplicates.add(key);
+        else this.byKey.set(key, element);
       }
       for (let child = element.firstChild; child; child = child.nextSibling) {
         if (child.nodeType === child.ELEMENT_NODE) walk(child as Element);
@@ -111,13 +117,20 @@ export class ElementIndex {
     if (document.documentElement) walk(document.documentElement);
   }
 
+  /** The one element with this name and id; `undefined` when there is none or more than one. */
   get(namespace: string, localName: string, id: string): Element | undefined {
-    return this.byKey.get(indexKey(namespace, localName, id));
+    const key = indexKey(namespace, localName, id);
+    return this.duplicates.has(key) ? undefined : this.byKey.get(key);
   }
 
-  /** The element a constituent key names, if present. */
+  /** The element a constituent key names, if present and unique. */
   find(key: ConstituentKey): Element | undefined {
     return this.get(key.namespace, key.localName, key.id);
+  }
+
+  /** More than one element has the name and id the key gives. */
+  isAmbiguous(key: ConstituentKey): boolean {
+    return this.duplicates.has(indexKey(key.namespace, key.localName, key.id));
   }
 }
 
