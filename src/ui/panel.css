@@ -75,13 +75,13 @@
    numbering), changes the compare settings ignore, and the edges of a replacement both sides share
    (e.g. a quote style change next to a changed word): plain text, as each version has it. These
    must be at least as specific as the per-side rules above, which they override. */
-.doc[data-side] :is(del, ins):is(.change-as-formatting, .change-ignored, .change-common) {
+.doc[data-side] :is(del, ins):is(.change-as-formatting, .change-ignored, .change-common, .change-out-of-range) {
   color: inherit;
   background: none;
   text-decoration: none;
 }
 
-.doc :is(.change-as-formatting, .change-ignored) > .rev-para-mark-del {
+.doc :is(.change-as-formatting, .change-ignored, .change-out-of-range) > .rev-para-mark-del {
   display: none;
 }
 
@@ -94,11 +94,11 @@
 
 /* Decided changes (FR-25): dimmed, with ✓ or ✗ after the last insertion or deletion the panel shows.
    Ignored changes are plain text whatever their decision. */
-.doc :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting) {
+.doc :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range) {
   opacity: 0.5;
 }
 
-.doc :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+.doc :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   display: inline-block;
   margin-left: 0.15em;
   font-size: 0.75em;
@@ -106,17 +106,59 @@
   text-decoration: none;
 }
 
-.doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+.doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✓';
   color: #1a7f37;
 }
 
-.doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting)::after {
+.doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✗';
   color: #cf222e;
 }
 
 /* Changes can be clicked to select them in the list. */
-.doc :is(ins, del)[data-change-id]:not(.change-ignored) {
+.doc :is(ins, del)[data-change-id]:not(.change-ignored, .change-out-of-range) {
   cursor: pointer;
+}
+
+/* The comparison range (FR-18): the Original's content after the end point is greyed (its
+   changes are plain text, above), after a divider. In the Edited's panel, the text of changes
+   outside the range (the export drops their insertions) is greyed too. */
+.doc[data-side='left'] .out-of-range:not(.out-of-range .out-of-range) {
+  opacity: 0.45;
+}
+
+/* Only the text: a paragraph-mark change marks its whole paragraph, whose text can be in range. */
+.doc[data-side='right'] :is(ins, del).change-out-of-range {
+  opacity: 0.45;
+}
+
+.doc .range-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  color: #57606a;
+  font: 600 0.8125rem/1.4 system-ui, sans-serif;
+  font-style: normal;
+  text-align: left;
+  text-indent: 0;
+}
+
+.doc .range-divider::before,
+.doc .range-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 2px dashed #8c959f;
+}
+
+/* Picking the end point: any paragraph can be clicked. */
+.doc--picking,
+.doc--picking :is(ins, del)[data-change-id] {
+  cursor: crosshair;
+}
+
+.doc--picking [data-anchor]:hover {
+  outline: 2px dashed var(--change-current);
+  outline-offset: 2px;
 }

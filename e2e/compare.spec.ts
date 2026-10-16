@@ -58,7 +58,7 @@ test('compares two small documents, shows each side, swaps, and downloads the Ed
   await expect(page.getByTestId('panel-left').locator('del.rev-del', { hasText: 'red' })).toBeVisible({ timeout: 60_000 });
 });
 
-test('compares the sample pair, keeps the panels in sync and downloads the Edited text', async ({ page }) => {
+test('compares the sample pair, keeps the panels in sync and, without the range, downloads the Edited text', async ({ page }) => {
   test.skip(!samplesAvailable, 'sample documents not present');
   await openApp(page);
   // Long tasks on the main thread while comparing (the work runs in the worker).
@@ -97,6 +97,9 @@ test('compares the sample pair, keeps the panels in sync and downloads the Edite
   await page.waitForTimeout(300);
   expect(await right.evaluate((element) => element.scrollTop)).toBe(rightTop);
 
+  // With the detected range (the default), the download is the Edited text followed by the
+  // Original's unedited tail (e2e/range.spec.ts); without it, the Edited text.
+  await page.getByRole('button', { name: 'Compare the full documents' }).click();
   const file = await download(page);
   expect(file.name).toBe('edited.reviewed.docx');
   expect(docxText(file.bytes)).toEqual(docxText(edited));

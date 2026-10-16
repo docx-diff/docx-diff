@@ -3,7 +3,7 @@ import { SMALL_HTML } from '../../test/small-html';
 import type { RevisionListEntry } from '../engine/types';
 import { buildChangeItems, type ChangeItem, type ChangeKind } from './changes';
 import { buildDocIndex } from './docIndex';
-import { blockPositions, classify, detectTrailingRegion } from './range';
+import { blockPositions, classify, detectTrailingRegion, initialRange, outOfRangeBlocks, spanningItems } from './range';
 
 // Original body paragraphs of SMALL_HTML: a(0) c(1) d(2) e(3) t(4); b, f and g are not in the Original;
 // footnote paragraph n is referenced from a, endnote paragraph m from t.
@@ -86,6 +86,7 @@ describe('classify', () => {
     item('a', 'replaced', ['a']),
     item('b', 'inserted', ['b']),
     item('g', 'moved', ['c', 'g']),
+    item('late', 'moved', ['e', 'b']),
     item('span', 'deleted', ['d', 'e']),
     item('note', 'deleted', ['n'], 'footnote'),
     item('endnote', 'deleted', ['m'], 'endnote'),
@@ -100,7 +101,9 @@ describe('classify', () => {
     expect(Object.fromEntries(classify(items, index, 3))).toEqual({
       a: 'inRange',
       b: 'inRange',
-      g: 'outOfRange',
+      // A move counts by its source: g moves c (before the end point) to after it; late moves e (after it) to before it.
+      g: 'inRange',
+      late: 'outOfRange',
       span: 'outOfRange',
       note: 'inRange',
       endnote: 'outOfRange',
@@ -111,5 +114,28 @@ describe('classify', () => {
   it('puts an insertion right after the last in-range paragraph in range', () => {
     expect(classify([item('b', 'inserted', ['b'])], index, 1).get('b')).toBe('inRange');
     expect(classify([item('b', 'inserted', ['b'])], index, 0).get('b')).toBe('outOfRange');
+  });
+});
+
+describe('spanningItems', () => {
+  it('lists the items outside the range that start before the end point, but not moves', () => {
+    const items = [item('span', 'deleted', ['d', 'e']), item('after', 'deleted', ['e']), item('late', 'moved', ['e', 'b']), item('a', 'replaced', ['a'])];
+    const classes = classify(items, index, 3);
+    expect(spanningItems(items, index, 3, classes).map((i) => i.id)).toEqual(['span']);
+    expect(spanningItems(items, index, null, classify(items, index, null))).toEqual([]);
+  });
+});
+
+describe('outOfRangeBlocks', () => {
+  it('has the Original paragraphs from the end point on and the notes referenced only there', () => {
+    expect([...outOfRangeBlocks(index, 3)].sort()).toEqual(['e', 'm', 't']);
+    expect(outOfRangeBlocks(index, null).size).toBe(0);
+  });
+});
+
+describe('initialRange', () => {
+  it('uses the detected end point, or no range', () => {
+    expect(initialRange(168)).toEqual({ mode: 'auto', endPoint: 168 });
+    expect(initialRange(null)).toEqual({ mode: 'off', endPoint: null });
   });
 });

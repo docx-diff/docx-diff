@@ -3,7 +3,7 @@ import panelCss from './panel.css?inline';
 import type { ChangeItem } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import type { CompareSettings } from '../model/equivalence';
-import { OverviewBar, measureMarks, type OverviewMark } from './OverviewBar';
+import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
 
 export type PanelSide = 'left' | 'right';
@@ -22,7 +22,19 @@ interface Props {
   onChangeClick: (itemIds: string[]) => void;
   /** The changes the overview bar shows. */
   overviewItems: readonly ChangeItem[];
+  /** Changes outside the comparison range: plain text, greyed in the Edited's panel. */
+  outOfRangeItems: ReadonlySet<string>;
+  /** Blocks outside the comparison range (the Original's panel): greyed, after a divider. */
+  outOfRangeBlocks?: ReadonlySet<string>;
+  /**
+   * Set while the reviewer picks a paragraph: a click on the text gives the `data-anchor` unids
+   * around the clicked point, innermost first, instead of selecting a change.
+   */
+  onPickParagraph?: (unids: string[]) => void;
 }
+
+const NO_BLOCKS: ReadonlySet<string> = new Set();
+const NOTE = 'li[id^="fn-"], li[id^="en-"]';
 
 /** Elements of each change in one panel, by item id. */
 type ElementMap = Map<string, HTMLElement[]>;
@@ -63,10 +75,12 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
  * scrolling element, which is also the shadow host.
  */
 export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function DocumentPanel(props, ref) {
-  const { side, title, document, ignored, settings, decisions, currentItemId, onChangeClick, overviewItems } = props;
+  const { side, title, document, ignored, settings, decisions, currentItemId, onChangeClick, overviewItems, outOfRangeItems, onPickParagraph } = props;
+  const outOfRangeBlocks = props.outOfRangeBlocks ?? NO_BLOCKS;
   const scrollerRef = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => scrollerRef.current!, []);
   const elementsRef = useRef<ElementMap>(new Map());
+  const blocksRef = useRef<HTMLElement[]>([]);
   const appliedDecisions = useRef<Readonly<Record<string, Decision>>>({});
   const appliedCurrent = useRef<string | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
@@ -87,6 +101,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     root.replaceChildren(documentStyle, panelStyle, wrapper);
     host.scrollTop = 0;
     elementsRef.current = elementMap(wrapper);
+    blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
     appliedDecisions.current = {};
     appliedCurrent.current = null;
     setContentVersion((version) => version + 1);
@@ -98,6 +113,37 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     markItems(root, ignored, 'change-ignored');
     markCommon(root, settings);
   }, [document, ignored, settings]);
+
+  // The comparison range: changes outside it, and in the Original's panel the blocks outside it,
+  // with a divider before the first one shown.
+  useLayoutEffect(() => {
+    const root = scrollerRef.current?.shadowRoot;
+    const wrapper = root?.querySelector('.doc');
+    if (!root || !wrapper) return;
+    markItems(root, outOfRangeItems, 'change-out-of-range');
+    wrapper.querySelector('.range-divider')?.remove();
+    let first: HTMLElement | null = null;
+    for (const block of blocksRef.current) {
+      const out = outOfRangeBlocks.has(block.dataset.anchor!);
+      block.classList.toggle('out-of-range', out);
+      if (out && !first && !block.closest(`.not-in-original, .merged-into-next, ${NOTE}`)) first = block;
+    }
+    for (const note of wrapper.querySelectorAll(NOTE)) {
+      const blocks = [...note.querySelectorAll('[data-anchor]')];
+      note.classList.toggle('out-of-range', blocks.length > 0 && blocks.every((block) => block.classList.contains('out-of-range')));
+    }
+    if (first) {
+      const divider = root.ownerDocument.createElement('div');
+      divider.className = 'range-divider';
+      divider.setAttribute('role', 'separator');
+      divider.textContent = 'End of the comparison · the rest is treated as unedited';
+      first.before(divider);
+    }
+  }, [document, outOfRangeItems, outOfRangeBlocks, contentVersion]);
+
+  useLayoutEffect(() => {
+    scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle('doc--picking', onPickParagraph !== undefined);
+  }, [onPickParagraph, contentVersion]);
 
   // Decisions: only the items whose decision changed are touched.
   useLayoutEffect(() => {
@@ -118,10 +164,22 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
 
   const clickHandler = useRef(onChangeClick);
   clickHandler.current = onChangeClick;
+  const pickHandler = useRef(onPickParagraph);
+  pickHandler.current = onPickParagraph;
   useEffect(() => {
     const root = scrollerRef.current?.shadowRoot;
     if (!root) return;
     const onClick = (event: Event) => {
+      const pick = pickHandler.current;
+      if (pick) {
+        event.preventDefault();
+        const unids: string[] = [];
+        for (let element = event.target instanceof Element ? event.target.closest('[data-anchor]') : null; element; element = element.parentElement?.closest('[data-anchor]') ?? null) {
+          unids.push((element as HTMLElement).dataset.anchor!);
+        }
+        pick(unids);
+        return;
+      }
       const ids: string[] = [];
       for (let element = event.target instanceof Element ? event.target : null; element; element = element.parentElement) {
         const id = (element as HTMLElement).dataset?.changeId;
@@ -135,10 +193,14 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
 
   // Overview bar marks: measured after the content or the listed items change, and on resize.
   const [marks, setMarks] = useState<OverviewMark[]>([]);
+  const [outsideFrom, setOutsideFrom] = useState<number | null>(null);
   const measure = useCallback(() => {
     const scroller = scrollerRef.current;
-    if (scroller) setMarks(measureMarks(scroller, overviewItems, elementsRef.current, side));
-  }, [overviewItems, side]);
+    if (!scroller) return;
+    setMarks(measureMarks(scroller, overviewItems, elementsRef.current, side));
+    setOutsideFrom(measureOffset(scroller, scroller.shadowRoot?.querySelector('.range-divider') ?? null));
+    // `outOfRangeBlocks`: the divider moves with the range.
+  }, [overviewItems, side, outOfRangeBlocks]);
   useEffect(() => {
     measure();
     const content = scrollerRef.current?.shadowRoot?.querySelector('.doc');
@@ -164,7 +226,14 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       </h2>
       <div className="document-panel__body">
         <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0} />
-        <OverviewBar scrollerRef={scrollerRef} marks={marks} decisions={decisions} currentItemId={currentItemId} side={side} />
+        <OverviewBar
+          scrollerRef={scrollerRef}
+          marks={marks}
+          outsideFrom={outsideFrom}
+          decisions={decisions}
+          currentItemId={currentItemId}
+          side={side}
+        />
       </div>
     </section>
   );

@@ -33,9 +33,19 @@ export function measureMarks(
   return marks;
 }
 
+/** The element's top as a fraction of the panel's content height; `null` without a laid-out element. */
+export function measureOffset(scroller: HTMLElement, element: Element | null): number | null {
+  const height = scroller.scrollHeight;
+  if (!element || height === 0 || element.getClientRects().length === 0) return null;
+  const origin = scroller.getBoundingClientRect().top - scroller.scrollTop;
+  return (element.getBoundingClientRect().top - origin) / height;
+}
+
 interface Props {
   scrollerRef: RefObject<HTMLElement | null>;
   marks: readonly OverviewMark[];
+  /** Where the part outside the comparison range starts (fraction of the content height), if any. */
+  outsideFrom?: number | null;
   decisions: Readonly<Record<string, Decision>>;
   currentItemId: string | null;
   side: 'left' | 'right';
@@ -45,7 +55,7 @@ interface Props {
  * A narrow strip along the panel showing where the changes are in the whole document, with the
  * visible part of the document as a box (FR-24). Clicking scrolls the panel there.
  */
-export function OverviewBar({ scrollerRef, marks, decisions, currentItemId, side }: Props) {
+export function OverviewBar({ scrollerRef, marks, outsideFrom = null, decisions, currentItemId, side }: Props) {
   const [viewport, setViewport] = useState({ top: 0, height: 1 });
 
   useEffect(() => {
@@ -84,6 +94,7 @@ export function OverviewBar({ scrollerRef, marks, decisions, currentItemId, side
       title="Changes in the whole document; click to scroll there"
       aria-hidden="true"
     >
+      {outsideFrom !== null && <div className="overview-bar__outside" style={{ top: `${outsideFrom * 100}%` }} />}
       <div className="overview-bar__viewport" style={{ top: `${viewport.top * 100}%`, height: `${viewport.height * 100}%` }} />
       {marks.map((mark) => (
         <div

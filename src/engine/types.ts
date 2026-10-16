@@ -41,8 +41,10 @@ export interface ExportRequest {
   redline: ArrayBuffer;
   revisions: RevisionListEntry[];
   decisions: FinalDecisions;
-  /** One consistent look (FR-39a): the formatting choice, and the revisions outside the comparison range (left as they are). */
-  look?: { formattingChoice: FormattingChoice; outOfRange: string[] };
+  /** One consistent look (FR-39a) in the formatting choice's version. */
+  formattingChoice?: FormattingChoice;
+  /** The revisions outside the comparison range (rejected, and the look leaves them as they are). */
+  outOfRange?: string[];
 }
 
 export type WorkerRequestType = keyof WorkerRequests;

@@ -5,13 +5,12 @@ import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { compare, listRevisions } from '../src/engine/docxodus';
-import type { LookOptions } from '../src/engine/consistentLook';
-import { exportDocx } from '../src/engine/exportDocx';
+import { exportDocx, type ExportOptions } from '../src/engine/exportDocx';
 import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
-import { blockPositions, classify } from '../src/model/range';
+import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { expectDeliverable } from './deliverable';
@@ -277,18 +276,26 @@ describeWithSamples('sample pair', () => {
       expect([...new Set(noteBlocks.map((block) => Number(block.noteId)))]).toEqual(Array.from({ length: 15 }, (_, i) => i + 6));
       expect(tailItem.revisionIds).toHaveLength(16);
       expect(out.filter((item) => item.location.scope === 'footnote')).toEqual([]);
-      // The two moves carry paragraphs 151–153 from before the tail to after it; the last two items are the
-      // Edited document's closing paragraphs, which the engine placed after the deleted tail.
+      // The last two items are the Edited document's closing paragraphs, which the engine placed after the deleted tail.
       expect(countBy(out, (item) => `${item.kind}/${item.location.scope}`)).toEqual({
         'deleted/body': 1,
-        'moved/body': 2,
         'paragraph/body': 1,
         'inserted/body': 1,
       });
+    });
+
+    it('keeps the two moves in range: they carry the last paragraphs before the end point to after the tail', () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
       const positions = blockPositions(analysis.index);
-      for (const item of out.filter((i) => i.kind === 'moved')) {
-        expect(item.anchors.map((unid) => positions.get(unid)!).some((p) => p < analysis.suggestedEndPoint!)).toBe(true);
+      const moves = analysis.items.filter((item) => item.kind === 'moved');
+      expect(moves).toHaveLength(2);
+      for (const item of moves) {
+        expect(classes.get(item.id)).toBe('inRange');
+        const placed = item.anchors.map((unid) => positions.get(unid)!);
+        expect(placed.some((p) => p < analysis.suggestedEndPoint!)).toBe(true);
+        expect(placed.some((p) => p >= analysis.suggestedEndPoint!)).toBe(true);
       }
+      expect(spanningItems(analysis.items, analysis.index, analysis.suggestedEndPoint, classes)).toEqual([]);
     });
 
     it('keeps every item in range without an end point', () => {
@@ -307,9 +314,9 @@ describeWithSamples('sample pair', () => {
       return decisions;
     };
     /** Exports; with EXPORT_DIR set, also writes the file there (for scripts/check-libreoffice.sh). */
-    const exportWith = async (decisions: Map<string, Decision>, name: string, look?: LookOptions) => {
+    const exportWith = async (decisions: Map<string, Decision>, name: string, options?: ExportOptions) => {
       const start = performance.now();
-      const exported = await exportDocx(result.redline, result.revisions, decisions, look);
+      const exported = await exportDocx(result.redline, result.revisions, decisions, options);
       const ms = Math.round(performance.now() - start);
       if (process.env.EXPORT_DIR) {
         mkdirSync(process.env.EXPORT_DIR, { recursive: true });
@@ -373,7 +380,7 @@ describeWithSamples('sample pair', () => {
       const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
       const decisions = byItem((item) => (classes.get(item.id) === 'outOfRange' ? 'reject' : 'accept'));
       const { exported } = await exportWith(decisions, 'range-edited-look', { formattingChoice: 'edited', outOfRange });
-      const { exported: withoutLook } = await exportWith(decisions, 'range');
+      const { exported: withoutLook } = await exportWith(decisions, 'range', { outOfRange });
       expect(docxText(exported)).toEqual(docxText(withoutLook));
       // The tail keeps the Original's Palatino (PRD open question 5).
       expect([...documentLook(exported).runs].some((run) => run.includes('Palatino'))).toBe(true);
@@ -382,8 +389,9 @@ describeWithSamples('sample pair', () => {
 
     it('the trailing region out of range and the rest accepted gives the Edited text followed by the Original tail', async () => {
       const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
       const decisions = byItem((item) => (classes.get(item.id) === 'outOfRange' ? 'reject' : 'accept'));
-      const { exported } = await exportWith(decisions, 'range');
+      const { exported } = await exportWith(decisions, 'range', { outOfRange });
       const { original, edited } = readSamples();
       const body = (bytes: Uint8Array) => docxText(bytes, ['word/document.xml']);
       const [editedBody, originalBody] = [body(edited), body(original)];
@@ -396,20 +404,32 @@ describeWithSamples('sample pair', () => {
       const tailStart = originalBody.indexOf(firstTailParagraph.replace(/\s+/g, ' ').trim());
       expect(tailStart).toBeGreaterThan(0);
 
-      const exportedBody = body(exported);
-      const tailLines = originalBody.slice(tailStart);
-      expect(exportedBody.slice(-tailLines.length)).toEqual(tailLines);
-
-      // Known gap (task 6.8): the engine moved the last two in-range paragraphs, with the editor's
-      // changes, from between the deleted and the inserted version of the list items 7.–/DN 16/ to
-      // after the deleted tail. Out of range, the moves are rejected, so these two paragraphs keep
-      // their Original wording and end up before item 7 instead of after "/DN 16, AN 7.23/".
-      const movedOriginal = originalBody.slice(tailStart - 2, tailStart);
-      expect(movedOriginal.map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet azért alakították k']);
+      // The two moves (in range, accepted) bring the last two paragraphs before the tail, with the
+      // editor's changes; the export puts them back before the kept tail.
       expect(editedBody.slice(-3, -1).map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet úgy alakították ki,']);
-      expect(exportedBody.slice(0, -tailLines.length)).toEqual([...editedBody.slice(0, -6), ...movedOriginal, ...editedBody.slice(-6, -3)]);
+      expect(body(exported)).toEqual([...editedBody.slice(0, -1), ...originalBody.slice(tailStart)]);
+      // The notes: the Edited's (1–4; the editor deleted note 5), then the tail's notes 6–20.
+      const notes = (bytes: Uint8Array) => docxText(bytes, ['word/footnotes.xml']);
+      const tailNotes = notes(original).slice(notes(original).length - (notes(exported).length - notes(edited).length));
+      expect(notes(exported)).toEqual([...notes(edited), ...tailNotes]);
+      expect(tailNotes.length).toBeGreaterThanOrEqual(15);
+      await expectDeliverable(exported, original);
+    });
 
-      expect(docxText(exported)).toEqual(expectedText(result.redline, result.revisions, decisions));
+    it('with the detected range, rejecting the two moves keeps those paragraphs before the tail in their Original wording', async () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
+      const decisions = byItem((item) => (classes.get(item.id) === 'outOfRange' || item.kind === 'moved' ? 'reject' : 'accept'));
+      const { exported } = await exportWith(decisions, 'range-moves-rejected', { outOfRange });
+      const { original, edited } = readSamples();
+      const body = (bytes: Uint8Array) => docxText(bytes, ['word/document.xml']);
+      const [editedBody, originalBody] = [body(edited), body(original)];
+      const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+      const tailStart = originalBody.indexOf(tail.text.split('¶').find((paragraph) => paragraph.trim())!.replace(/\s+/g, ' ').trim());
+      const moved = originalBody.slice(tailStart - 2, tailStart);
+      expect(moved.map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet azért alakították k']);
+      // The moves' sources sit between the deleted and the inserted versions of the list items 7.–/DN 16/.
+      expect(body(exported)).toEqual([...editedBody.slice(0, -6), ...moved, ...editedBody.slice(-6, -3), ...originalBody.slice(tailStart)]);
       await expectDeliverable(exported, original);
     });
   });

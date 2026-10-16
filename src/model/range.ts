@@ -8,6 +8,17 @@ import { noteKey } from './docIndex';
 export type RangeClass = 'inRange' | 'outOfRange';
 
 /**
+ * The comparison range the reviewer works with: the detected end point (`auto`), one they set
+ * (`manual`), or none (`off`, the full documents). `endPoint` is `null` exactly when `mode` is `off`.
+ */
+export type RangeState = { mode: 'auto' | 'manual'; endPoint: number } | { mode: 'off'; endPoint: null };
+
+/** The range a new comparison starts with: the detected end point, if any. */
+export function initialRange(suggestedEndPoint: number | null): RangeState {
+  return suggestedEndPoint === null ? { mode: 'off', endPoint: null } : { mode: 'auto', endPoint: suggestedEndPoint };
+}
+
+/**
  * Position of every block on the Original's paragraph axis. An Original body paragraph sits at its
  * index in `bodyParagraphs`; a block not in the Original sits half a step after the Original
  * paragraph before it; a note paragraph sits where its note is referenced.
@@ -65,8 +76,11 @@ export function detectTrailingRegion(items: readonly ChangeItem[], index: DocInd
 /**
  * Classifies items against an end point (`null` = no range: everything is in range). An item is
  * outside the range when any of its anchors lies at or after the end point, so an item spanning
- * the end point is outside; note items follow the paragraph that references the note. Items
- * without a known position (e.g. section properties) stay in range.
+ * the end point is outside; note items follow the paragraph that references the note. A move
+ * counts by its source alone: a move from before the end point is the editor's work even when the
+ * engine placed its destination after the end point (on the sample, after the deleted tail), and
+ * the export puts that destination back before the region outside (`rangeOrder.ts`). Items without
+ * a known position (e.g. section properties) stay in range.
  */
 export function classify(
   items: readonly ChangeItem[],
@@ -78,11 +92,57 @@ export function classify(
   for (const item of items) {
     const out =
       endPoint !== null &&
-      item.anchors.some((unid) => {
+      rangeAnchors(item, index).some((unid) => {
         const position = positions.get(unid);
         return position !== undefined && position >= endPoint;
       });
     result.set(item.id, out ? 'outOfRange' : 'inRange');
   }
   return result;
+}
+
+/** The anchors that place an item: all of them, except for a move only those of its source. */
+function rangeAnchors(item: ChangeItem, index: DocIndex): readonly string[] {
+  if (item.kind !== 'moved') return item.anchors;
+  return item.anchors.filter((unid) => index.blockByUnid.get(unid)?.inOriginal !== false);
+}
+
+/**
+ * The items outside the range that also have content before the end point (a deletion that starts
+ * before it and continues after it): they are outside as a whole, so the reviewer should be told
+ * (PRD §7.5). Moves are placed by their source alone and never span.
+ */
+export function spanningItems(
+  items: readonly ChangeItem[],
+  index: DocIndex,
+  endPoint: number | null,
+  classes: ReadonlyMap<string, RangeClass>,
+  positions: Map<string, number> = blockPositions(index),
+): ChangeItem[] {
+  if (endPoint === null) return [];
+  return items.filter(
+    (item) =>
+      item.kind !== 'moved' &&
+      classes.get(item.id) === 'outOfRange' &&
+      item.anchors.some((unid) => {
+        const position = positions.get(unid);
+        return position !== undefined && position < endPoint;
+      }),
+  );
+}
+
+/**
+ * The blocks outside the range: Original body paragraphs at or after the end point, and the note
+ * paragraphs of notes referenced only from there. For the Original's panel, where these positions
+ * hold (blocks the Original lacks are not shown there).
+ */
+export function outOfRangeBlocks(index: DocIndex, endPoint: number | null, positions: Map<string, number> = blockPositions(index)): Set<string> {
+  const blocks = new Set<string>();
+  if (endPoint === null) return blocks;
+  for (const block of index.blocks) {
+    if (!block.inOriginal) continue;
+    const position = positions.get(block.unid);
+    if (position !== undefined && position >= endPoint) blocks.add(block.unid);
+  }
+  return blocks;
 }

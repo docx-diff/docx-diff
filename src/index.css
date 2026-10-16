@@ -262,6 +262,51 @@ body {
   color: #82071e;
 }
 
+/* Comparison range */
+
+.range-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding: 0.375rem 1rem;
+  font-size: 0.875rem;
+  background: #f6f8fa;
+  border-bottom: 1px solid var(--border);
+}
+
+.range-control__message {
+  flex: 1 1 24rem;
+  margin: 0;
+}
+
+.range-control__spanning {
+  flex-basis: 100%;
+  order: 1;
+  color: #7d4e00;
+}
+
+.range-control__actions,
+.range-control__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.range-control__form input {
+  width: 5rem;
+  font: inherit;
+}
+
+.range-control__of {
+  color: var(--muted);
+}
+
+.range-control__error {
+  color: #cf222e;
+}
+
 .progress {
   display: inline-flex;
   align-items: center;
@@ -357,6 +402,15 @@ body {
   background: rgb(31 35 40 / 8%);
   border-block: 1px solid rgb(31 35 40 / 20%);
   pointer-events: none;
+}
+
+.overview-bar__outside {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(-45deg, rgb(31 35 40 / 10%) 0 3px, transparent 3px 6px);
+  border-top: 1px dashed var(--muted);
 }
 
 .overview-bar__mark {

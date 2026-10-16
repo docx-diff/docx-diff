@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ProgressStage } from './engine/types';
 import {
   INITIAL_DECISIONS,
@@ -11,7 +11,7 @@ import {
   type DecisionState,
 } from './model/decisions';
 import { ignoredItems } from './model/equivalence';
-import { classify, type RangeClass } from './model/range';
+import { blockPositions, classify, initialRange, outOfRangeBlocks, spanningItems, type RangeClass, type RangeState } from './model/range';
 import { buildReviewList, navigationOrder, nextUndecided, step } from './model/reviewList';
 import { ChangesList } from './ui/ChangesList';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
@@ -20,6 +20,7 @@ import { EngineStatus } from './ui/EngineStatus';
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
 import { LoadingModal } from './ui/LoadingModal';
 import { Progress } from './ui/Progress';
+import { RangeControl } from './ui/RangeControl';
 import { Toolbar } from './ui/Toolbar';
 import { reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
@@ -55,6 +56,8 @@ export function App() {
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const [formattingExpanded, setFormattingExpanded] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
+  const [picking, setPicking] = useState(false);
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
@@ -63,22 +66,58 @@ export function App() {
     dispatch({ type: 'clear' });
     setCurrentItemId(null);
     setFormattingExpanded(false);
+    setRangeState(initialRange(comparison?.analysis.suggestedEndPoint ?? null));
+    setPicking(false);
   }
 
   const items = comparison?.analysis.items;
-  // The comparison range comes with task 6; until then every change is in range.
+  // The comparison range only reclassifies the changes (FR-19); their decisions are kept.
+  const positions = useMemo(() => (comparison ? blockPositions(comparison.analysis.index) : new Map<string, number>()), [comparison]);
   const range = useMemo(
-    () => (comparison ? classify(comparison.analysis.items, comparison.analysis.index, null) : new Map<string, RangeClass>()),
-    [comparison],
+    () =>
+      comparison ? classify(comparison.analysis.items, comparison.analysis.index, rangeState.endPoint, positions) : new Map<string, RangeClass>(),
+    [comparison, rangeState, positions],
   );
+  const spanning = useMemo(
+    () => (comparison ? spanningItems(comparison.analysis.items, comparison.analysis.index, rangeState.endPoint, range, positions) : []),
+    [comparison, rangeState, range, positions],
+  );
+  const outOfRange = useMemo(() => new Set((items ?? []).filter((item) => range.get(item.id) === 'outOfRange').map((item) => item.id)), [items, range]);
+  const outsideBlocks = useMemo(
+    () => (comparison ? outOfRangeBlocks(comparison.analysis.index, rangeState.endPoint, positions) : new Set<string>()),
+    [comparison, rangeState, positions],
+  );
+  const paragraphIndex = useMemo(() => new Map((comparison?.analysis.index.bodyParagraphs ?? []).map((unid, i) => [unid, i])), [comparison]);
+  /** A click on a paragraph of the Original while picking: it becomes the last paragraph in range. */
+  const pickParagraph = useCallback(
+    (unids: string[]) => {
+      const at = unids.map((unid) => paragraphIndex.get(unid)).find((i) => i !== undefined);
+      if (at === undefined || at + 1 >= paragraphIndex.size) return;
+      setRangeState({ mode: 'manual', endPoint: at + 1 });
+      setPicking(false);
+    },
+    [paragraphIndex],
+  );
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPicking(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [picking]);
   const reviewable = useMemo(() => reviewableItems(items ?? [], range, ignored), [items, range, ignored]);
   const formatting = useMemo(() => formattingItems(items ?? [], range), [items, range]);
   const entries = useMemo(() => buildReviewList(reviewable, formatting, formattingExpanded), [reviewable, formatting, formattingExpanded]);
   const order = useMemo(() => navigationOrder(entries), [entries]);
   const itemById = useMemo(() => new Map((items ?? []).map((item) => [item.id, item])), [items]);
   const totals = useMemo(
-    () => ({ text: decisionTotals(reviewable, review.decisions), formatting: formatting.length, ignored: ignored.size }),
-    [reviewable, formatting, ignored, review.decisions],
+    () => ({
+      text: decisionTotals(reviewable, review.decisions),
+      formatting: formatting.length,
+      ignored: [...ignored].filter((id) => range.get(id) !== 'outOfRange').length,
+    }),
+    [reviewable, formatting, ignored, range, review.decisions],
   );
 
   /** Makes an item the current one; `reveal` scrolls both panels to it (not for a click in a panel). */
@@ -140,12 +179,12 @@ export function App() {
     try {
       // Undecided changes are accepted until the export dialog lets the reviewer choose.
       const decisions = Object.fromEntries(finalRevisionDecisions(current.analysis.items, state, range, 'accept', ignored));
-      const outOfRange = current.analysis.items.filter((item) => range.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds);
       const bytes = await engine.exportDocx({
         redline: current.result.redline.slice(0),
         revisions: current.result.revisions,
         decisions,
-        look: { formattingChoice: state.formattingChoice, outOfRange },
+        formattingChoice: state.formattingChoice,
+        outOfRange: current.analysis.items.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds),
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });
@@ -190,6 +229,18 @@ export function App() {
         inputsHadRevisions={comparison?.result.inputsHadRevisions ?? false}
       />
 
+      {comparison && (
+        <RangeControl
+          range={rangeState}
+          paragraphCount={comparison.analysis.index.bodyParagraphs.length}
+          suggestedEndPoint={comparison.analysis.suggestedEndPoint}
+          onChange={setRangeState}
+          spanning={spanning}
+          picking={picking}
+          onPickingChange={setPicking}
+        />
+      )}
+
       {comparison ? (
         <div className="workspace">
           <div className="panels">
@@ -206,6 +257,9 @@ export function App() {
                 currentItemId={currentItemId}
                 onChangeClick={onChangeClick}
                 overviewItems={reviewable}
+                outOfRangeItems={outOfRange}
+                outOfRangeBlocks={side === 'left' ? outsideBlocks : undefined}
+                onPickParagraph={side === 'left' && picking ? pickParagraph : undefined}
               />
             ))}
           </div>

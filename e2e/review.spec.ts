@@ -119,6 +119,8 @@ test('on the sample pair, rejecting the first text change and accepting the rest
   test.skip(!samplesAvailable, 'sample documents not present');
   const { original, edited } = readSamples();
   await openAndCompare(page, original, edited);
+  // Compared in full, so that the export is the Edited text but for the rejected change.
+  await page.getByRole('button', { name: 'Compare the full documents' }).click();
 
   const first = page.getByTestId('change-card').first();
   const cardText = async (selector: string) => {
