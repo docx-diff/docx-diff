@@ -91,11 +91,11 @@ describeWithSamples('sample pair', () => {
     });
 
     it('gives the recorded item counts per kind', () => {
-      expect(analysis.items).toHaveLength(629);
+      expect(analysis.items).toHaveLength(613);
       expect(countBy(analysis.items, (i) => i.kind)).toEqual({
         formatting: 378,
         replaced: 141,
-        deleted: 64,
+        deleted: 48,
         inserted: 27,
         paragraph: 17,
         moved: 2,
@@ -133,6 +133,16 @@ describeWithSamples('sample pair', () => {
       expect(countBy(pairs, (family) => family)).toEqual({ content_insert: 141 });
     });
 
+    it('puts the deletions of the notes 5–20 in the body items that delete their references', () => {
+      const byId = revisionById();
+      const withNotes = analysis.items.filter((item) => item.revisionIds.some((id) => byId.get(id)!.partUri === '/word/footnotes.xml') && item.location.scope === 'body');
+      expect(withNotes.map((item) => item.kind)).toEqual(['deleted', 'deleted']);
+      const noteIds = withNotes.map((item) => [
+        ...new Set(item.anchors.map((unid) => analysis.index.blockByUnid.get(unid)!).filter((b) => b.scope === 'fn').map((b) => Number(b.noteId))),
+      ]);
+      expect(noteIds).toEqual([[5], Array.from({ length: 15 }, (_, i) => i + 6)]);
+    });
+
     it('describes formatting items from the HTML titles where the HTML has their elements', () => {
       const formatting = analysis.items.filter((item) => item.kind === 'formatting');
       expect(formatting.filter((item) => item.description)).toHaveLength(355);
@@ -141,8 +151,9 @@ describeWithSamples('sample pair', () => {
 
     it('locates footnote items with their note id', () => {
       const notes = analysis.items.filter((item) => item.location.scope === 'footnote');
-      // 35 footnote revisions; two pairs are Replaced items.
-      expect(notes).toHaveLength(33);
+      // 35 footnote revisions; two pairs are Replaced items, and the 16 deletions of the notes 5–20
+      // (which the Edited document does not have) are in the items that delete their references.
+      expect(notes).toHaveLength(17);
       expect(notes.every((item) => /^\d+$/.test(item.location.noteId ?? ''))).toBe(true);
     });
   });
@@ -188,7 +199,7 @@ describeWithSamples('sample pair', () => {
       const { analysis: prepared } = prepare();
       const typed = prepared.items.filter((item) => item.description === 'Typed list number replaced by automatic numbering');
       expect(typed.map((item) => item.text)).toEqual(Array.from({ length: 15 }, (_, i) => `${i + 1}.`));
-      expect(prepared.items).toHaveLength(614);
+      expect(prepared.items).toHaveLength(598);
       expect(prepared.items.flatMap((item) => item.revisionIds)).toHaveLength(result.revisions.length);
     });
 
@@ -255,17 +266,19 @@ describeWithSamples('sample pair', () => {
       expect(classes.get(tailItem.id)).toBe('outOfRange');
     });
 
-    it('puts the tail, its 15 footnote deletions (notes 6–20) and the items placed after it out of range', () => {
+    it('puts the tail (with the deletions of its notes 6–20) and the items placed after it out of range', () => {
       const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
       const out = analysis.items.filter((item) => classes.get(item.id) === 'outOfRange');
-      const tailNotes = out.filter((item) => item.location.scope === 'footnote');
-      expect(tailNotes.map((item) => item.kind)).toEqual(Array(15).fill('deleted'));
-      expect(tailNotes.map((item) => Number(item.location.noteId))).toEqual(Array.from({ length: 15 }, (_, i) => i + 6));
+      const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+      const tailItem = out.find((item) => item.revisionIds.includes(tail.id))!;
+      const noteBlocks = tailItem.anchors.map((unid) => analysis.index.blockByUnid.get(unid)!).filter((block) => block.scope === 'fn');
+      expect([...new Set(noteBlocks.map((block) => Number(block.noteId)))]).toEqual(Array.from({ length: 15 }, (_, i) => i + 6));
+      expect(tailItem.revisionIds).toHaveLength(16);
+      expect(out.filter((item) => item.location.scope === 'footnote')).toEqual([]);
       // The two moves carry paragraphs 151–153 from before the tail to after it; the last two items are the
       // Edited document's closing paragraphs, which the engine placed after the deleted tail.
       expect(countBy(out, (item) => `${item.kind}/${item.location.scope}`)).toEqual({
         'deleted/body': 1,
-        'deleted/footnote': 15,
         'moved/body': 2,
         'paragraph/body': 1,
         'inserted/body': 1,

@@ -3,24 +3,26 @@
 // paragraph as a deletion plus an insertion of the same note id, so rejecting one and accepting
 // the other leaves the note referenced twice (which fails package verification), or not at all
 // (an orphan note, which the engine's own reject removes). And accepting the deletion of a note's
-// whole text while keeping its reference leaves a note without paragraphs, which the schema
-// does not allow.
+// whole text (with its number) while keeping its reference leaves a note without its number, or
+// without paragraphs, which the schema does not allow. The change items keep a note that only one
+// version has together with its reference (`foldWholeNotes` in src/model/changes.ts), so these
+// cases need decisions made per revision; the repairs here keep any export valid.
 import type { Document, Element } from '@xmldom/xmldom';
 import { W_NS, readPart, unzipDocx, writePart, zipDocx } from './ooxml';
 
 const KINDS = [
-  { reference: 'footnoteReference', note: 'footnote', part: '/word/footnotes.xml' },
-  { reference: 'endnoteReference', note: 'endnote', part: '/word/endnotes.xml' },
+  { reference: 'footnoteReference', note: 'footnote', mark: 'footnoteRef', part: '/word/footnotes.xml' },
+  { reference: 'endnoteReference', note: 'endnote', mark: 'endnoteRef', part: '/word/endnotes.xml' },
 ] as const;
 
 const DOCUMENT_PART = '/word/document.xml';
 const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
 /**
- * Gives a referenced note without paragraphs an empty one (with the paragraph style the note had
- * in the redline), every extra reference to a note its own copy of the note, and removes the
- * notes that the redline referenced but the export no longer does. Returns the same bytes when
- * nothing changes.
+ * Gives a referenced note that lost its number (`w:footnoteRef`/`w:endnoteRef`) the number back,
+ * as in the redline, and one without paragraphs a paragraph for it; gives every extra reference to
+ * a note its own copy of the note; and removes the notes that the redline referenced but the
+ * export no longer does. Returns the same bytes when nothing changes.
  */
 export function reconcileNotes(exported: Uint8Array, redline: Uint8Array): Uint8Array {
   const files = unzipDocx(exported);
@@ -33,14 +35,25 @@ export function reconcileNotes(exported: Uint8Array, redline: Uint8Array): Uint8
   for (const kind of KINDS) {
     const notesDocument = readPart(files, kind.part);
     if (!notesDocument) continue;
+    const redlineNotes = readPart(redlineFiles, kind.part);
     const notes = new Map(elements(notesDocument, kind.note).map((note) => [note.getAttributeNS(W_NS, 'id') ?? '', note]));
     const references = elements(document, kind.reference);
     let partChanged = false;
 
     const referenced = new Set(references.map((reference) => reference.getAttributeNS(W_NS, 'id') ?? ''));
     for (const [id, note] of notes) {
-      if (!referenced.has(id) || elements(note, 'p').length > 0 || elements(note, 'tbl').length > 0) continue;
-      note.appendChild(emptyParagraph(notesDocument, redlineNoteStyle(redlineFiles, kind, id)));
+      if (!referenced.has(id) || elements(note, kind.mark).length > 0) continue;
+      const redlineNote = redlineNotes && elements(redlineNotes, kind.note).find((n) => n.getAttributeNS(W_NS, 'id') === id);
+      const firstParagraph = elements(note, 'p')[0];
+      if (firstParagraph) {
+        if (!redlineNote || elements(redlineNote, kind.mark).length === 0) continue;
+        const pPr = childElements(firstParagraph).find((child) => child.namespaceURI === W_NS && child.localName === 'pPr');
+        firstParagraph.insertBefore(numberRun(notesDocument, kind, redlineNote), pPr ? pPr.nextSibling : firstParagraph.firstChild);
+      } else if (elements(note, 'tbl').length === 0) {
+        note.appendChild(emptyParagraph(notesDocument, kind, redlineNote));
+      } else {
+        continue;
+      }
       partChanged = true;
     }
 
@@ -85,16 +98,13 @@ export function reconcileNotes(exported: Uint8Array, redline: Uint8Array): Uint8
   return zipDocx(files);
 }
 
-/** The paragraph style of the note's first paragraph in the redline. */
-function redlineNoteStyle(files: ReturnType<typeof unzipDocx>, kind: (typeof KINDS)[number], id: string): string | null {
-  const notesDocument = readPart(files, kind.part);
-  const note = notesDocument && elements(notesDocument, kind.note).find((n) => n.getAttributeNS(W_NS, 'id') === id);
-  const style = note && elements(note, 'pStyle')[0];
-  return style ? style.getAttributeNS(W_NS, 'val') : null;
-}
-
-function emptyParagraph(document: Document, style: string | null): Element {
+/**
+ * A note paragraph with the paragraph style of the note in the redline, and its number if the
+ * redline note has one.
+ */
+function emptyParagraph(document: Document, kind: (typeof KINDS)[number], redlineNote: Element | undefined): Element {
   const paragraph = document.createElementNS(W_NS, 'w:p');
+  const style = redlineNote && elements(redlineNote, 'pStyle')[0]?.getAttributeNS(W_NS, 'val');
   if (style) {
     const pPr = document.createElementNS(W_NS, 'w:pPr');
     const pStyle = document.createElementNS(W_NS, 'w:pStyle');
@@ -102,7 +112,31 @@ function emptyParagraph(document: Document, style: string | null): Element {
     pPr.appendChild(pStyle);
     paragraph.appendChild(pPr);
   }
+  if (redlineNote && elements(redlineNote, kind.mark).length > 0) paragraph.appendChild(numberRun(document, kind, redlineNote));
   return paragraph;
+}
+
+/** A run with the note number, with the run properties of the number in the redline note. */
+function numberRun(document: Document, kind: (typeof KINDS)[number], redlineNote: Element): Element {
+  const run = document.createElementNS(W_NS, 'w:r');
+  const markRun = elements(redlineNote, kind.mark)[0]?.parentNode as Element | undefined;
+  const rPr = markRun && childElements(markRun).find((child) => child.namespaceURI === W_NS && child.localName === 'rPr');
+  if (rPr) {
+    const copy = document.importNode(rPr, true) as Element;
+    // The redline's tracked formatting change of the number is not part of the export.
+    for (const change of childElements(copy).filter((child) => child.localName === 'rPrChange')) copy.removeChild(change);
+    run.appendChild(copy);
+  }
+  run.appendChild(document.createElementNS(W_NS, `w:${kind.mark}`));
+  return run;
+}
+
+function childElements(element: Element): Element[] {
+  const children: Element[] = [];
+  for (let child = element.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType === child.ELEMENT_NODE) children.push(child as Element);
+  }
+  return children;
 }
 
 function elements(root: Document | Element, localName: string): Element[] {

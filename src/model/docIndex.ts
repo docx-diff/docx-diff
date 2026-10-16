@@ -18,6 +18,16 @@ export interface IndexBlock {
   noteId?: string;
 }
 
+/** A note reference in the body, and the insertion or deletion it sits in, if any. */
+export interface NoteReference {
+  /** Unid of the body block that contains the reference. */
+  block: string;
+  /** `ins`/`del` when the reference is inserted or deleted content, else `null`. */
+  change: 'ins' | 'del' | null;
+  /** The revision of that insertion or deletion. */
+  revisionId: string | null;
+}
+
 export interface DocIndex {
   /** Every element with `data-anchor`, in document order. */
   blocks: IndexBlock[];
@@ -30,6 +40,8 @@ export interface DocIndex {
    * references are.
    */
   noteRefs: Map<string, string>;
+  /** `noteKey(scope, noteId)` → every reference to the note, in document order. */
+  noteReferences: Map<string, NoteReference[]>;
   /** Revision id → the phrases of its elements' `title` attributes (formatting descriptions), without duplicates. */
   revisionTitles: Map<string, string[]>;
   /** Ids of the revisions that have at least one element in the HTML. */
@@ -79,12 +91,23 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
   }
 
   const noteRefs = new Map<string, string>();
+  const noteReferences = new Map<string, NoteReference[]>();
   for (const ref of document.querySelectorAll<HTMLElement>('a.footnote-ref[data-footnote-id], a.endnote-ref')) {
     const isFootnote = ref.classList.contains('footnote-ref');
     const noteId = isFootnote ? ref.dataset.footnoteId! : (ref.getAttribute('href') ?? '').replace(/^#en-/, '');
     const block = ref.closest<HTMLElement>('[data-anchor]');
+    if (!block || !noteId) continue;
     const key = noteKey(isFootnote ? 'fn' : 'en', noteId);
-    if (block && noteId && !noteRefs.has(key)) noteRefs.set(key, block.dataset.anchor!);
+    if (!noteRefs.has(key)) noteRefs.set(key, block.dataset.anchor!);
+    const change = ref.closest('ins, del');
+    noteReferences.set(key, [
+      ...(noteReferences.get(key) ?? []),
+      {
+        block: block.dataset.anchor!,
+        change: change ? (change.localName as 'ins' | 'del') : null,
+        revisionId: revisionIdFromAuthor(change?.getAttribute('data-author')),
+      },
+    ]);
   }
 
   const revisionTitles = new Map<string, string[]>();
@@ -107,6 +130,7 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
     blockByUnid: new Map(blocks.map((block) => [block.unid, block])),
     bodyParagraphs: blocks.filter((b) => b.scope === 'body' && b.inOriginal).map((b) => b.unid),
     noteRefs,
+    noteReferences,
     revisionTitles,
     revisionsInHtml,
   };

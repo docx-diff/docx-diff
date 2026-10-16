@@ -159,6 +159,39 @@ describe('buildChangeItems', () => {
     expect(kinds(buildChangeItems(revisions))).toEqual(['replaced a b', 'replaced c d', 'deleted e']);
   });
 
+  it('with the index, puts a note only one version has in the item of the revision that deletes or inserts its reference', () => {
+    const ref = (id: string) => `<a href="#fn-${id}" class="footnote-ref" data-footnote-id="${id}"><sup>${id}</sup></a>`;
+    const note = (id: string, content: string) => `<li id="fn-${id}"><p data-anchor="f${id}" data-source-anchor-id="p:fn:f${id}">${content}</p></li>`;
+    const html =
+      `<p data-anchor="p1" data-source-anchor-id="p:body:p1">Kept${ref('1')}<del data-author="rev:a">Gone</del><del data-author="rev:a">${ref('2')}</del></p>` +
+      `<p data-anchor="p2" data-source-anchor-id="p:body:p2">Kept<ins data-author="rev:b">New</ins><ins data-author="rev:b">${ref('3')}</ins> more<del data-author="rev:c">${ref('4')}</del></p>` +
+      `<p data-anchor="p3" data-source-anchor-id="p:body:p3">Kept${ref('5')}</p>` +
+      '<section class="footnotes"><ol>' +
+      note('1', 'Note <ins data-author="rev:d">edited</ins>') +
+      note('2', '<del data-author="rev:e">Removed note</del>') +
+      note('3', '<ins data-author="rev:f">Added note</ins>') +
+      note('4', '<del data-author="rev:g">Deleted reference, note text kept</del> rest') +
+      note('5', '<del data-author="rev:h">Text gone, reference kept</del>') +
+      '</ol></section>';
+    const index = buildDocIndex(html);
+    expect(index.noteReferences.get('fn:2')).toEqual([{ block: 'p1', change: 'del', revisionId: 'a' }]);
+    expect(index.noteReferences.get('fn:5')).toEqual([{ block: 'p3', change: null, revisionId: null }]);
+    const revisions = [
+      rev('a', 'del', 'Gone', ['p1']),
+      rev('b', 'ins', 'New', ['p2']),
+      rev('c', 'del', '', ['p2']),
+      rev('d', 'ins', 'edited', ['f1'], 'fn'),
+      rev('e', 'del', 'Removed note', ['f2'], 'fn'),
+      rev('f', 'ins', 'Added note', ['f3'], 'fn'),
+      rev('g', 'del', 'Deleted reference, note text kept', ['f4'], 'fn'),
+      rev('h', 'del', 'Text gone, reference kept', ['f5'], 'fn'),
+    ];
+    const items = buildChangeItems(revisions, index);
+    expect(kinds(items)).toEqual(['deleted a e', 'inserted b f', 'deleted c', 'inserted d', 'deleted g', 'deleted h']);
+    expect(items[0]!.location).toEqual({ scope: 'body' });
+    expect(items[0]!.anchors).toEqual(['p1', 'f2']);
+  });
+
   it('uses the index for note ids, tables and formatting descriptions', () => {
     const blocks: IndexBlock[] = [
       { unid: 'p1', scope: 'body', inOriginal: true, inEdited: true, inTable: true },
@@ -169,6 +202,7 @@ describe('buildChangeItems', () => {
       blockByUnid: new Map(blocks.map((b) => [b.unid, b])),
       bodyParagraphs: ['p1'],
       noteRefs: new Map(),
+      noteReferences: new Map(),
       revisionTitles: new Map([['3', ['Bold removed', 'Font changed']]]),
       revisionsInHtml: new Set(['1', '2', '3']),
       adjacentRevisions: new Set(),

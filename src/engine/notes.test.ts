@@ -40,9 +40,31 @@ describe('reconcileNotes', () => {
     expect(part(result, 'footnotes')).toContain('w:type="separator"');
   });
 
-  it('gives a referenced note without paragraphs an empty paragraph with its redline style', () => {
-    const redline = docx([ref(1)], note(1, 'a'));
+  it('gives a referenced note without paragraphs a paragraph with its number, with the redline’s style and number formatting', () => {
+    const mark = '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/><w:rPrChange w:id="9"><w:rPr/></w:rPrChange></w:rPr><w:footnoteRef/></w:r>';
+    const redline = docx([ref(1)], `<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:del w:id="5">${mark}</w:del></w:p></w:footnote>`);
     const result = reconcileNotes(docx([ref(1)], '<w:footnote w:id="1"/>'), redline);
-    expect(part(result, 'footnotes')).toContain('<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr></w:p></w:footnote>');
+    expect(part(result, 'footnotes')).toContain(
+      '<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r></w:p></w:footnote>',
+    );
+  });
+
+  it('gives an empty note a paragraph without a number when the redline note had none', () => {
+    const redline = docx([ref(1)], '<w:footnote w:id="1"><w:p/></w:footnote>');
+    const result = reconcileNotes(docx([ref(1)], '<w:footnote w:id="1"/>'), redline);
+    expect(part(result, 'footnotes')).toContain('<w:footnote w:id="1"><w:p/></w:footnote>');
+  });
+
+  it('gives back the number to a referenced note whose paragraph lost it', () => {
+    const mark = '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>';
+    const redline = docx([ref(1)], `<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:del w:id="5">${mark}</w:del></w:p></w:footnote>`);
+    const exported = docx([ref(1)], '<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr></w:p></w:footnote>');
+    expect(part(reconcileNotes(exported, redline), 'footnotes')).toContain(`<w:footnote w:id="1"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr>${mark}</w:p></w:footnote>`);
+  });
+
+  it('leaves a note without a number alone when the redline note had none either', () => {
+    const plain = '<w:footnote w:id="1"><w:p><w:r><w:t>custom mark</w:t></w:r></w:p></w:footnote>';
+    const exported = docx([ref(1)], plain);
+    expect(reconcileNotes(exported, docx([ref(1)], plain))).toBe(exported);
   });
 });

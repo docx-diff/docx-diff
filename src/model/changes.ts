@@ -1,6 +1,6 @@
 // Builds the reviewable change items from the engine's revision list (PRD §7.2 step 3, FR-8, FR-9).
 import type { RevisionListEntry } from '../engine/types';
-import { adjacencyKey, type DocIndex } from './docIndex';
+import { adjacencyKey, noteKey, type DocIndex, type IndexBlock } from './docIndex';
 
 export type ChangeKind = 'inserted' | 'deleted' | 'replaced' | 'formatting' | 'moved' | 'paragraph';
 
@@ -83,7 +83,9 @@ export function countWords(text: string): number {
  * - of the remaining sequence, a content deletion and a content insertion that are neighbours
  *   (either order) and whose text touches (without the index: that share an anchor) become one
  *   `replaced` item, paired greedily left to right;
- * - a move revision (covering both halves) is a `moved` item.
+ * - a move revision (covering both halves) is a `moved` item;
+ * - with the index, a note that only one version has joins the item of the revision that deletes
+ *   (inserts) its reference (`foldWholeNotes`).
  *
  * The optional index (from the rendered HTML) supplies formatting descriptions and note/table locations.
  */
@@ -122,7 +124,12 @@ export function buildChangeItems(revisions: readonly RevisionListEntry[], index?
     groupOf.set(revision, group);
     groups.push(group);
   }
-  for (const { mark, into } of folded) groupOf.get(into)!.push(mark);
+  for (const { mark, into } of folded) {
+    const group = groupOf.get(into)!;
+    group.push(mark);
+    groupOf.set(mark, group);
+  }
+  if (index) foldWholeNotes(sequence, groupOf, groups, index);
   for (const revision of revisions) {
     if (revision.type === 'format') groups.push([revision]);
   }
@@ -132,6 +139,49 @@ export function buildChangeItems(revisions: readonly RevisionListEntry[], index?
   groups.sort((a, b) => byPosition(a[0]!, b[0]!));
 
   return groups.map((group, order) => toItem(group, order, index));
+}
+
+/**
+ * A footnote or endnote that only one version has — wholly deleted (inserted) — and whose
+ * references are all deleted (inserted) content: the note's revisions join the group of the
+ * revision that deletes (inserts) its first reference, so that the note and its reference are
+ * decided together. Decided apart, a kept reference could point to a note without text, and a
+ * restored note to no reference. A note both versions have (its text edited, or its reference
+ * moved) keeps its own items.
+ */
+function foldWholeNotes(
+  sequence: readonly RevisionListEntry[],
+  groupOf: Map<RevisionListEntry, RevisionListEntry[]>,
+  groups: RevisionListEntry[][],
+  index: DocIndex,
+): void {
+  const byId = new Map(sequence.map((revision) => [revision.id, revision]));
+  const notes = new Map<string, IndexBlock[]>();
+  for (const block of index.blocks) {
+    if (block.scope === 'body' || block.noteId === undefined) continue;
+    const key = noteKey(block.scope, block.noteId);
+    notes.set(key, [...(notes.get(key) ?? []), block]);
+  }
+  for (const [key, blocks] of notes) {
+    const deleted = blocks.every((block) => !block.inEdited);
+    const inserted = blocks.every((block) => !block.inOriginal);
+    if (deleted === inserted) continue;
+    const change = deleted ? 'del' : 'ins';
+    const references = index.noteReferences.get(key) ?? [];
+    if (references.length === 0 || !references.every((reference) => reference.change === change)) continue;
+    const target = byId.get(references[0]!.revisionId ?? '');
+    if (!target) continue;
+    const targetGroup = groupOf.get(target)!;
+    const unids = new Set(blocks.map((block) => block.unid));
+    for (const revision of sequence) {
+      if (revision.affectedAnchors.length === 0 || !revision.affectedAnchors.every((anchor) => unids.has(anchor.unid))) continue;
+      const group = groupOf.get(revision)!;
+      if (group === targetGroup) continue;
+      targetGroup.push(...group);
+      for (const member of group) groupOf.set(member, targetGroup);
+      groups.splice(groups.indexOf(group), 1);
+    }
+  }
 }
 
 function toItem(group: RevisionListEntry[], order: number, index: DocIndex | undefined): ChangeItem {

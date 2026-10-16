@@ -17,6 +17,8 @@ interface DocSpec {
   /** Footnote contents by id (ids from 1; separators are added). */
   footnotes?: Record<number, string>;
   endnotes?: Record<number, string>;
+  /** Adds the external hyperlink relationship `rIdLink` (to https://example.org/). */
+  hyperlink?: boolean;
 }
 
 export interface FixturePair {
@@ -47,6 +49,17 @@ function footnoteRef(id: number): string {
 
 function endnoteRef(id: number): string {
   return `<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="${id}"/></w:r>`;
+}
+
+/** A complex field (`w:fldChar` … `w:instrText` … result) showing `result`. */
+function field(instruction: string, result: string): string {
+  const fldChar = (type: string) => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`;
+  return `${fldChar('begin')}<w:r><w:instrText xml:space="preserve"> ${escapeXml(instruction)} </w:instrText></w:r>${fldChar('separate')}${r(result)}${fldChar('end')}`;
+}
+
+/** A hyperlink to the `rIdLink` relationship (needs `hyperlink: true` in the spec). */
+function hyperlink(runs: string): string {
+  return `<w:hyperlink r:id="rIdLink">${runs}</w:hyperlink>`;
 }
 
 interface TableSpec {
@@ -153,6 +166,7 @@ export function buildDocx(spec: DocSpec): Uint8Array {
     `<Relationship Id="rId1" Type="${relType}styles" Target="styles.xml"/>` +
     (hasFootnotes ? `<Relationship Id="rId2" Type="${relType}footnotes" Target="footnotes.xml"/>` : '') +
     (hasEndnotes ? `<Relationship Id="rId3" Type="${relType}endnotes" Target="endnotes.xml"/>` : '') +
+    (spec.hyperlink ? `<Relationship Id="rIdLink" Type="${relType}hyperlink" Target="https://example.org/" TargetMode="External"/>` : '') +
     '</Relationships>';
   const document =
     `${XML_DECL}<w:document ${W} ${R}><w:body>${spec.body}` +
@@ -242,6 +256,12 @@ export const FIXTURES: FixturePair[] = [
     edited: { body: body(p(L0), p(L2), p(L3), p(L4), p(L1), p(L5)) },
   },
   {
+    name: 'move-edit',
+    description: 'a paragraph moved to a later position and edited (as both sample moves are)',
+    original: { body: body(p(L0), p(L1), p(L2), p(L3), p(L4), p(L5)) },
+    edited: { body: body(p(L0), p(L2), p(L3), p(L4), p(L1.replace('their daily alms food', 'their alms food')), p(L5)) },
+  },
+  {
     name: 'paragraph-split',
     description: 'a paragraph split in two, and an empty paragraph inserted',
     original: { body: body(p(`${L0} ${L1}`), p(L2), p(L3)) },
@@ -316,7 +336,7 @@ export const FIXTURES: FixturePair[] = [
   },
   {
     name: 'footnote-edit',
-    description: 'footnote text edited, a footnote added and one removed',
+    description: 'footnote text edited, and a footnote reference moved to another paragraph (the engine keeps the note and rewrites its text)',
     original: {
       body: body(p([r(L0), footnoteRef(1)]), p([r(L1), footnoteRef(2)]), p(L2)),
       footnotes: { 1: 'The road was paved only in the nineteen-eighties.', 2: 'Alms food is offered by lay supporters.' },
@@ -324,6 +344,50 @@ export const FIXTURES: FixturePair[] = [
     edited: {
       body: body(p([r(L0), footnoteRef(1)]), p(L1), p([r(L2), footnoteRef(2)])),
       footnotes: { 1: 'The road was finally paved in the nineteen-nineties.', 2: 'The well was dug by the first abbot.' },
+    },
+  },
+  {
+    name: 'footnote-remove',
+    description: 'a footnote removed with the sentence that references it',
+    original: {
+      body: body(p([r(L0), footnoteRef(1)]), p([r(L1), r(' The road itself was built by the villagers.'), footnoteRef(2)]), p(L2)),
+      footnotes: { 1: 'The road was paved only in the nineteen-eighties.', 2: 'They finished it in a single dry season.' },
+    },
+    edited: {
+      body: body(p([r(L0), footnoteRef(1)]), p(L1), p(L2)),
+      footnotes: { 1: 'The road was paved only in the nineteen-eighties.' },
+    },
+  },
+  {
+    name: 'endnote-add',
+    description: 'an endnote added with a new sentence',
+    original: {
+      body: body(p([r(L0), endnoteRef(1)]), p(L1), p(L2)),
+      endnotes: { 1: 'See the chapter on the forest tradition for the history of the place.' },
+    },
+    edited: {
+      body: body(p([r(L0), endnoteRef(1)]), p(L1), p([r(L2), r(' Their robes were dyed brown.'), endnoteRef(2)])),
+      endnotes: { 1: 'See the chapter on the forest tradition for the history of the place.', 2: 'The dye was made from the heartwood of the jackfruit tree.' },
+    },
+  },
+  {
+    name: 'field-hyperlink',
+    description: 'a field inserted and one deleted, and the text of a hyperlink edited',
+    original: {
+      body: body(
+        p([r(L0), r(' Printed on '), field('DATE', '1 January 2026'), r('.')]),
+        p([r('More is on '), hyperlink(r('the website of the monastery')), r('.')]),
+        p(L2),
+      ),
+      hyperlink: true,
+    },
+    edited: {
+      body: body(
+        p(L0),
+        p([r('More is on '), hyperlink(r('the home page of the monastery')), r('.')]),
+        p([r(L2), r(' This is page '), field('PAGE', '1'), r('.')]),
+      ),
+      hyperlink: true,
     },
   },
   {
