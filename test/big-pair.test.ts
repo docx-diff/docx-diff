@@ -59,5 +59,15 @@ describe.skipIf(!process.env.BIG_PAIR)('~300-page pair', () => {
       expect(docxText(exported)).toEqual(expected ?? expectedText(result.redline, result.revisions, decisions));
       expect(totalMs).toBeLessThan(10_000);
     }
+    // With the consistent look (FR-39a) for each formatting choice.
+    const alternating = cases[2]![1];
+    for (const formattingChoice of ['edited', 'original'] as const) {
+      const start = performance.now();
+      const exported = await exportDocx(result.redline, result.revisions, alternating, { formattingChoice, outOfRange: new Set() });
+      const totalMs = Math.round(performance.now() - start);
+      console.log(`~300-page export, alternating with the ${formattingChoice} look: ${totalMs} ms`);
+      expect(docxText(exported)).toEqual(expectedText(result.redline, result.revisions, alternating));
+      expect(totalMs).toBeLessThan(10_000);
+    }
   }, 120_000);
 });

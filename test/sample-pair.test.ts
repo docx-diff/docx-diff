@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { compare, listRevisions } from '../src/engine/docxodus';
+import type { LookOptions } from '../src/engine/consistentLook';
 import { exportDocx } from '../src/engine/exportDocx';
 import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { RevisionListEntry } from '../src/engine/types';
@@ -15,6 +16,7 @@ import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { expectDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
+import { documentLook, lookDifference } from './look';
 import { initNodeEngine } from './node-engine';
 import { describeWithSamples, readSamples } from './samples';
 import { docxText } from './text';
@@ -305,9 +307,9 @@ describeWithSamples('sample pair', () => {
       return decisions;
     };
     /** Exports; with EXPORT_DIR set, also writes the file there (for scripts/check-libreoffice.sh). */
-    const exportWith = async (decisions: Map<string, Decision>, name: string) => {
+    const exportWith = async (decisions: Map<string, Decision>, name: string, look?: LookOptions) => {
       const start = performance.now();
-      const exported = await exportDocx(result.redline, result.revisions, decisions);
+      const exported = await exportDocx(result.redline, result.revisions, decisions, look);
       const ms = Math.round(performance.now() - start);
       if (process.env.EXPORT_DIR) {
         mkdirSync(process.env.EXPORT_DIR, { recursive: true });
@@ -344,6 +346,38 @@ describeWithSamples('sample pair', () => {
         expect(text).not.toEqual(docxText(readSamples().edited));
         await expectDeliverable(exported, readSamples().original);
       }
+    });
+
+    it.each(['edited', 'original'] as const)(
+      'alternating text decisions with the %s formatting keep the text and use only that version’s look',
+      async (choice) => {
+        const formatting: Decision = choice === 'edited' ? 'accept' : 'reject';
+        let text = 0;
+        const decisions = byItem((item) => (item.kind === 'formatting' ? formatting : text++ % 2 === 0 ? 'accept' : 'reject'));
+        const { exported, ms } = await exportWith(decisions, `alternating-${choice}-look`, { formattingChoice: choice, outOfRange: new Set() });
+        console.log(`sample pair export, alternating with the ${choice} look: ${ms} ms`);
+        const { exported: withoutLook } = await exportWith(decisions, `alternating-${choice}`);
+        expect(docxText(exported)).toEqual(docxText(withoutLook));
+        expect(docxText(exported)).toEqual(expectedText(result.redline, result.revisions, decisions));
+
+        const reference = documentLook((await exportWith(decide(() => formatting), `all-${formatting}`)).exported);
+        const none = { runs: [], paragraphs: [], marks: [] };
+        expect(lookDifference(documentLook(exported), reference)).toEqual(none);
+        expect(lookDifference(documentLook(withoutLook), reference).runs.length).toBeGreaterThan(0);
+        await expectDeliverable(exported, readSamples().original);
+      },
+    );
+
+    it('with the detected range and the Edited formatting, the look leaves the tail as it is', async () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
+      const decisions = byItem((item) => (classes.get(item.id) === 'outOfRange' ? 'reject' : 'accept'));
+      const { exported } = await exportWith(decisions, 'range-edited-look', { formattingChoice: 'edited', outOfRange });
+      const { exported: withoutLook } = await exportWith(decisions, 'range');
+      expect(docxText(exported)).toEqual(docxText(withoutLook));
+      // The tail keeps the Original's Palatino (PRD open question 5).
+      expect([...documentLook(exported).runs].some((run) => run.includes('Palatino'))).toBe(true);
+      await expectDeliverable(exported, readSamples().original);
     });
 
     it('the trailing region out of range and the rest accepted gives the Edited text followed by the Original tail', async () => {

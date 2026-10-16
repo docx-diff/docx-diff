@@ -103,25 +103,35 @@ export function rejectElement(element: Element, revision: Pick<RevisionListEntry
 }
 
 /**
+ * Runs on a part before the rewrite (seeing all its revisions); the returned function runs after it.
+ * The export uses it to keep one look (`consistentLook.ts`).
+ */
+export type PartHook = (document: Document, partRevisions: readonly RevisionListEntry[]) => () => void;
+
+/**
  * Applies the rewrite to every revision in `rejected`, in each revision's part. Throws when a
- * revision's markup is missing or ambiguous, or the revision is not supported.
+ * revision's markup is missing or ambiguous, or the revision is not supported. With `hook`, every
+ * part that has revisions is visited, also those without a rejected one.
  */
 export function rejectRevisions(
   redline: Uint8Array,
   revisions: readonly RevisionListEntry[],
   rejected: ReadonlySet<string>,
+  hook?: PartHook,
 ): Uint8Array {
   const files = unzipDocx(redline);
   const byPart = new Map<string, RevisionListEntry[]>();
   for (const revision of revisions) {
-    if (!rejected.has(revision.id)) continue;
+    if (!hook && !rejected.has(revision.id)) continue;
     byPart.set(revision.partUri, [...(byPart.get(revision.partUri) ?? []), revision]);
   }
 
   for (const [partUri, partRevisions] of byPart) {
     const document = readPart(files, partUri);
     if (!document) throw new RevisionMarkupError(partRevisions[0]!.id, `the package has no part ${partUri}`);
-    rejectInPart(document, partRevisions);
+    const after = hook?.(document, partRevisions);
+    rejectInPart(document, partRevisions.filter((revision) => rejected.has(revision.id)));
+    after?.();
     writePart(files, partUri, document);
   }
   return zipDocx(files);

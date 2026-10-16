@@ -136,10 +136,12 @@ export function App() {
     try {
       // Undecided changes are accepted until the export dialog lets the reviewer choose.
       const decisions = Object.fromEntries(finalRevisionDecisions(current.analysis.items, state, range, 'accept', ignored));
+      const outOfRange = current.analysis.items.filter((item) => range.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds);
       const bytes = await engine.exportDocx({
         redline: current.result.redline.slice(0),
         revisions: current.result.revisions,
         decisions,
+        look: { formattingChoice: state.formattingChoice, outOfRange },
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });

@@ -6,10 +6,12 @@ import { strFromU8, unzipSync } from 'fflate';
 import { docxDiffRejectRevisions, openDocxSession } from 'docxodus/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { expectDeliverable } from '../../test/deliverable';
+import { documentLook, lookDifference } from '../../test/look';
 import { FIXTURES, FIXTURES_DIR } from '../../test/fixtures/make-fixtures';
 import { initNodeEngine } from '../../test/node-engine';
 import { docxText } from '../../test/text';
 import { acceptAll, compare, listRevisions } from './docxodus';
+import type { FormattingChoice } from './consistentLook';
 import { exportDocx } from './exportDocx';
 import { reconcileNotes } from './notes';
 import { UnsupportedRevisionError } from './rejectRewrite';
@@ -107,6 +109,27 @@ describe.each(FIXTURES.map((fixture) => [fixture.name, fixture.description] as c
       await expectDeliverable(exported, original);
     }
   });
+
+  it.each(['edited', 'original'] as const)(
+    'with alternating text decisions and the %s formatting, keeps the text and uses only that version’s look',
+    async (choice: FormattingChoice) => {
+      const formatting = choice === 'edited' ? 'accept' : 'reject';
+      let text = 0;
+      const mixed = new Map(
+        revisions.map((revision) => [revision.id, revision.type === 'format' ? formatting : text++ % 2 === 0 ? 'accept' : 'reject'] as const),
+      );
+      const exported = await exportDocx(redline, revisions, mixed, { formattingChoice: choice, outOfRange: new Set() });
+      keep(exported, `${name}-alternating-${choice}-look`);
+      const withoutLook = await exportDocx(redline, revisions, mixed);
+      expect(docxText(exported)).toEqual(docxText(withoutLook));
+      const reference = documentLook(await exportDocx(redline, revisions, decisions(formatting)));
+      const none = { runs: [], paragraphs: [], marks: [] };
+      expect(lookDifference(documentLook(exported), reference)).toEqual(none);
+      // Without the look step, the restyled fixture mixes the two versions' formatting.
+      if (name === 'restyle-edit') expect(lookDifference(documentLook(withoutLook), reference)).not.toEqual(none);
+      await expectDeliverable(exported, original);
+    },
+  );
 
   it('accepting one revision and rejecting the rest applies exactly that change, as the engine does', async () => {
     for (const revision of revisions) {

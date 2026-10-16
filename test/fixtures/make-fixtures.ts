@@ -185,6 +185,8 @@ export function buildDocx(spec: DocSpec): Uint8Array {
 }
 
 const body = (...blocks: string[]) => blocks.join('');
+const PALATINO = '<w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:color w:val="0D0D0D"/>';
+const JUSTIFIED = '<w:jc w:val="both"/>';
 const [L0, L1, L2, L3, L4, L5] = LOREM as [string, string, string, string, string, string];
 
 export const FIXTURES: FixturePair[] = [
@@ -400,6 +402,26 @@ export const FIXTURES: FixturePair[] = [
     edited: {
       body: body(p([r(L0), endnoteRef(1)]), p(L1)),
       endnotes: { 1: 'See the second chapter for the early history of the place.' },
+    },
+  },
+  {
+    name: 'restyle-edit',
+    description: 'restyled (font, colour and justification removed) and edited: words replaced, inserted and deleted, a paragraph deleted and one inserted',
+    original: {
+      body: body(
+        p([r('The monastery stood at the edge of the forest, ', PALATINO), r('far from the town', PALATINO + '<w:i/>'), r(', on the old road.', PALATINO)], JUSTIFIED),
+        p([r('Every morning the monks walked in silence to the village.', PALATINO)], JUSTIFIED),
+        p([r('In the afternoon they swept the paths and repaired the roofs.', PALATINO)], JUSTIFIED),
+        p([r('At dusk the bell called everyone to the evening chanting.', PALATINO)], JUSTIFIED),
+      ),
+    },
+    edited: {
+      body: body(
+        p([r('The monastery stood at the edge of the jungle, '), r('far from the busy town', '<w:i/>'), r(', on the old road.')]),
+        p('Every morning the monks walked to the village.'),
+        p('A new paragraph about the visitors who came on the full moon days.'),
+        p('At dusk the bell called everyone to the evening chanting.'),
+      ),
     },
   },
   {

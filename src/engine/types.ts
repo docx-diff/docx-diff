@@ -34,10 +34,15 @@ export interface WorkerRequests {
 /** Final decision per engine revision id; every revision of the redline must have one. */
 export type FinalDecisions = Record<string, 'accept' | 'reject'>;
 
+/** Whose formatting the export uses: the Original's (formatting changes rejected) or the Edited's (accepted). */
+export type FormattingChoice = 'original' | 'edited';
+
 export interface ExportRequest {
   redline: ArrayBuffer;
   revisions: RevisionListEntry[];
   decisions: FinalDecisions;
+  /** One consistent look (FR-39a): the formatting choice, and the revisions outside the comparison range (left as they are). */
+  look?: { formattingChoice: FormattingChoice; outOfRange: string[] };
 }
 
 export type WorkerRequestType = keyof WorkerRequests;

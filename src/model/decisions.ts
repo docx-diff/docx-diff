@@ -1,13 +1,13 @@
 // The reviewer's decisions (FR-27, FR-30, FR-32) and the final decision of every engine revision
 // for the export (PRD §7.3 step 1). Text items are decided one by one; formatting is decided once
 // for the whole document (`formattingChoice`).
+import type { FormattingChoice } from '../engine/types';
 import type { ChangeItem } from './changes';
 import type { RangeClass } from './range';
 
-export type Decision = 'accepted' | 'rejected';
+export type { FormattingChoice };
 
-/** Whose formatting the export uses: the Original's (formatting changes rejected) or the Edited's (accepted). */
-export type FormattingChoice = 'original' | 'edited';
+export type Decision = 'accepted' | 'rejected';
 
 /** What the export does with a text change left undecided. */
 export type UndecidedChoice = 'accept' | 'reject';
