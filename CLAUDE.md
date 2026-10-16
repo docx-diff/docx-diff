@@ -36,7 +36,7 @@ Why 24: Node 20 is end-of-life, and the current Vite 8, Vitest 5, jsdom 30 and `
 ## Commands
 
 - `npm run dev` / `npm run build` / `npm run preview` — Vite; `BASE_PATH=/<repo>/` sets the base path (default `/`).
-- `npm test` — Vitest: project `unit` (jsdom, `src/**/*.test.ts(x)`) and project `engine` (Node, `src/engine/**/*.test.ts` and `test/**/*.test.ts`, real WASM). One file: `npx vitest run src/engine/client.test.ts`.
+- `npm test` — Vitest: project `unit` (jsdom, `src/**/*.test.ts(x)`) and project `engine` (Node, `src/engine/**/*.test.ts` and `test/**/*.test.ts`, real WASM). One file: `npx vitest run src/engine/client.test.ts`. The sample-pair checks share one compare in `test/sample-pair.test.ts`; the ~300-page timing check runs only with `BIG_PAIR=1`.
 - `npm run test:e2e` — Playwright (Chromium) against a build served by `vite preview` under `/docx-diff/`.
 - `npm run typecheck` — `tsc --noEmit`.
 - `vite-plugin-static-copy` v4 keeps source directory structure unless `rename: { stripBase: true }`; without it the engine lands at `dist/wasm/_framework/node_modules/…` and fails to load.

@@ -1,5 +1,6 @@
 // Main-thread side of the engine worker: typed, promise-based requests over postMessage.
 import type {
+  CompareResult,
   ComparisonEngine,
   EngineVersion,
   ProgressEvent,
@@ -64,6 +65,10 @@ export class EngineClient implements ComparisonEngine {
 
   version(): Promise<EngineVersion> {
     return this.request('version', undefined);
+  }
+
+  compare(original: ArrayBuffer, edited: ArrayBuffer): Promise<CompareResult> {
+    return this.request('compare', { original, edited }, [original, edited]);
   }
 
   onProgress(listener: (event: ProgressEvent) => void): () => void {

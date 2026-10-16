@@ -30,6 +30,7 @@ npm run preview      # serve dist/
 npm test             # unit + engine tests (Vitest; engine tests run the real WASM under Node)
 npm run test:e2e     # Playwright: builds with BASE_PATH=/docx-diff/ and tests in Chromium
 npm run typecheck    # tsc --noEmit
+BIG_PAIR=1 npx vitest run test/big-pair.test.ts   # opt-in timing check on a synthetic ~300-page pair
 ```
 
 Node is pinned to **24.22.0** (Active LTS) in `.tool-versions` (asdf). `package.json` `engines` plus `engine-strict` in `.npmrc` make `npm install` fail on a Node outside `^24.22.0`. Details in `CLAUDE.md` ("Node version").

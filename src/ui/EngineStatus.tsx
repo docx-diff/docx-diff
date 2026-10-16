@@ -5,6 +5,9 @@ import type { EngineState } from './useEngine';
 const STAGE_LABELS: Record<ProgressStage, string> = {
   'loading-engine': 'Downloading the comparison engine',
   'warming-up': 'Starting the comparison engine',
+  comparing: 'Comparing the documents',
+  listing: 'Listing the changes',
+  rendering: 'Rendering the documents',
 };
 
 function formatSeconds(ms: number): string {

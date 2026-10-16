@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 // Module worker that owns the Docxodus engine. Protocol: see `types.ts`.
 import { engineVersion, initEngine, warmUp } from './docxodus';
+import { runCompare } from './pipeline';
 import type {
   ProgressEvent,
   ProgressStage,
@@ -32,7 +33,18 @@ const handlers: Handlers = {
   async version() {
     return engineVersion();
   },
+  async compare({ original, edited }) {
+    const result = await runCompare(new Uint8Array(original), new Uint8Array(edited), (stage) => progress(stage));
+    return { ...result, redline: ownBuffer(result.redline) };
+  },
 };
+
+/** An ArrayBuffer holding exactly these bytes, safe to transfer. */
+function ownBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength && bytes.buffer instanceof ArrayBuffer
+    ? bytes.buffer
+    : bytes.slice().buffer;
+}
 
 self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
   const { id, type, payload } = event.data;

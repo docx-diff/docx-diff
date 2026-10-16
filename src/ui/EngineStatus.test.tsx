@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ComparisonEngine, EngineVersion, ProgressEvent } from '../engine/types';
+import type { CompareResult, ComparisonEngine, EngineVersion, ProgressEvent } from '../engine/types';
 import { EngineStatus } from './EngineStatus';
 import { useEngine } from './useEngine';
 
@@ -16,6 +16,9 @@ class FakeEngine implements ComparisonEngine {
     });
   }
   version(): Promise<EngineVersion> {
+    return Promise.reject(new Error('not used'));
+  }
+  compare(): Promise<CompareResult> {
     return Promise.reject(new Error('not used'));
   }
   onProgress(listener: (event: ProgressEvent) => void): () => void {

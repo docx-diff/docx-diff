@@ -5,12 +5,14 @@ import type { ProgressEvent, WorkerMessage, WorkerRequest } from './types';
 /** A fake worker that records requests and lets the test answer them. */
 class FakeWorker implements WorkerLike {
   readonly sent: WorkerRequest[] = [];
+  readonly transferred: Transferable[][] = [];
   terminated = false;
   private messageListener: ((event: MessageEvent<WorkerMessage>) => void) | null = null;
   private errorListener: ((event: ErrorEvent) => void) | null = null;
 
-  postMessage(message: unknown): void {
+  postMessage(message: unknown, transfer: Transferable[]): void {
     this.sent.push(message as WorkerRequest);
+    this.transferred.push(transfer);
   }
 
   addEventListener(type: 'message' | 'error', listener: (event: never) => void): void {
@@ -41,6 +43,19 @@ describe('EngineClient', () => {
     expect(worker.sent).toEqual([{ id: 1, type: 'init', payload: { appBaseUrl: 'https://example.org/docx-diff/' } }]);
     worker.reply({ id: 1, ok: true, result: VERSION });
     await expect(result).resolves.toEqual(VERSION);
+  });
+
+  it('sends compare with both documents as transferables', async () => {
+    const worker = new FakeWorker();
+    const client = new EngineClient(worker, 'http://localhost/');
+    const original = new ArrayBuffer(4);
+    const edited = new ArrayBuffer(8);
+    const result = client.compare(original, edited);
+    expect(worker.sent).toEqual([{ id: 1, type: 'compare', payload: { original, edited } }]);
+    expect(worker.transferred[0]).toEqual([original, edited]);
+    const compareResult = { redline: new ArrayBuffer(2), revisions: [], html: '<p/>', inputsHadRevisions: false };
+    worker.reply({ id: 1, ok: true, result: compareResult });
+    await expect(result).resolves.toBe(compareResult);
   });
 
   it('matches responses to requests by id', async () => {

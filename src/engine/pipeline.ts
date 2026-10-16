@@ -1,0 +1,44 @@
+// The compare pipeline the worker runs: check inputs, compare, list revisions, tag and render.
+// Kept apart from the worker so that Node tests run exactly the same steps.
+import { compare, listRevisions, render } from './docxodus';
+import { tagRedline } from './tagRedline';
+import type { CompareResult, ProgressStage, RevisionListEntry } from './types';
+
+export interface ComparePipelineResult extends Omit<CompareResult, 'redline'> {
+  redline: Uint8Array;
+}
+
+export async function runCompare(
+  original: Uint8Array,
+  edited: Uint8Array,
+  onStage: (stage: ProgressStage) => void = () => {},
+): Promise<ComparePipelineResult> {
+  const timings = { checkInputs: 0, compare: 0, list: 0, tag: 0, render: 0 };
+  const timed = async <T>(name: keyof typeof timings, step: () => T | Promise<T>): Promise<T> => {
+    const start = performance.now();
+    try {
+      return await step();
+    } finally {
+      timings[name] = Math.round(performance.now() - start);
+    }
+  };
+
+  onStage('comparing');
+  const inputsHadRevisions = await timed('checkInputs', async () => {
+    const [originalRevisions, editedRevisions] = [await listRevisions(original), await listRevisions(edited)];
+    return originalRevisions.length > 0 || editedRevisions.length > 0;
+  });
+  const redline = await timed('compare', () => compare(original, edited));
+
+  onStage('listing');
+  const revisions: RevisionListEntry[] = await timed('list', () => listRevisions(redline));
+
+  onStage('rendering');
+  const tagged = await timed('tag', () => tagRedline(redline, revisions));
+  if (tagged.missingKeys.length > 0) {
+    console.warn(`Revision markup not found while tagging: ${tagged.missingKeys.length} keys`, tagged.missingKeys.slice(0, 5));
+  }
+  const html = await timed('render', () => render(tagged.bytes));
+
+  return { redline, revisions, html, inputsHadRevisions, timings };
+}
