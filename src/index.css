@@ -476,6 +476,11 @@ body {
   outline-offset: -1px;
 }
 
+.change-card:focus-visible {
+  outline: 2px dashed var(--change-current);
+  outline-offset: 1px;
+}
+
 .change-card__header {
   display: flex;
   flex-wrap: wrap;

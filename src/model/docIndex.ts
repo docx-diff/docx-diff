@@ -47,6 +47,11 @@ export interface DocIndex {
   /** Ids of the revisions that have at least one element in the HTML. */
   revisionsInHtml: Set<string>;
   /**
+   * Move revision id → the moved text at its source (the Original's wording) and at its
+   * destination (the Edited's); a move can carry edits. Optional for hand-built indexes.
+   */
+  moveTexts?: Map<string, { from: string; to: string }>;
+  /**
    * `adjacencyKey(a, b)` of every two revisions whose content touches in a paragraph's text, with
    * at most whitespace of unchanged text between them (a deletion right before an insertion, …).
    */
@@ -112,9 +117,16 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
 
   const revisionTitles = new Map<string, string[]>();
   const revisionsInHtml = new Set<string>();
+  const moveTexts = new Map<string, { from: string; to: string }>();
   for (const element of document.querySelectorAll<HTMLElement>('[data-author^="rev:"]')) {
     const revisionId = revisionIdFromAuthor(element.dataset.author)!;
     revisionsInHtml.add(revisionId);
+    const end = element.classList.contains('rev-move-from') ? 'from' : element.classList.contains('rev-move-to') ? 'to' : null;
+    if (end) {
+      const texts = moveTexts.get(revisionId) ?? { from: '', to: '' };
+      texts[end] += element.textContent ?? '';
+      moveTexts.set(revisionId, texts);
+    }
     const title = element.getAttribute('title');
     if (!title) continue;
     const phrases = revisionTitles.get(revisionId) ?? [];
@@ -133,6 +145,7 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
     noteReferences,
     revisionTitles,
     revisionsInHtml,
+    moveTexts,
   };
 }
 

@@ -100,3 +100,20 @@ describe('notes only one version has', () => {
     expect(item.revisionIds).toHaveLength(2);
   });
 });
+
+describe('moved items', () => {
+  const movedItems = async (name: string) => {
+    const read = (side: string) => new Uint8Array(readFileSync(`${FIXTURES_DIR}/${name}.${side}.docx`));
+    return analyzeComparison(await runCompare(read('original'), read('edited')), parse).items.filter((item) => item.kind === 'moved');
+  };
+
+  it('carry the wording at both ends when the move carries edits', async () => {
+    const [plain] = await movedItems('move');
+    expect(plain?.moveEdit).toBeUndefined();
+    const [edited] = await movedItems('move-edit');
+    expect(edited?.moveEdit).toEqual({
+      from: 'Every morning the monks walked to the village in silence to receive their daily alms food.',
+      to: 'Every morning the monks walked to the village in silence to receive their alms food.',
+    });
+  });
+});

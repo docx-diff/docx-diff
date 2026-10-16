@@ -123,6 +123,20 @@ describe('planConsistentLook with the Edited formatting', () => {
     );
     expect(result).toContain(`<w:p><w:pPr><w:pStyle w:val="BodyText"/>${numPr}<w:rPr/></w:pPr>`);
   });
+
+  it('gives the mark of a restored paragraph the Edited look also when the paragraph has formatting changes of its own', () => {
+    const jc = '<w:jc w:val="both"/>';
+    const markChange = `<w:p><w:pPr><w:rPr><w:rPrChange w:id="21" w:author="X"><w:rPr>${P}</w:rPr></w:rPrChange></w:rPr></w:pPr>${restyled('kept', '10', P)}</w:p>`;
+    const ownChange = `<w:pPrChange w:id="22" w:author="X"><w:pPr/></w:pPrChange>`;
+    const restored = `<w:p><w:pPr>${jc}<w:rPr><w:del w:id="4" w:author="X"/>${P}</w:rPr>${ownChange}</w:pPr>${deleted('restored', '5', P)}</w:p>`;
+    const result = exportBody(
+      markChange + restored,
+      [...formatting('10', '21'), { id: 'p22', markup: ['pPrChange:22'], decision: 'accept' }, { id: 'd4', markup: ['del:4', 'del:5'], decision: 'reject' }],
+      'edited',
+    );
+    // Its own properties stay (they are the Edited ones); the mark loses the Original's Palatino.
+    expect(result).toContain(`<w:p><w:pPr>${jc}<w:rPr/>${ownChange}</w:pPr>${plain('restored', '')}</w:p>`);
+  });
 });
 
 describe('planConsistentLook with the Original formatting', () => {

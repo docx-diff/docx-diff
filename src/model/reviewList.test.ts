@@ -46,14 +46,28 @@ describe('navigation', () => {
   });
 
   it('steps forwards and backwards, starting at the ends and stopping there', () => {
+    const [a, , c] = text;
     expect(step(collapsed, null, 1)).toBe('a');
     expect(step(collapsed, null, -1)).toBe('c');
-    expect(step(collapsed, 'a', 1)).toBe('b');
-    expect(step(collapsed, 'c', 1)).toBe('c');
-    expect(step(collapsed, 'a', -1)).toBe('a');
-    // A current item no longer in the order (e.g. the group was collapsed) restarts at an end.
-    expect(step(collapsed, 'f', 1)).toBe('a');
+    expect(step(collapsed, a!, 1)).toBe('b');
+    expect(step(collapsed, c!, 1)).toBe('c');
+    expect(step(collapsed, a!, -1)).toBe('a');
     expect(step([], null, 1)).toBeNull();
+  });
+
+  it('steps from a current item that is no longer listed to its neighbours in document order', () => {
+    const [f, g] = formatting;
+    // The group was collapsed while a formatting item was current.
+    expect(step(collapsed, g!, 1)).toBe('c');
+    expect(step(collapsed, g!, -1)).toBe('b');
+    expect(step(collapsed, f!, -1)).toBe('a');
+    // A text item a setting now ignores; the expanded group's items don't count as its neighbours.
+    const ignored = item('x', 'deleted', 4);
+    expect(step(expanded, ignored, 1)).toBe('c');
+    expect(step(expanded, ignored, -1)).toBe('b');
+    // Nothing after (before) it: the last (first) item.
+    expect(step(collapsed, item('y', 'deleted', 9), 1)).toBe('c');
+    expect(step(collapsed, item('z', 'formatting', -1), -1)).toBe('a');
   });
 
   it('finds the next undecided text item, wrapping around and skipping formatting', () => {

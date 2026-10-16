@@ -22,6 +22,8 @@ export interface ChangeItem {
   addedText: string;
   /** The text a formatting or moved item covers. */
   text?: string;
+  /** A move that carries edits: its wording at the source (Original) and at the destination (Edited). */
+  moveEdit?: { from: string; to: string };
   /** Formatting items: what changed, from the HTML titles, e.g. "Bold removed, Font changed". */
   description?: string;
   location: ChangeLocation;
@@ -202,6 +204,14 @@ function toItem(group: RevisionListEntry[], order: number, index: DocIndex | und
   };
   if (item.kind === 'formatting' || item.kind === 'moved') {
     item.text = group.find((r) => r.type === 'format' || r.type === 'move')!.text;
+  }
+  if (item.kind === 'moved') {
+    const move = group.find((r) => r.type === 'move')!;
+    const texts = index?.moveTexts?.get(move.id);
+    const words = (text: string) => text.replace(/\s+/g, ' ').trim();
+    if (texts && texts.from && texts.to && words(texts.from) !== words(texts.to)) {
+      item.moveEdit = { from: words(texts.from), to: words(texts.to) };
+    }
   }
   if (item.kind === 'formatting' && index) {
     const phrases = new Set(group.flatMap((r) => index.revisionTitles.get(r.id) ?? []));

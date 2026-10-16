@@ -14,10 +14,18 @@ export const SHORTCUTS: { keys: string[]; action: ShortcutAction; label: string 
 
 const ACTION_BY_KEY = new Map(SHORTCUTS.flatMap(({ keys, action }) => keys.map((key) => [key, action] as const)));
 
+/**
+ * Fields that take typed keys. Buttons, checkboxes, radio buttons and file inputs are not among
+ * them: the shortcuts work while they have focus, and the arrow keys don't step through a radio
+ * group (↓ on the formatting choice would otherwise change it instead of going to the next change).
+ */
+const TYPING_FIELDS =
+  'input:not([type="button"], [type="checkbox"], [type="file"], [type="image"], [type="radio"], [type="reset"], [type="submit"]), textarea, select, [contenteditable=""], [contenteditable="true"]';
+
 /** Focus is where typing or the key's own meaning must win. */
 function isTypingTarget(target: EventTarget | null, key: string): boolean {
   if (!(target instanceof Element)) return false;
-  if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return true;
+  if (target.closest(TYPING_FIELDS)) return true;
   // Arrow keys scroll a focused document panel.
   return key.startsWith('Arrow') && target.closest('.document-panel__scroller') !== null;
 }

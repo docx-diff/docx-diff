@@ -28,14 +28,22 @@ export function navigationOrder(entries: readonly ListEntry[]): ChangeItem[] {
 }
 
 /**
- * The item before or after the current one; the first (last) one when there is no current item or
- * it is not in the order. Stays at the ends (returns the current id).
+ * The item before or after the current one; the first (last) one when there is no current item.
+ * Stays at the ends (returns the current id). A current item that is no longer listed (a
+ * formatting item after the group was collapsed, a change a setting now ignores) steps to the
+ * listed text item after (before) it in document order.
  */
-export function step(order: readonly ChangeItem[], currentId: string | null, direction: 1 | -1): string | null {
+export function step(order: readonly ChangeItem[], current: ChangeItem | null, direction: 1 | -1): string | null {
   if (order.length === 0) return null;
-  const at = currentId === null ? -1 : order.findIndex((item) => item.id === currentId);
-  if (at === -1) return (direction === 1 ? order[0] : order.at(-1))!.id;
-  return order[Math.max(0, Math.min(order.length - 1, at + direction))]!.id;
+  const at = current === null ? -1 : order.findIndex((item) => item.id === current.id);
+  if (at >= 0) return order[Math.max(0, Math.min(order.length - 1, at + direction))]!.id;
+  if (current === null) return (direction === 1 ? order[0] : order.at(-1))!.id;
+  // Text items only: when the group is expanded, its items are listed at the group's position, not
+  // in document order.
+  const text = order.filter((item) => item.kind !== 'formatting');
+  const next = direction === 1 ? text.find((item) => item.order > current.order) : [...text].reverse().find((item) => item.order < current.order);
+  // Nothing after (before) it: the last (first) item, as at the ends.
+  return (next ?? (direction === 1 ? order.at(-1) : order[0]))!.id;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type KeyboardEvent } from 'react';
 import type { ChangeItem, ChangeKind } from '../model/changes';
 import type { Decision } from '../model/decisions';
 
@@ -52,13 +52,20 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
   const formatting = item.kind === 'formatting';
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
   const delta = wordDeltaLabel(item.wordDelta);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    onSelect(item.id);
+  };
   return (
     <div
       className={`change-card change-card--${state}${current ? ' change-card--current' : ''}`}
       data-testid="change-card"
       data-item-id={item.id}
       aria-current={current ? 'true' : undefined}
+      tabIndex={0}
       onClick={() => onSelect(item.id)}
+      onKeyDown={onKeyDown}
     >
       <div className="change-card__header">
         <span className="change-card__number">{label}</span>
@@ -68,7 +75,13 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
         {!formatting && <span className="change-card__state">{decision === 'accepted' ? '✓ Accepted' : decision === 'rejected' ? '✗ Rejected' : 'Undecided'}</span>}
       </div>
       <div className="change-card__text">
-        {formatting || item.kind === 'moved' ? (
+        {item.moveEdit ? (
+          // A move that carries edits: the wording at the source and at the destination.
+          <>
+            <del className="change-card__removed">{truncate(item.moveEdit.from)}</del>{' '}
+            <ins className="change-card__added">{truncate(item.moveEdit.to)}</ins>
+          </>
+        ) : formatting || item.kind === 'moved' ? (
           <span className={item.kind === 'moved' ? 'change-card__moved' : undefined}>{truncate(item.text ?? '')}</span>
         ) : (
           <>

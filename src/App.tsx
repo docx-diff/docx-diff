@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import type { ProgressStage } from './engine/types';
 import {
   INITIAL_DECISIONS,
@@ -55,11 +55,15 @@ export function App() {
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const [formattingExpanded, setFormattingExpanded] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  useEffect(() => {
+  // A new comparison starts a new review. Reset while rendering, so that the panels never show the
+  // previous review's decisions on the new document.
+  const [reviewedComparison, setReviewedComparison] = useState(comparison);
+  if (comparison !== reviewedComparison) {
+    setReviewedComparison(comparison);
     dispatch({ type: 'clear' });
     setCurrentItemId(null);
     setFormattingExpanded(false);
-  }, [comparison]);
+  }
 
   const items = comparison?.analysis.items;
   // The comparison range comes with task 6; until then every change is in range.
@@ -107,12 +111,12 @@ export function App() {
       setHelpOpen((open) => !open);
       return;
     }
+    const current = currentItemId === null ? undefined : itemById.get(currentItemId);
     if (action === 'next' || action === 'previous') {
-      const target = step(order, currentItemId, action === 'next' ? 1 : -1);
+      const target = step(order, current ?? null, action === 'next' ? 1 : -1);
       if (target !== null) select(target, true);
       return;
     }
-    const current = currentItemId === null ? undefined : itemById.get(currentItemId);
     if (!current || current.kind === 'formatting' || !order.includes(current)) return;
     if (action === 'reset') {
       decide(current.id, null);
@@ -164,7 +168,7 @@ export function App() {
             onScrollLockChange={setScrollLock}
             onDownload={() => void download(comparison, review)}
             downloading={exportState.status === 'running'}
-            summary={summarize(comparison, ignored)}
+            summary={{ text: totals.text.total, formatting: totals.formatting, ignored: totals.ignored }}
             onPrevious={() => onShortcut('previous')}
             onNext={() => onShortcut('next')}
             navigationDisabled={order.length === 0}
@@ -238,18 +242,6 @@ export function App() {
       )}
     </main>
   );
-}
-
-/** Counts for the toolbar: text changes, formatting changes, ignored changes. */
-function summarize(comparison: Comparison, ignored: ReadonlySet<string>): { text: number; formatting: number; ignored: number } {
-  let text = 0;
-  let formatting = 0;
-  for (const item of comparison.analysis.items) {
-    if (ignored.has(item.id)) continue;
-    if (item.kind === 'formatting') formatting++;
-    else text++;
-  }
-  return { text, formatting, ignored: ignored.size };
 }
 
 function Notices(props: {

@@ -278,9 +278,10 @@ export function planConsistentLook(
       unit.final = copy(paragraphVersions.final);
       unit.mark = { final: copy(markVersions.final) };
     }
+    // The paragraph's properties and its mark's are judged separately: either can have formatting
+    // changes of its own, and then already has the chosen version's look.
     if (status === 'foreign') {
-      if (paragraphVersions.change) unit.status = 'skip';
-      else unit.other = paragraphVersions.own;
+      if (!paragraphVersions.change) unit.other = paragraphVersions.own;
       if (!markVersions.change) unit.mark = { other: markVersions.own };
     }
     paragraphs.push(unit);

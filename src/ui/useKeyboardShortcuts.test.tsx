@@ -7,6 +7,7 @@ function Harness({ onAction, enabled = true }: { onAction: (action: ShortcutActi
   return (
     <div>
       <input aria-label="field" />
+      <input type="radio" aria-label="choice" />
       <div className="document-panel__scroller" data-testid="panel" tabIndex={0} />
     </div>
   );
@@ -40,5 +41,15 @@ describe('useKeyboardShortcuts', () => {
     rerender(<Harness onAction={onAction} />);
     fireEvent.keyDown(getByTestId('panel'), { key: 'j' });
     expect(onAction).toHaveBeenCalledWith('next');
+  });
+
+  it('works while a radio button has focus, and keeps the arrow keys from changing it', () => {
+    const onAction = vi.fn();
+    const { getByLabelText } = render(<Harness onAction={onAction} />);
+    fireEvent.keyDown(getByLabelText('choice'), { key: 'a' });
+    const arrow = fireEvent.keyDown(getByLabelText('choice'), { key: 'ArrowDown' });
+    expect(onAction.mock.calls.map(([action]) => action)).toEqual(['accept', 'next']);
+    // `fireEvent` returns false when the default action (moving the radio selection) was prevented.
+    expect(arrow).toBe(false);
   });
 });

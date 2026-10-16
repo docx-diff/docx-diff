@@ -114,6 +114,25 @@ describe('ChangesList', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows the wording at both ends of a move that carries edits, and selects a focused card with Enter', () => {
+    const moves = [
+      item('m', 'moved', 0, { text: 'their daily alms food' }),
+      item('n', 'moved', 1, { text: 'their daily alms food', moveEdit: { from: 'their daily alms food', to: 'their alms food' } }),
+    ];
+    const props = renderList(false, { entries: buildReviewList(moves, [], false) });
+    const [plain, edited] = screen.getAllByTestId('change-card');
+    expect(plain!.querySelector('.change-card__moved')!.textContent).toBe('their daily alms food');
+    expect(edited!.querySelector('del')!.textContent).toBe('their daily alms food');
+    expect(edited!.querySelector('ins')!.textContent).toBe('their alms food');
+
+    expect(edited!.tabIndex).toBe(0);
+    fireEvent.keyDown(edited!, { key: 'Enter' });
+    expect(props.onSelect).toHaveBeenCalledWith('n');
+    // Enter on the card's own buttons is theirs.
+    fireEvent.keyDown(within(plain!).getByRole('button', { name: 'Accept' }), { key: 'Enter' });
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('disables the bulk actions when nothing is undecided', () => {
     renderList(false, { totals: { ...totals, text: { total: 2, accepted: 1, rejected: 1, undecided: 0 } } });
     expect((screen.getByRole('button', { name: 'Accept all' }) as HTMLButtonElement).disabled).toBe(true);
