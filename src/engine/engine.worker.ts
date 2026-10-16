@@ -3,6 +3,7 @@
 import { engineVersion, initEngine, warmUp } from './docxodus';
 import { exportDocx } from './exportDocx';
 import { runCompare } from './pipeline';
+import { RevisionMarkupError, UnsupportedRevisionError } from './rejectRewrite';
 import type {
   ProgressEvent,
   ProgressStage,
@@ -70,11 +71,16 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
       error: {
         message: error instanceof Error ? error.message : String(error),
         code: error instanceof Error && error.name !== 'Error' ? error.name : undefined,
+        revisionId: revisionIdOf(error),
       },
     };
   }
   self.postMessage(response, transferablesOf(response));
 });
+
+function revisionIdOf(error: unknown): string | undefined {
+  return error instanceof UnsupportedRevisionError || error instanceof RevisionMarkupError ? error.revisionId : undefined;
+}
 
 /** ArrayBuffers in a successful result, moved rather than copied to the main thread. */
 function transferablesOf(response: WorkerResponse): Transferable[] {

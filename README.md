@@ -12,7 +12,7 @@ The comparison engine is [Docxodus](https://github.com/JSv4/Docxodus) (MIT), a .
 
 ## Status
 
-Work in progress. Two documents can be loaded and compared, and are shown side by side with synced scrolling; Download exports the Edited version (every change accepted). Compare settings ignore quote, dash and whitespace changes. Next: rejecting changes on export (task 3), then the changes list and review workflow, the comparison range UI, the export dialog, saving the review and deployment.
+Work in progress. Two documents can be loaded and compared, and are shown side by side with synced scrolling; Download exports the Edited version (every change accepted). Compare settings ignore quote, dash and whitespace changes. The export can also reject changes (any mix of decisions; tested on the samples and on synthetic fixtures), but the UI to decide changes is still to come. Next: the changes list and review workflow, the comparison range UI, the export dialog, saving the review and deployment.
 
 - Requirements: [`tasks/2026-10-15-203451-prd---docx-diff.md`](tasks/2026-10-15-203451-prd---docx-diff.md)
 - Task list: [`tasks/2026-10-15-203451-tasks-docx-diff.md`](tasks/2026-10-15-203451-tasks-docx-diff.md)
@@ -31,6 +31,9 @@ npm test             # unit + engine tests (Vitest; engine tests run the real WA
 npm run test:e2e     # Playwright: builds with BASE_PATH=/docx-diff/ and tests in Chromium
 npm run typecheck    # tsc --noEmit
 BIG_PAIR=1 npx vitest run test/big-pair.test.ts   # opt-in timing check on a synthetic ~300-page pair
+node test/fixtures/make-fixtures.ts               # regenerate the synthetic fixture pairs (commit the .docx files)
+EXPORT_DIR=/tmp/exports npx vitest run test/sample-pair.test.ts -t export   # write the sample-pair exports …
+scripts/check-libreoffice.sh /tmp/exports/*.docx                           # … and convert them with LibreOffice
 ```
 
 Node is pinned to **24.22.0** (Active LTS) in `.tool-versions` (asdf). `package.json` `engines` plus `engine-strict` in `.npmrc` make `npm install` fail on a Node outside `^24.22.0`. Details in `CLAUDE.md` ("Node version").

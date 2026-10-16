@@ -48,7 +48,10 @@ export type WorkerRequest = {
 
 export interface WorkerError {
   message: string;
+  /** The error class, e.g. `UnsupportedRevisionError` or `RevisionMarkupError`. */
   code?: string;
+  /** The revision an export error is about. */
+  revisionId?: string;
 }
 
 export type WorkerResponse =

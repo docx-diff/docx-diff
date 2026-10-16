@@ -39,6 +39,8 @@ Why 24: Node 20 is end-of-life, and the current Vite 8, Vitest 5, jsdom 30 and `
 - `npm test` — Vitest: project `unit` (jsdom, `src/**/*.test.ts(x)`) and project `engine` (Node, `src/engine/**/*.test.ts` and `test/**/*.test.ts`, real WASM). One file: `npx vitest run src/engine/client.test.ts`. The sample-pair checks share one compare in `test/sample-pair.test.ts`; the ~300-page timing check runs only with `BIG_PAIR=1`.
 - `npm run test:e2e` — Playwright (Chromium) against a build served by `vite preview` under `/docx-diff/`.
 - `npm run typecheck` — `tsc --noEmit`.
+- `node test/fixtures/make-fixtures.ts` — regenerates the synthetic fixture pairs in `test/fixtures/` (one per markup kind; hand-written OOXML, deterministic bytes). Commit the `.docx` files.
+- `scripts/check-libreoffice.sh <files>` — converts exports to `.odt` with headless LibreOffice (own temporary profile) and fails on errors. `EXPORT_DIR=<dir>` makes the export tests (`src/engine/exportDocx.test.ts`, `test/sample-pair.test.ts -t export`) write their exports there.
 - `vite-plugin-static-copy` v4 keeps source directory structure unless `rename: { stripBase: true }`; without it the engine lands at `dist/wasm/_framework/node_modules/…` and fails to load.
 
 ## Engine facts that are easy to get wrong
@@ -53,14 +55,17 @@ Verified during planning (PRD §7); don't re-derive them, and don't regress them
 - **The redline XML has no anchor ids.** Block anchors (`affectedAnchors[].unid`) match the rendered HTML's `data-anchor`; the range logic works on the HTML index.
 - **The worker proxy `docxodus/worker` lacks revision APIs**; we use our own module worker importing `docxodus/core`.
 - Formatting revisions are interleaved with content revisions in `getRevisions` output: skip them when pairing Replaced items or folding paragraph marks. Replaced pairs occur in **both** orders.
+- Export = `rejectRevisions` (`src/engine/rejectRewrite.ts`, rule chosen by where the element sits, not by the key's `kind=`) → `docxDiffAcceptRevisions` → `reconcileNotes` (`src/engine/notes.ts`): decisions can separate a footnote reference from its note (the engine reports a reference that moved as delete + insert of the same note id), giving notes referenced twice (fails `verifyDeliverable`), orphaned, or left without a paragraph.
+- Table rows come as `row_insert`/`row_delete` with a `RowMark` key (`w:trPr/w:ins|del`) plus keys for every run and paragraph mark of the row; the engine emits no `w:cellIns`/`w:cellDel` or `w:tblPrExChange` for our fixtures (the rules exist anyway).
+- Moves can carry edits: `w:moveFrom` holds the Original wording and `w:moveTo` the Edited one (both sample moves do).
 - Comparison output is deterministic (same inputs + engine version → identical bytes and revision ids); saved reviews rely on this.
 - Docxodus runs under Node, so engine tests run in Vitest with the real WASM (`test/node-engine.ts`).
 - `getVersion()` does not report the npm package version; use `__DOCXODUS_VERSION__` (injected by `vite.config.ts`), e.g. via `engineVersion()` in `src/engine/docxodus.ts`.
 
 ## Checks
 
-- Round trip: accept-all export ≡ Edited text, reject-all export ≡ Original text (`test/text.ts`).
-- Exports must pass `verifyDeliverable` (`passed` / `passedWithPreExistingFindings`) and convert with `scripts/check-libreoffice.sh` (LibreOffice; Word isn't available; the script is written in task 3.8).
+- Round trip: accept-all export ≡ Edited text, reject-all export ≡ Original text (`test/text.ts`, checked against `pandoc -t plain` in `test/text.test.ts`). Mixed decisions: on the fixtures each single revision decided against the rest ≡ the engine's own `DocxSession` decision (XML too); on the sample, ≡ `test/expectedText.ts` (an independent text model of the redline).
+- Exports must pass `verifyDeliverable` (`passed` / `passedWithPreExistingFindings`; `test/deliverable.ts`) and convert with `scripts/check-libreoffice.sh` (LibreOffice; Word isn't available).
 
 ## Conventions
 

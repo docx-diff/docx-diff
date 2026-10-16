@@ -1,8 +1,11 @@
 // Engine and model checks on the sample pair (PRD §7.2, expected numbers in the task list).
 // One compare result is shared by the whole file, since a compare takes several seconds.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { compare, listRevisions } from '../src/engine/docxodus';
+import { exportDocx } from '../src/engine/exportDocx';
 import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
@@ -10,8 +13,11 @@ import { isBareParagraphMark } from '../src/model/changes';
 import { blockPositions, classify } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
+import { expectDeliverable } from './deliverable';
+import { expectedText } from './expectedText';
 import { initNodeEngine } from './node-engine';
 import { describeWithSamples, readSamples } from './samples';
+import { docxText } from './text';
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -273,6 +279,91 @@ describeWithSamples('sample pair', () => {
     it('keeps every item in range without an end point', () => {
       const classes = classify(analysis.items, analysis.index, null);
       expect([...classes.values()].every((c) => c === 'inRange')).toBe(true);
+    });
+  });
+
+  describe('export', () => {
+    type Decision = 'accept' | 'reject';
+    const decide = (decision: (revisionId: string) => Decision) => new Map(result.revisions.map((r) => [r.id, decision(r.id)]));
+    /** Each item's decision applied to all its revisions. */
+    const byItem = (decision: (item: Analysis['items'][number], index: number) => Decision) => {
+      const decisions = new Map<string, Decision>();
+      analysis.items.forEach((item, index) => item.revisionIds.forEach((id) => decisions.set(id, decision(item, index))));
+      return decisions;
+    };
+    /** Exports; with EXPORT_DIR set, also writes the file there (for scripts/check-libreoffice.sh). */
+    const exportWith = async (decisions: Map<string, Decision>, name: string) => {
+      const start = performance.now();
+      const exported = await exportDocx(result.redline, result.revisions, decisions);
+      const ms = Math.round(performance.now() - start);
+      if (process.env.EXPORT_DIR) {
+        mkdirSync(process.env.EXPORT_DIR, { recursive: true });
+        writeFileSync(join(process.env.EXPORT_DIR, `sample-${name}.docx`), exported);
+      }
+      return { exported, ms };
+    };
+
+    it('accepting all gives the Edited text', async () => {
+      const { exported, ms } = await exportWith(decide(() => 'accept'), 'accept-all');
+      console.log(`sample pair export, all accepted: ${ms} ms`);
+      expect(docxText(exported)).toEqual(docxText(readSamples().edited));
+      expect(expectedText(result.redline, result.revisions, decide(() => 'accept'))).toEqual(docxText(exported));
+      await expectDeliverable(exported, readSamples().original);
+    });
+
+    it('rejecting all gives the Original text', async () => {
+      const { exported, ms } = await exportWith(decide(() => 'reject'), 'reject-all');
+      console.log(`sample pair export, all rejected: ${ms} ms`);
+      expect(docxText(exported)).toEqual(docxText(readSamples().original));
+      expect(expectedText(result.redline, result.revisions, decide(() => 'reject'))).toEqual(docxText(exported));
+      await expectDeliverable(exported, readSamples().original);
+    });
+
+    it('alternating decisions per item give the text each decision implies', async () => {
+      for (const first of ['accept', 'reject'] as const) {
+        const other = first === 'accept' ? 'reject' : 'accept';
+        const decisions = byItem((_item, index) => (index % 2 === 0 ? first : other));
+        const { exported, ms } = await exportWith(decisions, `alternating-from-${first}`);
+        console.log(`sample pair export, alternating from ${first}: ${ms} ms`);
+        const text = docxText(exported);
+        expect(text).toEqual(expectedText(result.redline, result.revisions, decisions));
+        expect(text).not.toEqual(docxText(readSamples().original));
+        expect(text).not.toEqual(docxText(readSamples().edited));
+        await expectDeliverable(exported, readSamples().original);
+      }
+    });
+
+    it('the trailing region out of range and the rest accepted gives the Edited text followed by the Original tail', async () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const decisions = byItem((item) => (classes.get(item.id) === 'outOfRange' ? 'reject' : 'accept'));
+      const { exported } = await exportWith(decisions, 'range');
+      const { original, edited } = readSamples();
+      const body = (bytes: Uint8Array) => docxText(bytes, ['word/document.xml']);
+      const [editedBody, originalBody] = [body(edited), body(original)];
+
+      // The Edited body ends with its "reviewed up to here" note, which the engine placed after the
+      // deleted tail: it is out of range, so the export drops it.
+      expect(editedBody.at(-1)).toBe('(Átnézve eddig, Stillness Flowing p.257)');
+      const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
+      const firstTailParagraph = tail.text.split('¶').find((paragraph) => paragraph.trim())!;
+      const tailStart = originalBody.indexOf(firstTailParagraph.replace(/\s+/g, ' ').trim());
+      expect(tailStart).toBeGreaterThan(0);
+
+      const exportedBody = body(exported);
+      const tailLines = originalBody.slice(tailStart);
+      expect(exportedBody.slice(-tailLines.length)).toEqual(tailLines);
+
+      // Known gap (task 6.8): the engine moved the last two in-range paragraphs, with the editor's
+      // changes, from between the deleted and the inserted version of the list items 7.–/DN 16/ to
+      // after the deleted tail. Out of range, the moves are rejected, so these two paragraphs keep
+      // their Original wording and end up before item 7 instead of after "/DN 16, AN 7.23/".
+      const movedOriginal = originalBody.slice(tailStart - 2, tailStart);
+      expect(movedOriginal.map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet azért alakították k']);
+      expect(editedBody.slice(-3, -1).map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet úgy alakították ki,']);
+      expect(exportedBody.slice(0, -tailLines.length)).toEqual([...editedBody.slice(0, -6), ...movedOriginal, ...editedBody.slice(-6, -3)]);
+
+      expect(docxText(exported)).toEqual(expectedText(result.redline, result.revisions, decisions));
+      await expectDeliverable(exported, original);
     });
   });
 

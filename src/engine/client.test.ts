@@ -90,6 +90,14 @@ describe('EngineClient', () => {
     await expect(result).rejects.toMatchObject({ message: 'Failed to load WASM', code: 'load_failed' });
   });
 
+  it('passes on the revision id of an export error', async () => {
+    const worker = new FakeWorker();
+    const client = new EngineClient(worker, 'http://localhost/');
+    const result = client.exportDocx({ redline: new ArrayBuffer(1), revisions: [], decisions: {} });
+    worker.reply({ id: 1, ok: false, error: { message: 'x', code: 'UnsupportedRevisionError', revisionId: 'rev2-a' } });
+    await expect(result).rejects.toMatchObject({ code: 'UnsupportedRevisionError', revisionId: 'rev2-a' });
+  });
+
   it('passes progress events to the listener of their request only, while it is pending', async () => {
     const worker = new FakeWorker();
     const client = new EngineClient(worker, 'http://localhost/');

@@ -16,6 +16,8 @@ export class EngineError extends Error {
   constructor(
     message: string,
     readonly code?: string,
+    /** The revision an export error is about. */
+    readonly revisionId?: string,
   ) {
     super(message);
     this.name = 'EngineError';
@@ -112,7 +114,7 @@ export class EngineClient implements ComparisonEngine {
     if (!pending) return;
     this.pending.delete(message.id);
     if (message.ok) pending.resolve(message.result);
-    else pending.reject(new EngineError(message.error.message, message.error.code));
+    else pending.reject(new EngineError(message.error.message, message.error.code, message.error.revisionId));
   }
 
   /** Rejects every pending request and all later ones, and tells the failure listeners (once). */

@@ -28,10 +28,11 @@ function paragraphText(paragraph: Element): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-export function docxText(bytes: Uint8Array): string[] {
-  const files = unzipSync(bytes, { filter: (file) => PARTS.includes(file.name) });
+/** `parts`: only these parts, e.g. `['word/document.xml']` for the body alone. */
+export function docxText(bytes: Uint8Array, parts: readonly string[] = PARTS): string[] {
+  const files = unzipSync(bytes, { filter: (file) => parts.includes(file.name) });
   const lines: string[] = [];
-  for (const part of PARTS) {
+  for (const part of parts) {
     const data = files[part];
     if (!data) continue;
     const document = new DOMParser().parseFromString(strFromU8(data), 'text/xml');
