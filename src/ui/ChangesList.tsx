@@ -57,10 +57,10 @@ export function ChangesList(props: Props) {
   return (
     <aside className="changes" aria-label="Changes">
       <div className="changes__bulk">
-        <button type="button" className="button" disabled={undecided === 0} onClick={() => setConfirm('accepted')}>
+        <button type="button" className="button button--accept" disabled={undecided === 0} onClick={() => setConfirm('accepted')}>
           Accept all
         </button>
-        <button type="button" className="button" disabled={undecided === 0} onClick={() => setConfirm('rejected')}>
+        <button type="button" className="button button--reject" disabled={undecided === 0} onClick={() => setConfirm('rejected')}>
           Reject all
         </button>
       </div>

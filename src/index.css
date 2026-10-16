@@ -104,6 +104,37 @@ body {
   border-color: #54aeff;
 }
 
+/* Accept and reject: pastel green and red; a pressed one is a shade stronger. */
+.button--accept {
+  background: #e6f6ea;
+  border-color: #a7dbb4;
+  color: #116329;
+}
+
+.button--accept:hover:not(:disabled) {
+  background: #d3efdb;
+}
+
+.button--accept[aria-pressed='true'] {
+  background: #bfe6c9;
+  border-color: #6fbf85;
+}
+
+.button--reject {
+  background: #fdecec;
+  border-color: #f1b7b7;
+  color: #a40e26;
+}
+
+.button--reject:hover:not(:disabled) {
+  background: #fadcdc;
+}
+
+.button--reject[aria-pressed='true'] {
+  background: #f6c8c8;
+  border-color: #e58c8c;
+}
+
 .button--primary {
   background: #1f883d;
   border-color: #1a7f37;
@@ -487,12 +518,21 @@ body {
   margin-left: auto;
 }
 
+.change-card--accepted .change-card__state,
+.change-card--rejected .change-card__state {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
 .change-card--accepted .change-card__state {
-  color: #1a7f37;
+  background: #d3efdb;
+  color: #116329;
 }
 
 .change-card--rejected .change-card__state {
-  color: #cf222e;
+  background: #fadcdc;
+  color: #a40e26;
 }
 
 .change-card__text {

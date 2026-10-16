@@ -83,7 +83,7 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
         <div className="change-card__actions">
           <button
             type="button"
-            className="button button--small"
+            className="button button--small button--accept"
             aria-pressed={decision === 'accepted'}
             onClick={(event) => {
               event.stopPropagation();
@@ -94,7 +94,7 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
           </button>
           <button
             type="button"
-            className="button button--small"
+            className="button button--small button--reject"
             aria-pressed={decision === 'rejected'}
             onClick={(event) => {
               event.stopPropagation();
