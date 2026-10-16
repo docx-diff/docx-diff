@@ -20,7 +20,8 @@ Implementation has started: the project scaffold loads the engine in a Web Worke
 ## Development
 
 ```sh
-npm install                       # once; Node >= 20.18
+asdf install                      # once: installs the Node version pinned in .tool-versions
+npm install                       # once
 npx playwright install chromium   # once, for the e2e tests
 
 npm run dev          # dev server at http://localhost:5173/
@@ -30,6 +31,8 @@ npm test             # unit + engine tests (Vitest; engine tests run the real WA
 npm run test:e2e     # Playwright: builds with BASE_PATH=/docx-diff/ and tests in Chromium
 npm run typecheck    # tsc --noEmit
 ```
+
+Node is pinned to **24.22.0** (Active LTS) in `.tool-versions` (asdf). `package.json` `engines` plus `engine-strict` in `.npmrc` make `npm install` fail on a Node outside `^24.22.0`. Details in `CLAUDE.md` ("Node version").
 
 The engine runtime (`node_modules/docxodus/dist/wasm/_framework/`, without the `.br` files) is copied into the build at `<base>/wasm/_framework/` and loaded from there by our own Web Worker (`src/engine/engine.worker.ts`).
 

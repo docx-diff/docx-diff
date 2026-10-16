@@ -25,6 +25,7 @@ export default defineConfig({
         {
           src: ['node_modules/docxodus/dist/wasm/_framework/*', '!**/*.br'],
           dest: 'wasm/_framework',
+          rename: { stripBase: true },
         },
       ],
     }),

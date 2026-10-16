@@ -1,5 +1,5 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
-import viteConfig from './vite.config';
+import viteConfig from './vite.config.ts';
 
 // Two projects: UI and model code under jsdom; engine code (which runs the real Docxodus WASM) under Node.
 const engineTests = ['src/engine/**/*.test.ts', 'test/**/*.test.ts'];

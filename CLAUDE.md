@@ -10,13 +10,36 @@ In-browser DOCX compare/review/export tool (React + TypeScript + Vite, deployed 
 - `refs/` (git-ignored) — reference sources: `refs/Docxodus` (engine C# source, `npm/src` wrapper, `docs/architecture/ir_diff_engine.md`), `refs/Python-Redlines`, `refs/pandiff`. See README for re-cloning.
 - `../docs/` (outside the repo) — the sample documents and the Draftable reference screenshot. Never copy them into the repo. Tests reach them through `test/samples.ts` (`SAMPLES_DIR`, default `../docs/`) and skip when they are absent.
 
+## Node version (check before running anything)
+
+The project runs on **Node 24.22.0** (Active LTS), managed by **asdf**. It is pinned in three places; change all three together:
+
+| File | Setting | Effect |
+|---|---|---|
+| `.tool-versions` | `nodejs 24.22.0` | asdf picks this version for `node`, `npm` and `npx` inside the repo |
+| `package.json` | `"engines": { "node": "^24.22.0" }` | the supported range |
+| `.npmrc` | `engine-strict=true` | `npm install` fails with `EBADENGINE` on a Node outside `engines` |
+
+How it applies:
+- `node`/`npm`/`npx` are asdf shims (`~/.asdf/shims`). A shim looks for the nearest `.tool-versions`, starting in the **current directory** and going up, then falls back to the user's global `~/.tool-versions`. So run commands with the repo (or a subfolder) as the working directory. A command run elsewhere gets the global default, which happens to be 24.22.0 now but can change independently.
+- npm scripts, Vitest and the Playwright `webServer` (which runs `npm` in the repo) inherit the Node that started them, so they follow the pin as long as the top-level command did.
+- Only `npm install` checks `engines`; `npm run` and `npx` do not. Confirm with `node --version` (expect `v24.22.0`) or `asdf current nodejs` (source should be this repo's `.tool-versions`) when output looks odd.
+- Don't bypass a version error with `--engine-strict=false` or `ASDF_NODEJS_VERSION`; fix the asdf setup instead.
+
+To bump the version:
+1. Edit `.tool-versions`, `engines` in `package.json` (and later `.github/workflows/pages.yml`, which reads `.tool-versions` through `actions/setup-node`'s `node-version-file`).
+2. `asdf install` in the repo. If it says `node-build: definition not found`, the plugin's version list is stale: run `asdf plugin update nodejs`, then `git -C ~/.asdf/plugins/nodejs/.node-build pull --ff-only`, and retry.
+3. `rm -rf node_modules && npm install`, then run typecheck, `npm test` and `npm run test:e2e`.
+
+Why 24: Node 20 is end-of-life, and the current Vite 8, Vitest 5, jsdom 30 and `vite-plugin-static-copy` 4 require Node ≥ 22. Node 26 is not LTS yet (expected late October 2026).
+
 ## Commands
 
 - `npm run dev` / `npm run build` / `npm run preview` — Vite; `BASE_PATH=/<repo>/` sets the base path (default `/`).
 - `npm test` — Vitest: project `unit` (jsdom, `src/**/*.test.ts(x)`) and project `engine` (Node, `src/engine/**/*.test.ts` and `test/**/*.test.ts`, real WASM). One file: `npx vitest run src/engine/client.test.ts`.
 - `npm run test:e2e` — Playwright (Chromium) against a build served by `vite preview` under `/docx-diff/`.
 - `npm run typecheck` — `tsc --noEmit`.
-- Node is 20.18 here: Vite 7+, plugin-react 5+ and jsdom 27+ need ≥ 20.19, hence Vite 6, plugin-react 4 and jsdom 26.
+- `vite-plugin-static-copy` v4 keeps source directory structure unless `rename: { stripBase: true }`; without it the engine lands at `dist/wasm/_framework/node_modules/…` and fails to load.
 
 ## Engine facts that are easy to get wrong
 
