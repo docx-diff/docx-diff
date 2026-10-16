@@ -58,6 +58,18 @@ describe('EngineClient', () => {
     await expect(result).resolves.toBe(compareResult);
   });
 
+  it('sends export with the redline as a transferable', async () => {
+    const worker = new FakeWorker();
+    const client = new EngineClient(worker, 'http://localhost/');
+    const request = { redline: new ArrayBuffer(4), revisions: [], decisions: {} };
+    const result = client.exportDocx(request);
+    expect(worker.sent).toEqual([{ id: 1, type: 'export', payload: request }]);
+    expect(worker.transferred[0]).toEqual([request.redline]);
+    const exported = new ArrayBuffer(3);
+    worker.reply({ id: 1, ok: true, result: exported });
+    await expect(result).resolves.toBe(exported);
+  });
+
   it('matches responses to requests by id', async () => {
     const worker = new FakeWorker();
     const client = new EngineClient(worker, 'http://localhost/');

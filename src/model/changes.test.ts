@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RevisionListEntry } from '../engine/types';
 import { buildChangeItems, countWords, isBareParagraphMark } from './changes';
-import type { DocIndex, IndexBlock } from './docIndex';
+import { adjacencyKey, buildDocIndex, type DocIndex, type IndexBlock } from './docIndex';
 
 const FAMILY = {
   ins: ['insert', 'content_insert'],
@@ -148,10 +148,21 @@ describe('buildChangeItems', () => {
     expect(items.map((i) => i.location)).toEqual([{ scope: 'body' }, { scope: 'footnote', noteId: undefined }]);
   });
 
+  it('with the index, pairs only a deletion and an insertion whose text touches', () => {
+    // "[del 2. ]Tilos […] [ins „szentelt”][del „szentelt"] vizet […] [ins orvos][del orvosnak] vagy"
+    const html = `<p data-anchor="p" data-source-anchor-id="p:body:p"><del data-author="rev:a">2. </del>Tilos <ins data-author="rev:b">„szentelt”</ins><del data-author="rev:c">„szentelt"</del> vizet <ins data-author="rev:d">orvos</ins> <del data-author="rev:e">orvosnak</del> vagy</p>`;
+    const index = buildDocIndex(html);
+    expect(index.adjacentRevisions).toEqual(new Set([adjacencyKey('b', 'c'), adjacencyKey('d', 'e')]));
+    const revisions = [rev('a', 'del', '2. ', ['p']), rev('b', 'ins', '„szentelt”', ['p']), rev('c', 'del', '„szentelt"', ['p']), rev('d', 'ins', 'orvos', ['p']), rev('e', 'del', 'orvosnak', ['p'])];
+    expect(kinds(buildChangeItems(revisions, index))).toEqual(['deleted a', 'replaced b c', 'replaced d e']);
+    // Without the index, sharing the paragraph is enough, which pairs the wrong neighbours.
+    expect(kinds(buildChangeItems(revisions))).toEqual(['replaced a b', 'replaced c d', 'deleted e']);
+  });
+
   it('uses the index for note ids, tables and formatting descriptions', () => {
     const blocks: IndexBlock[] = [
-      { unid: 'p1', scope: 'body', inOriginal: true, inTable: true },
-      { unid: 'f1', scope: 'fn', inOriginal: true, inTable: false, noteId: '7' },
+      { unid: 'p1', scope: 'body', inOriginal: true, inEdited: true, inTable: true },
+      { unid: 'f1', scope: 'fn', inOriginal: true, inEdited: true, inTable: false, noteId: '7' },
     ];
     const index: DocIndex = {
       blocks,
@@ -160,6 +171,7 @@ describe('buildChangeItems', () => {
       noteRefs: new Map(),
       revisionTitles: new Map([['3', ['Bold removed', 'Font changed']]]),
       revisionsInHtml: new Set(['1', '2', '3']),
+      adjacentRevisions: new Set(),
     };
     const items = buildChangeItems(
       [rev('1', 'ins', 'a', ['p1']), rev('2', 'del', 'b', ['f1'], 'fn'), rev('3', 'fmt', 'c', ['p1']), rev('4', 'fmt', 'd', ['p1'])],

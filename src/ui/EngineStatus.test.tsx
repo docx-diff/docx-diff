@@ -21,6 +21,9 @@ class FakeEngine implements ComparisonEngine {
   compare(): Promise<CompareResult> {
     return Promise.reject(new Error('not used'));
   }
+  exportDocx(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('not used'));
+  }
   onProgress(listener: (event: ProgressEvent) => void): () => void {
     this.listener = listener;
     return () => {
@@ -57,6 +60,12 @@ describe('EngineStatus', () => {
 
     await act(async () => engines[0]!.settle.resolve({ docxodus: '13.0.0', dotnet: '10.0.12' }));
     expect(screen.getByRole('status').textContent).toBe('Engine ready · Docxodus 13.0.0');
+
+    // Not shown on screen once ready (screen readers still get it).
+    expect(screen.getByRole('status').className).toContain('visually-hidden');
+
+    act(() => engines[0]!.progress({ type: 'progress', stage: 'comparing' }));
+    expect(screen.getByRole('status').textContent).toBe('Engine ready · Docxodus 13.0.0');
   });
 
   it('shows the error with Retry, which starts a new engine', async () => {
@@ -64,6 +73,7 @@ describe('EngineStatus', () => {
     render(<Harness engines={engines} />);
     await act(async () => engines[0]!.settle.reject(new Error('Failed to load WASM')));
     expect(screen.getByRole('status').textContent).toContain('Failed to load WASM');
+    expect(screen.getByRole('status').className).not.toContain('visually-hidden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(engines[0]!.disposed).toBe(true);

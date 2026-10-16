@@ -1,6 +1,8 @@
-// The compare pipeline the worker runs: check inputs, compare, list revisions, tag and render.
+// The compare pipeline the worker runs: normalize and check the inputs, compare, list revisions,
+// tag and render.
 // Kept apart from the worker so that Node tests run exactly the same steps.
 import { compare, listRevisions, render } from './docxodus';
+import { normalizeDocxText } from './normalizeText';
 import { tagRedline } from './tagRedline';
 import type { CompareResult, ProgressStage, RevisionListEntry } from './types';
 
@@ -13,7 +15,7 @@ export async function runCompare(
   edited: Uint8Array,
   onStage: (stage: ProgressStage) => void = () => {},
 ): Promise<ComparePipelineResult> {
-  const timings = { checkInputs: 0, compare: 0, list: 0, tag: 0, render: 0 };
+  const timings = { normalize: 0, checkInputs: 0, compare: 0, list: 0, tag: 0, render: 0 };
   const timed = async <T>(name: keyof typeof timings, step: () => T | Promise<T>): Promise<T> => {
     const start = performance.now();
     try {
@@ -24,6 +26,7 @@ export async function runCompare(
   };
 
   onStage('comparing');
+  [original, edited] = await timed('normalize', () => [normalizeDocxText(original), normalizeDocxText(edited)]);
   const inputsHadRevisions = await timed('checkInputs', async () => {
     const [originalRevisions, editedRevisions] = [await listRevisions(original), await listRevisions(edited)];
     return originalRevisions.length > 0 || editedRevisions.length > 0;

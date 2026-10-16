@@ -8,7 +8,7 @@ export interface EngineVersion {
 }
 
 /** What the engine is busy with, reported while a request runs. */
-export type ProgressStage = 'loading-engine' | 'warming-up' | 'comparing' | 'listing' | 'rendering';
+export type ProgressStage = 'loading-engine' | 'warming-up' | 'comparing' | 'listing' | 'rendering' | 'exporting';
 
 export interface ProgressEvent {
   type: 'progress';
@@ -23,6 +23,17 @@ export interface WorkerRequests {
   version: { payload: undefined; result: EngineVersion };
   /** Compares two documents (bytes transferred, not copied), lists the revisions and renders the redline. */
   compare: { payload: { original: ArrayBuffer; edited: ArrayBuffer }; result: CompareResult };
+  /** Applies a final decision to every revision of the redline (transferred) and returns the clean `.docx`. */
+  export: { payload: ExportRequest; result: ArrayBuffer };
+}
+
+/** Final decision per engine revision id; every revision of the redline must have one. */
+export type FinalDecisions = Record<string, 'accept' | 'reject'>;
+
+export interface ExportRequest {
+  redline: ArrayBuffer;
+  revisions: RevisionListEntry[];
+  decisions: FinalDecisions;
 }
 
 export type WorkerRequestType = keyof WorkerRequests;
@@ -85,7 +96,7 @@ export interface CompareResult {
   /** Either input already contained tracked changes; the engine compared their accepted view (FR-13). */
   inputsHadRevisions: boolean;
   /** Milliseconds per stage. */
-  timings: { checkInputs: number; compare: number; list: number; tag: number; render: number };
+  timings: { normalize: number; checkInputs: number; compare: number; list: number; tag: number; render: number };
 }
 
 /** The comparison engine as the UI sees it; implemented by `client.ts` over the worker. */
@@ -94,6 +105,8 @@ export interface ComparisonEngine {
   version(): Promise<EngineVersion>;
   /** Compares two `.docx` files. The buffers are transferred to the worker and unusable afterwards. */
   compare(original: ArrayBuffer, edited: ArrayBuffer): Promise<CompareResult>;
+  /** Produces the reviewed `.docx`. The redline buffer is transferred to the worker and unusable afterwards. */
+  exportDocx(request: ExportRequest): Promise<ArrayBuffer>;
   /** Subscribes to progress events; returns the unsubscribe function. */
   onProgress(listener: (event: ProgressEvent) => void): () => void;
   /** Stops the worker; pending requests are rejected. */

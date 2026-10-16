@@ -8,6 +8,8 @@ import type { RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
 import { blockPositions, classify } from '../src/model/range';
+import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
+import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { initNodeEngine } from './node-engine';
 import { describeWithSamples, readSamples } from './samples';
 
@@ -83,12 +85,12 @@ describeWithSamples('sample pair', () => {
     });
 
     it('gives the recorded item counts per kind', () => {
-      expect(analysis.items).toHaveLength(623);
+      expect(analysis.items).toHaveLength(629);
       expect(countBy(analysis.items, (i) => i.kind)).toEqual({
         formatting: 378,
-        replaced: 147,
-        deleted: 58,
-        inserted: 21,
+        replaced: 141,
+        deleted: 64,
+        inserted: 27,
         paragraph: 17,
         moved: 2,
       });
@@ -105,7 +107,7 @@ describeWithSamples('sample pair', () => {
       expect(folded).toHaveLength(26);
     });
 
-    it('has 110 delete→insert and 143 insert→delete neighbours sharing an anchor, paired greedily into 29 + 118 items', () => {
+    it('has 110 delete→insert and 143 insert→delete neighbours sharing an anchor, of which 141 touch: all insertion first', () => {
       const shares = (a: RevisionListEntry, b: RevisionListEntry) =>
         a.affectedAnchors.some((x) => b.affectedAnchors.some((y) => x.unid === y.unid));
       const sequence = nonFormatting();
@@ -122,7 +124,7 @@ describeWithSamples('sample pair', () => {
       const pairs = analysis.items
         .filter((item) => item.kind === 'replaced')
         .map((item) => item.revisionIds.map((id) => byId.get(id)!).find((r) => !isBareParagraphMark(r))!.family);
-      expect(countBy(pairs, (family) => family)).toEqual({ content_delete: 29, content_insert: 118 });
+      expect(countBy(pairs, (family) => family)).toEqual({ content_insert: 141 });
     });
 
     it('describes formatting items from the HTML titles where the HTML has their elements', () => {
@@ -140,9 +142,9 @@ describeWithSamples('sample pair', () => {
   });
 
   describe('document index', () => {
-    it('has 775 anchored blocks and 733 Original body paragraphs', () => {
+    it('has 775 anchored blocks and 747 Original body paragraphs (14 empty ones between list items)', () => {
       expect(analysis.index.blocks).toHaveLength(775);
-      expect(analysis.index.bodyParagraphs).toHaveLength(733);
+      expect(analysis.index.bodyParagraphs).toHaveLength(747);
       expect(analysis.index.noteRefs.size).toBe(20);
     });
 
@@ -159,13 +161,89 @@ describeWithSamples('sample pair', () => {
     });
   });
 
+  describe('panel document', () => {
+    it('links every revision element to an item, and gives every formatting item an element (23 via the paragraph fallback)', () => {
+      const document = parseRenderedHtml(result.html, (html) => new JSDOM(html).window.document);
+      decorateDocument(document, analysis.items, analysis.index);
+      expect(document.querySelectorAll('[data-author^="rev:"]:not([data-change-id])')).toHaveLength(0);
+      const withElement = new Set([...document.querySelectorAll<HTMLElement>('[data-change-id]')].map((e) => e.dataset.changeId));
+      const formatting = analysis.items.filter((item) => item.kind === 'formatting');
+      expect(formatting.filter((item) => !withElement.has(item.id))).toEqual([]);
+      expect(document.querySelectorAll('.rev-format-marker')).toHaveLength(23);
+    });
+  });
+
+  describe('changes that leave the text the same', () => {
+    const prepare = () =>
+      prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), (html) => new JSDOM(html).window.document);
+    const NONE = { ignoreQuotes: false, ignoreDashes: false, ignoreWhitespace: false };
+
+    it('combines the 15 typed list numbers replaced by automatic numbering into formatting items', () => {
+      const { analysis: prepared } = prepare();
+      const typed = prepared.items.filter((item) => item.description === 'Typed list number replaced by automatic numbering');
+      expect(typed.map((item) => item.text)).toEqual(Array.from({ length: 15 }, (_, i) => `${i + 1}.`));
+      expect(prepared.items).toHaveLength(614);
+      expect(prepared.items.flatMap((item) => item.revisionIds)).toHaveLength(result.revisions.length);
+    });
+
+    it('relabels the 4 replacements of identical text (words split over runs) as formatting', () => {
+      const { analysis: prepared } = prepare();
+      const same = prepared.items.filter((item) => item.description === 'Same text, different formatting or run structure');
+      expect(same.map((item) => item.text)).toEqual(['Pāṭimokkha', 'Pāṭimokkha', 'Pāṭimokkha', 'pavāraṇā']);
+      expect(same.every((item) => item.kind === 'formatting')).toBe(true);
+    });
+
+    it('ignores quote, dash and whitespace changes per setting', () => {
+      const { analysis: prepared, itemTexts } = prepare();
+      const ignored = (settings: typeof NONE) => ignoredItems(prepared.items, itemTexts, settings);
+      expect(ignored(NONE).size).toBe(0);
+      const quotes = [...ignored({ ...NONE, ignoreQuotes: true })].map((id) => prepared.items.find((item) => item.id === id)!);
+      expect(quotes.map((item) => `${item.removedText}→${item.addedText}`)).toContain('„szentelt"→„szentelt”');
+      // 6 quote changes and one "...'" → "…’".
+      expect(quotes).toHaveLength(7);
+      expect(ignored({ ...NONE, ignoreDashes: true }).size).toBe(8);
+      expect(ignored({ ...NONE, ignoreWhitespace: true }).size).toBe(35);
+      expect(ignored(DEFAULT_COMPARE_SETTINGS).size).toBe(54);
+    });
+
+    it('shows the quote-only edges of a replacement as unchanged: „szövegek "az" → „szutták szövegei “az"', () => {
+      const { document, analysis: prepared } = prepare();
+      const item = prepared.items.find((i) => i.removedText.includes('szövegek "az'))!;
+      expect(item.addedText).toContain('szutták szövegei “az');
+      const parts = (selector: string) =>
+        [...document.body.querySelectorAll<HTMLElement>(`${selector}[data-change-id="${item.id}"]`)].map((e) => [e.textContent, e.dataset.commonNeeds ?? null]);
+      expect(parts('del').at(-1)).toEqual(['"az', 'ignoreQuotes']);
+      expect(parts('ins').at(-1)).toEqual(['“az', 'ignoreQuotes']);
+      markCommon(document.body, DEFAULT_COMPARE_SETTINGS);
+      const common = document.body.querySelectorAll(`[data-change-id="${item.id}"].change-common`);
+      // In document order: the insertion comes first, then the deletion. The inserted space is a
+      // no-break space (equal to a space with the whitespace setting).
+      expect([...common].map((e) => e.textContent)).toEqual(['\u00a0', '“az', ' ', '"az']);
+      const withEdges = prepared.items.filter((i) => document.body.querySelector(`[data-change-id="${i.id}"][data-common-needs]`));
+      expect(withEdges).toHaveLength(34);
+    });
+
+    it('shows a paragraph joined into a new list item after the list number in the Edited panel', () => {
+      const { document } = prepare();
+      const panel = document.body.ownerDocument.createElement('div');
+      panel.append(...[...document.body.childNodes].map((node) => node.cloneNode(true)));
+      mergeJoinedParagraphs(panel, 'right');
+      const item = [...panel.querySelectorAll<HTMLElement>('[data-source-anchor-id^="li:body:"]')].find((block) =>
+        block.textContent!.includes('Tilos a szerzeteseknek'),
+      )!;
+      const text = item.textContent!;
+      expect(text.indexOf('1.')).toBeLessThan(text.indexOf('Tilos a szerzeteseknek'));
+      expect(panel.querySelectorAll('.merged-into-next').length).toBeGreaterThan(0);
+    });
+  });
+
   describe('comparison range', () => {
     it('proposes the first paragraph of the tail revision as the end point', () => {
       const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
       const tailItem = analysis.items.find((item) => item.revisionIds.includes(tail.id))!;
-      expect(analysis.suggestedEndPoint).toBe(154);
-      expect(analysis.index.bodyParagraphs[154]).toBe(tail.affectedAnchors[0]!.unid);
-      expect(analysis.index.bodyParagraphs.length - 154).toBe(579);
+      expect(analysis.suggestedEndPoint).toBe(168);
+      expect(analysis.index.bodyParagraphs[168]).toBe(tail.affectedAnchors[0]!.unid);
+      expect(analysis.index.bodyParagraphs.length - 168).toBe(579);
 
       const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
       expect(classes.get(tailItem.id)).toBe('outOfRange');
@@ -188,7 +266,7 @@ describeWithSamples('sample pair', () => {
       });
       const positions = blockPositions(analysis.index);
       for (const item of out.filter((i) => i.kind === 'moved')) {
-        expect(item.anchors.map((unid) => positions.get(unid)!).some((p) => p < 154)).toBe(true);
+        expect(item.anchors.map((unid) => positions.get(unid)!).some((p) => p < analysis.suggestedEndPoint!)).toBe(true);
       }
     });
 

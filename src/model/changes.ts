@@ -1,6 +1,6 @@
 // Builds the reviewable change items from the engine's revision list (PRD §7.2 step 3, FR-8, FR-9).
 import type { RevisionListEntry } from '../engine/types';
-import type { DocIndex } from './docIndex';
+import { adjacencyKey, type DocIndex } from './docIndex';
 
 export type ChangeKind = 'inserted' | 'deleted' | 'replaced' | 'formatting' | 'moved' | 'paragraph';
 
@@ -42,9 +42,14 @@ function shareAnchor(a: RevisionListEntry, b: RevisionListEntry): boolean {
   return b.affectedAnchors.some((anchor) => unids.has(anchor.unid));
 }
 
-function isReplacePair(a: RevisionListEntry, b: RevisionListEntry): boolean {
+/**
+ * A content deletion and insertion that replace one another: with the index, their text touches
+ * (no unchanged text between them); without it, they share an anchor (the same paragraph).
+ */
+function isReplacePair(a: RevisionListEntry, b: RevisionListEntry, index: DocIndex | undefined): boolean {
   const families = new Set([a.family, b.family]);
-  return families.size === 2 && families.has('content_delete') && families.has('content_insert') && shareAnchor(a, b);
+  if (families.size !== 2 || !families.has('content_delete') || !families.has('content_insert')) return false;
+  return index ? index.adjacentRevisions.has(adjacencyKey(a.id, b.id)) : shareAnchor(a, b);
 }
 
 export function countWords(text: string): number {
@@ -59,7 +64,8 @@ export function countWords(text: string): number {
  *   if they share an affected anchor, else the next one on the same condition, else it is a
  *   `paragraph` item. A paragraph mark carrying text is an ordinary deletion/insertion;
  * - of the remaining sequence, a content deletion and a content insertion that are neighbours
- *   (either order) and share an anchor become one `replaced` item, paired greedily left to right;
+ *   (either order) and whose text touches (without the index: that share an anchor) become one
+ *   `replaced` item, paired greedily left to right;
  * - a move revision (covering both halves) is a `moved` item.
  *
  * The optional index (from the rendered HTML) supplies formatting descriptions and note/table locations.
@@ -91,7 +97,7 @@ export function buildChangeItems(revisions: readonly RevisionListEntry[], index?
     const revision = unfolded[i]!;
     const next = unfolded[i + 1];
     const group = [revision];
-    if (next && isReplacePair(revision, next)) {
+    if (next && isReplacePair(revision, next, index)) {
       group.push(next);
       groupOf.set(next, group);
       i++;

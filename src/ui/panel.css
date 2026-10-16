@@ -1,0 +1,86 @@
+/* Styles for the rendered document inside a panel's shadow root, after the converter's CSS.
+   Both panels show the same HTML: the left one hides what only the Edited document has, the
+   right one what only the Original has. Colours come from custom properties in index.css. */
+
+.doc {
+  margin: 0;
+  padding: 1.5rem 2rem 50vh;
+  max-width: 48rem;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+/* Changes are marked within the text only. The converter's paragraph rules (inserted, deleted or
+   reformatted paragraph, section change) and its formatting underline are removed: formatting
+   changes have no mark in the panels, since in a restyled document nearly every line has one. */
+.doc :is(.rev-para-del, .rev-para-ins, .rev-para-format-change, .rev-section-format-change) {
+  border-left: none;
+  padding-left: 0;
+}
+
+.doc span.rev-format-change {
+  border-bottom: none;
+  cursor: auto;
+}
+
+.doc .rev-section-format-change {
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Left panel: the Original. */
+.doc[data-side='left'] :is(ins, .not-in-original, tr.rev-row-ins) {
+  display: none;
+}
+
+.doc[data-side='left'] del.rev-del {
+  color: inherit;
+  background: var(--change-del-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--change-del-line);
+}
+
+/* Right panel: the Edited document. */
+.doc[data-side='right']
+  :is(del, .not-in-edited, tr.rev-row-del, .rev-para-mark-del, .rev-del-marker, .rev-move-from-marker) {
+  display: none;
+}
+
+.doc[data-side='right'] ins.rev-ins {
+  color: inherit;
+  background: var(--change-ins-bg);
+  text-decoration: underline;
+  text-decoration-color: var(--change-ins-line);
+}
+
+/* Both panels: moves. */
+.doc :is(del.rev-move-from, ins.rev-move-to) {
+  color: inherit;
+  background: var(--change-move-bg);
+  text-decoration: none;
+  box-shadow: inset 0 -2px 0 var(--change-move-line);
+}
+
+/* Marker element of a formatting change without an element of its own (scroll target). */
+.doc .rev-format-marker {
+  display: inline;
+}
+
+/* Paragraphs shown as part of the next one (joined in this version). */
+.doc .merged-into-next {
+  display: none;
+}
+
+/* Insertions and deletions that belong to a formatting item (same text, a list label added by
+   numbering), changes the compare settings ignore, and the edges of a replacement both sides share
+   (e.g. a quote style change next to a changed word): plain text, as each version has it. These
+   must be at least as specific as the per-side rules above, which they override. */
+.doc[data-side] :is(del, ins):is(.change-as-formatting, .change-ignored, .change-common) {
+  color: inherit;
+  background: none;
+  text-decoration: none;
+}
+
+.doc :is(.change-as-formatting, .change-ignored) > .rev-para-mark-del {
+  display: none;
+}

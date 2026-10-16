@@ -8,7 +8,7 @@ In-browser DOCX compare/review/export tool (React + TypeScript + Vite, deployed 
 - `tasks/*-tasks-docx-diff.md` — the task list. Check off sub-tasks as they are completed.
 - `tasks/reference/reject-all-prototype.py` — Python prototype of the export rewrite (reference only).
 - `refs/` (git-ignored) — reference sources: `refs/Docxodus` (engine C# source, `npm/src` wrapper, `docs/architecture/ir_diff_engine.md`), `refs/Python-Redlines`, `refs/pandiff`. See README for re-cloning.
-- `../docs/` (outside the repo) — the sample documents and the Draftable reference screenshot. Never copy them into the repo. Tests reach them through `test/samples.ts` (`SAMPLES_DIR`, default `../docs/`) and skip when they are absent.
+- `docs/` — the sample document pair (committed). Tests reach it through `test/samples.ts` (`SAMPLES_DIR`, default `docs/`) and skip when it is absent. The Draftable reference screenshot is not in the repo.
 
 ## Node version (check before running anything)
 

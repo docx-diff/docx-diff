@@ -11,6 +11,8 @@ export interface IndexBlock {
   scope: BlockScope;
   /** The block is visible in the left panel: not wholly inserted or moved-to content. */
   inOriginal: boolean;
+  /** The block is visible in the right panel: not wholly deleted or moved-from content. */
+  inEdited: boolean;
   inTable: boolean;
   /** For note blocks: the note id (`fn-<id>` / `en-<id>` in the HTML). */
   noteId?: string;
@@ -28,6 +30,15 @@ export interface DocIndex {
   revisionTitles: Map<string, string[]>;
   /** Ids of the revisions that have at least one element in the HTML. */
   revisionsInHtml: Set<string>;
+  /**
+   * `adjacencyKey(a, b)` of every two revisions whose content touches in a paragraph's text, with
+   * at most whitespace of unchanged text between them (a deletion right before an insertion, …).
+   */
+  adjacentRevisions: Set<string>;
+}
+
+export function adjacencyKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 export function noteKey(scope: 'fn' | 'en', noteId: string): string {
@@ -38,10 +49,12 @@ export type HtmlParser = (html: string) => Document;
 
 const parseWithDomParser: HtmlParser = (html) => new DOMParser().parseFromString(html, 'text/html');
 
-/** Content that is not in the Original (hidden in the left panel). */
-const NOT_ORIGINAL = 'ins, .rev-move-to';
-/** Rendering aids that are not document text. */
-const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref';
+/** Content that is not in the Original (hidden in the left panel), and the class of an inserted paragraph mark. */
+const NOT_ORIGINAL = { content: 'ins, .rev-move-to', paragraphMark: 'rev-para-ins' };
+/** Content that is not in the Edited document (hidden in the right panel), and the class of a deleted paragraph mark. */
+const NOT_EDITED = { content: 'del, .rev-move-from', paragraphMark: 'rev-para-del' };
+/** Rendering aids and list labels (numbering, not text). */
+const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, [data-list-marker]';
 /** `NodeFilter.SHOW_TEXT`; `NodeFilter` is not a global when the document comes from jsdom in Node tests. */
 const SHOW_TEXT = 0x4;
 
@@ -52,7 +65,8 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
     const block: IndexBlock = {
       unid: element.dataset.anchor!,
       scope: scopeOf(element),
-      inOriginal: isInOriginal(element),
+      inOriginal: isInVersion(element, NOT_ORIGINAL),
+      inEdited: isInVersion(element, NOT_EDITED),
       inTable: element.closest('table') !== null,
     };
     const note = element.closest('li[id^="fn-"], li[id^="en-"]');
@@ -83,6 +97,7 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
   }
 
   return {
+    adjacentRevisions: findAdjacentRevisions(document),
     blocks,
     blockByUnid: new Map(blocks.map((block) => [block.unid, block])),
     bodyParagraphs: blocks.filter((b) => b.scope === 'body' && b.inOriginal).map((b) => b.unid),
@@ -92,6 +107,32 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
   };
 }
 
+/** Walks the text in document order and records revisions whose content touches within a block. */
+function findAdjacentRevisions(document: Document): Set<string> {
+  const adjacent = new Set<string>();
+  let block: Element | null = null;
+  let previous: string | null = null;
+  const walker = document.createTreeWalker(document.body ?? document.documentElement, SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    const text = node.textContent ?? '';
+    if (!parent || !text || parent.closest(NOT_TEXT)) continue;
+    const nodeBlock = parent.closest('[data-anchor]');
+    if (nodeBlock !== block) {
+      block = nodeBlock;
+      previous = null;
+    }
+    const revision = revisionIdFromAuthor(parent.closest('ins, del')?.getAttribute('data-author'));
+    if (revision === null) {
+      if (text.trim()) previous = null;
+      continue;
+    }
+    if (previous !== null && previous !== revision) adjacent.add(adjacencyKey(previous, revision));
+    previous = revision;
+  }
+  return adjacent;
+}
+
 /** From `data-source-anchor-id`, e.g. `p:fn:…` → `fn`. */
 function scopeOf(element: HTMLElement): BlockScope {
   const scope = (element.dataset.sourceAnchorId ?? '').split(':')[1];
@@ -99,10 +140,11 @@ function scopeOf(element: HTMLElement): BlockScope {
 }
 
 /**
- * A block belongs to the Original unless all of its text is inserted (or moved-to) content.
- * An empty block belongs to the Original unless its paragraph mark is inserted.
+ * A block belongs to a version unless all of its text is content the version lacks (for the
+ * Original: inserted or moved-to content). An empty block belongs to it unless its paragraph
+ * mark is missing from it (for the Original: inserted).
  */
-function isInOriginal(block: HTMLElement): boolean {
+function isInVersion(block: HTMLElement, missing: { content: string; paragraphMark: string }): boolean {
   let hasText = false;
   const walker = block.ownerDocument.createTreeWalker(block, SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -110,7 +152,7 @@ function isInOriginal(block: HTMLElement): boolean {
     const parent = node.parentElement;
     if (!parent || parent.closest(NOT_TEXT)) continue;
     hasText = true;
-    if (!parent.closest(NOT_ORIGINAL)) return true;
+    if (!parent.closest(missing.content)) return true;
   }
-  return !hasText && !block.classList.contains('rev-para-ins');
+  return !hasText && !block.classList.contains(missing.paragraphMark);
 }

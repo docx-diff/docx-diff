@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 // Module worker that owns the Docxodus engine. Protocol: see `types.ts`.
 import { engineVersion, initEngine, warmUp } from './docxodus';
+import { exportDocx } from './exportDocx';
 import { runCompare } from './pipeline';
 import type {
   ProgressEvent,
@@ -37,6 +38,10 @@ const handlers: Handlers = {
     const result = await runCompare(new Uint8Array(original), new Uint8Array(edited), (stage) => progress(stage));
     return { ...result, redline: ownBuffer(result.redline) };
   },
+  async export({ redline, revisions, decisions }) {
+    progress('exporting');
+    return ownBuffer(await exportDocx(new Uint8Array(redline), revisions, new Map(Object.entries(decisions))));
+  },
 };
 
 /** An ArrayBuffer holding exactly these bytes, safe to transfer. */
@@ -69,5 +74,6 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
 /** ArrayBuffers in a successful result, moved rather than copied to the main thread. */
 function transferablesOf(response: WorkerResponse): Transferable[] {
   if (!response.ok || typeof response.result !== 'object' || response.result === null) return [];
+  if (response.result instanceof ArrayBuffer) return [response.result];
   return Object.values(response.result).filter((value): value is ArrayBuffer => value instanceof ArrayBuffer);
 }

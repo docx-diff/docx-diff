@@ -2,29 +2,68 @@
   font-family: system-ui, sans-serif;
   color: #1f2328;
   background: #ffffff;
+
+  /* Change highlights, shared by the panels (shadow roots inherit custom properties) and the legend. */
+  --change-del-bg: #ffd7d5;
+  --change-del-line: #cf222e;
+  --change-ins-bg: #cfe3ff;
+  --change-ins-line: #0b5cd5;
+  --change-move-bg: #eadcff;
+  --change-move-line: #8250df;
+
+  --border: #d0d7de;
+  --muted: #57606a;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .app {
-  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .app-header {
   display: flex;
-  align-items: baseline;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .app-header h1 {
-  font-size: 1.25rem;
+  margin: 0;
+  font-size: 1.125rem;
 }
 
 .engine-status {
-  font-size: 0.875rem;
-  color: #57606a;
+  margin-left: auto;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 
 .engine-status--ready {
@@ -33,4 +72,311 @@ body {
 
 .engine-status--error {
   color: #cf222e;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled) {
+  background: #eaeef2;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button[aria-pressed='true'] {
+  background: #ddf4ff;
+  border-color: #54aeff;
+}
+
+.button--primary {
+  background: #1f883d;
+  border-color: #1a7f37;
+  color: #ffffff;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: #1a7f37;
+}
+
+/* Toolbar */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar__separator {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--border);
+}
+
+/* Drop zones */
+
+.drop-zones {
+  max-width: 56rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.drop-zones__intro {
+  color: var(--muted);
+}
+
+.drop-zones__row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 10rem;
+  justify-content: center;
+  padding: 1rem;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.drop-zone--dragging {
+  border-color: #0969da;
+  background: #ddf4ff;
+}
+
+.drop-zone__role {
+  font-weight: 600;
+}
+
+.drop-zone__hint {
+  color: var(--muted);
+}
+
+.drop-zone__file {
+  overflow-wrap: anywhere;
+}
+
+.drop-zone__error {
+  color: #cf222e;
+  font-size: 0.875rem;
+}
+
+.drop-zone--compact {
+  flex-direction: row;
+  min-height: 0;
+  padding: 0;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+}
+
+.drop-zone--compact.drop-zone--dragging {
+  border-color: #0969da;
+}
+
+.drop-zone__compact-label {
+  max-width: 18rem;
+  padding: 0.25rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.drop-zone__compact-label:hover {
+  background: #f6f8fa;
+}
+
+/* Notices */
+
+.notices:empty {
+  display: none;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.notice--info {
+  background: #ddf4ff;
+}
+
+.notice--error {
+  background: #ffebe9;
+  color: #82071e;
+}
+
+.progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.progress__spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--border);
+  border-top-color: #0969da;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Panels */
+
+.panels {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.document-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.document-panel + .document-panel {
+  border-left: 1px solid var(--border);
+}
+
+.document-panel__title {
+  margin: 0;
+  padding: 0.375rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: #f6f8fa;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-panel__scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #ffffff;
+}
+
+/* Legend */
+
+.legend {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.legend__sample {
+  padding: 0 0.25rem;
+}
+
+.legend__sample--del {
+  background: var(--change-del-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--change-del-line);
+}
+
+.legend__sample--ins {
+  background: var(--change-ins-bg);
+  text-decoration: underline;
+  text-decoration-color: var(--change-ins-line);
+}
+
+.legend__sample--move {
+  background: var(--change-move-bg);
+  box-shadow: inset 0 -2px 0 var(--change-move-line);
+}
+
+.toolbar__summary {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* Modal dialog */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(31 35 40 / 40%);
+  z-index: 10;
+}
+
+.modal {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(31 35 40 / 25%);
+}
+
+.modal h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.modal__intro {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.modal__option {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.modal__option small {
+  display: block;
+  color: var(--muted);
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Loading modal: styled inline in index.html; the modal has its own spinner. */
+.loading-modal .progress__spinner {
+  display: none;
 }

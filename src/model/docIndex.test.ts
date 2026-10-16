@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import { buildDocIndex, noteKey } from './docIndex';
+import { adjacencyKey, buildDocIndex, noteKey } from './docIndex';
 
 describe('buildDocIndex', () => {
   const index = buildDocIndex(SMALL_HTML);
@@ -16,6 +16,11 @@ describe('buildDocIndex', () => {
     expect(index.bodyParagraphs).toEqual(['a', 'c', 'd', 'e', 't']);
   });
 
+  it('knows which blocks the Edited document has: not wholly deleted or moved-from, empty ones unless their mark is deleted', () => {
+    const edited = index.blocks.filter((b) => b.inEdited).map((b) => b.unid);
+    expect(edited).toEqual(['a', 'b', 'c', 'e', 'f', 'g', 't', 'n', 'm']);
+  });
+
   it('maps footnote and endnote references to the referencing paragraph', () => {
     expect(index.noteRefs).toEqual(
       new Map([
@@ -29,5 +34,10 @@ describe('buildDocIndex', () => {
     expect([...index.revisionsInHtml].sort()).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7']);
     expect(index.revisionTitles.get('r4')).toEqual(['Bold removed', 'Font changed', 'Font size changed']);
     expect(index.revisionTitles.has('r1')).toBe(false);
+  });
+
+  it('records revisions whose text touches within a paragraph', () => {
+    // r1/r2: "<del>old</del><ins>new</ins>"; r5's deletion is followed only by its own ¶ marker.
+    expect(index.adjacentRevisions).toEqual(new Set([adjacencyKey('r1', 'r2')]));
   });
 });

@@ -28,6 +28,8 @@ export function useEngine(createEngine: () => ComparisonEngine = () => new Engin
     });
     engine.init().then(
       (version) => {
+        // Later progress events belong to compare and export requests.
+        unsubscribe();
         if (active) setState({ status: 'ready', engine, version, loadMs: performance.now() - startedAt });
       },
       (error: unknown) => {

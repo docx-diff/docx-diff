@@ -1,6 +1,7 @@
 // Thin wrapper over `docxodus/core`. This is the only module that imports `docxodus`.
 import {
   convertDocxToHtml,
+  docxDiffAcceptRevisions,
   docxDiffCompare,
   getRevisions,
   getVersion,
@@ -45,4 +46,9 @@ export function render(redline: Uint8Array): Promise<string> {
     renderMoveOperations: true,
     stampAnchors: true,
   });
+}
+
+/** Accepts every tracked revision in one stateless pass (PRD §7.3). */
+export function acceptAll(redline: Uint8Array): Promise<Uint8Array> {
+  return docxDiffAcceptRevisions(redline);
 }

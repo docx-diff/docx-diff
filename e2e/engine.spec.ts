@@ -20,6 +20,21 @@ test('loads the engine from the app subpath, with no requests to other sites', a
   expect(engineFiles.every((path) => path.startsWith(`${basePath}wasm/_framework/`))).toBe(true);
 });
 
+test('shows a loading modal until the engine is ready', async ({ page }) => {
+  // Slow down the largest engine file so the modal is on screen long enough to check.
+  await page.route('**/dotnet.native.wasm', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await page.goto('');
+  const modal = page.getByRole('dialog', { name: 'Loading' });
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText(/Loading…/);
+  await expect(modal).toContainText(/comparison engine… \d+\.\d s/);
+  await expect(page.getByRole('status')).toHaveText(/Engine ready/, { timeout: 60_000 });
+  await expect(modal).toBeHidden();
+});
+
 /** Runs `init` + `compare` in a fresh copy of the app's engine worker and summarizes the result. */
 async function compareInWorker(page: Page, workerUrl: string, original: Uint8Array, edited: Uint8Array) {
   return page.evaluate(

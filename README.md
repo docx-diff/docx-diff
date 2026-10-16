@@ -39,7 +39,7 @@ The engine runtime (`node_modules/docxodus/dist/wasm/_framework/`, without the `
 
 ## Sample documents
 
-The sample documents used in development and some tests live **outside** this repository, in `../docs/` (reference material only, not committed). Tests that need them are skipped when they are missing. Set `SAMPLES_DIR` to use another location.
+The sample document pair used in development and in the tests is committed in `docs/`. Set `SAMPLES_DIR` to use another location; tests that need the pair are skipped when it is missing.
 
 ## Reference sources
 

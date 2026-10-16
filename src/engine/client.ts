@@ -3,6 +3,7 @@ import type {
   CompareResult,
   ComparisonEngine,
   EngineVersion,
+  ExportRequest,
   ProgressEvent,
   WorkerMessage,
   WorkerRequest,
@@ -69,6 +70,10 @@ export class EngineClient implements ComparisonEngine {
 
   compare(original: ArrayBuffer, edited: ArrayBuffer): Promise<CompareResult> {
     return this.request('compare', { original, edited }, [original, edited]);
+  }
+
+  exportDocx(request: ExportRequest): Promise<ArrayBuffer> {
+    return this.request('export', request, [request.redline]);
   }
 
   onProgress(listener: (event: ProgressEvent) => void): () => void {
