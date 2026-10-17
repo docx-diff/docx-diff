@@ -133,6 +133,24 @@ to ~300 pages; no backend.
     action, `a`/`r`) and **Accept/Reject all undecided until here** (`A`/`R`), which decides the
     undecided items from the start of the list up to and including this one. Decided items keep
     their decision; no confirmation is asked.
+
+    27b. **Accept/Reject this with comment** (in the same menu) decides the item and opens a comment
+    box under its card; the comment can be edited there or removed, and is kept when the decision is
+    reset or changed. The export adds each non-blank comment of an in-range item as a Word comment
+    (author "Reviewer") on the change's text, or where the text was when the decision removes it:
+
+        Accepted:            (or Rejected:, the item's final decision)
+
+        Changed from
+        <the Original's text, or (nothing)>
+        to
+        <the Edited's text, or (nothing)>
+
+        Comment:
+        <the comment>
+
+    A change in a footnote or endnote is commented on the note's reference; a move on the side the
+    export keeps.
 28. Clicking an item scrolls **both** panels to it and marks it as current.
 29. Clicking a change in either panel selects its item.
 30. **Formatting group:** all formatting changes in one collapsible group, **collapsed by default**,
@@ -176,8 +194,8 @@ to ~300 pages; no backend.
 
 ### Saving the review
 
-46. The review is saved automatically in IndexedDB: both input files, the range, every decision, the
-    formatting choice and the compare settings, after each change.
+46. The review is saved automatically in IndexedDB: both input files, the range, every decision and
+    comment, the formatting choice and the compare settings, after each change.
 47. On reopening, the app offers to resume ("Resume review of A → B?") or to start a new one.
 48. The user can discard the saved review (also **Close review** in the toolbar).
 49. Saved decisions are tied to the exact files (SHA-256) and the engine version; otherwise they are

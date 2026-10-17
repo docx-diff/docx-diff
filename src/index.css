@@ -924,3 +924,23 @@ kbd {
 .split-button__item kbd {
   color: var(--muted);
 }
+
+/* The reviewer's comment under a change (FR-27b). */
+.change-card__comment {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin-top: 0.375rem;
+}
+
+.change-card__comment-text {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.8125rem;
+  resize: vertical;
+}

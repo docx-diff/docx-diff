@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { strFromU8, unzipSync } from 'fflate';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
@@ -75,6 +76,36 @@ test('the arrow menu and A/R decide every undecided change up to here', async ({
   await expect(cards.nth(1)).toContainText('Accepted');
 
   expect(docxText(await download(page))).toEqual(['One 2 three.', 'Four five 6.', 'Seven eight nine.', 'Ten 11 twelve.']);
+});
+
+test('a change decided with a comment exports it as a Word comment', async ({ page }) => {
+  const original = minimalDocx(['The quick brown fox.', 'Second paragraph.']);
+  const edited = minimalDocx(['The quick red fox.', 'Second paragraph.']);
+  await openAndCompare(page, original, edited);
+  const card = page.getByTestId('change-card').first();
+
+  await card.getByRole('button', { name: 'More Reject options' }).click();
+  await page.getByRole('menuitem', { name: 'Reject this with comment' }).click();
+  await expect(card).toContainText('Rejected');
+  const comment = card.getByRole('textbox', { name: 'Comment on change 1' });
+  await expect(comment).toBeFocused();
+  // Typing in the comment is not taken for shortcuts.
+  await page.keyboard.type('Keep "brown": it is the colour in the title.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Ask the author.');
+  await expect(card).toContainText('Rejected');
+
+  const exported = await download(page);
+  expect(docxText(exported)).toEqual(['The quick brown fox.', 'Second paragraph.']);
+  const files = unzipSync(exported);
+  const comments = strFromU8(files['word/comments.xml']!);
+  const paragraphs = [...comments.matchAll(/<w:p\/>|<w:p>(.*?)<\/w:p>/g)].map(([, p = '']) => [...p.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(([, t]) => t).join(''));
+  expect(paragraphs).toEqual(['Rejected:', '', 'Changed from', 'brown', 'to', 'red', '', 'Comment:', 'Keep "brown": it is the colour in the title.', 'Ask the author.']);
+  expect(strFromU8(files['word/document.xml']!)).toMatch(/<w:commentRangeStart w:id="0"\/><w:r>.*?brown.*?<w:commentRangeEnd w:id="0"\/><w:r><w:commentReference w:id="0"\/><\/w:r>/);
+
+  await card.getByRole('button', { name: 'Remove comment' }).click();
+  await expect(card.getByRole('textbox')).toHaveCount(0);
+  await expect(card).toContainText('Rejected');
 });
 
 test('keyboard shortcuts and clicks in the panels select and decide changes', async ({ page }) => {

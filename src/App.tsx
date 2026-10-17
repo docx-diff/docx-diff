@@ -12,6 +12,7 @@ import {
   type DecisionState,
   type UndecidedChoice,
 } from './model/decisions';
+import { exportComments } from './model/comments';
 import { ignoredItems } from './model/equivalence';
 import {
   blockPositions,
@@ -104,7 +105,8 @@ export function App() {
       // Item ids are stable for the same files and engine version; drop any that are not there anyway.
       const known = new Set(comparison.analysis.items.map((item) => item.id));
       const decisions = Object.fromEntries(Object.entries(saved.decisions).filter(([id]) => known.has(id)));
-      dispatch({ type: 'restore', state: { decisions, formattingChoice: saved.formattingChoice } });
+      const comments = Object.fromEntries(Object.entries(saved.comments).filter(([id]) => known.has(id)));
+      dispatch({ type: 'restore', state: { decisions, formattingChoice: saved.formattingChoice, comments } });
       setFormattingExpanded(saved.formattingGroupExpanded);
       setRangeState(restoredRange(saved.range, comparison.analysis.index.bodyParagraphs.length, suggested));
     } else {
@@ -120,6 +122,7 @@ export function App() {
     () => ({
       range: rangeState,
       decisions: review.decisions,
+      comments: review.comments,
       formattingChoice: review.formattingChoice,
       compareSettings: settings,
       formattingGroupExpanded: formattingExpanded,
@@ -238,6 +241,8 @@ export function App() {
     dispatch(decision === null ? { type: 'reset', itemId } : { type: 'set', itemId, decision });
   }, []);
 
+  const setComment = useCallback((itemId: string, text: string | null) => dispatch({ type: 'setComment', itemId, text }), []);
+
   /** Decides the undecided reviewable items up to and including `itemId`; returns their ids. */
   const decideUntil = useCallback(
     (itemId: string, decision: Decision) => {
@@ -306,13 +311,15 @@ export function App() {
     if (!engine) return;
     setExportState({ status: 'running', startedAt: performance.now() });
     try {
-      const decisions = Object.fromEntries(finalRevisionDecisions(current.analysis.items, state, range, undecided, ignored));
+      const final = finalRevisionDecisions(current.analysis.items, state, range, undecided, ignored);
+      const decisions = Object.fromEntries(final);
       const bytes = await engine.exportDocx({
         redline: current.result.redline.slice(0),
         revisions: current.result.revisions,
         decisions,
         formattingChoice: state.formattingChoice,
         outOfRange: current.analysis.items.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds),
+        comments: exportComments(current.analysis.items, state, range, final),
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });
@@ -404,6 +411,8 @@ export function App() {
             onSelect={selectFromList}
             onDecide={decide}
             onDecideUntil={decideUntil}
+            comments={review.comments}
+            onComment={setComment}
             onDecideAllUndecided={(decision) =>
               dispatch({ type: decision === 'accepted' ? 'acceptAllUndecided' : 'rejectAllUndecided', itemIds: reviewable.map((item) => item.id) })
             }

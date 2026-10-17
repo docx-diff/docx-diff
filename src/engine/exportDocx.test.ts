@@ -2,13 +2,14 @@
 // The sample pair's round trips are in test/sample-pair.test.ts, which shares its compare.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { docxDiffRejectRevisions, openDocxSession } from 'docxodus/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { expectDeliverable } from '../../test/deliverable';
 import { documentLook, lookDifference } from '../../test/look';
 import { FIXTURES, FIXTURES_DIR } from '../../test/fixtures/make-fixtures';
 import { initNodeEngine } from '../../test/node-engine';
+import { minimalDocx } from '../../test/minimal-docx';
 import { docxText } from '../../test/text';
 import { acceptAll, compare, listRevisions } from './docxodus';
 import type { FormattingChoice } from './consistentLook';
@@ -131,6 +132,40 @@ describe.each(FIXTURES.map((fixture) => [fixture.name, fixture.description] as c
     },
   );
 
+  it.each(['accept', 'reject', 'alternate'] as const)(
+    'with a comment on every text revision (%s), keeps the text and anchors every comment once',
+    async (mode) => {
+      const text = revisions.filter((revision) => revision.type !== 'format');
+      if (text.length === 0) return;
+      const chosen = new Map(
+        revisions.map((revision) => [revision.id, mode === 'alternate' ? (text.indexOf(revision) % 2 === 0 ? 'accept' : 'reject') : mode] as const),
+      );
+      const comments = text.map((revision, i) => ({ revisionIds: [revision.id], paragraphs: [`Comment ${i}`, '', 'second line'] }));
+      const options = { formattingChoice: 'edited' as const, outOfRange: new Set<string>() };
+      const relocated: string[][] = [];
+      const onCommentsRelocated = (ids: string[][]) => relocated.push(...ids);
+      const exported = await exportDocx(redline, revisions, chosen, { ...options, comments, date: '2026-10-17T12:00:00Z', onCommentsRelocated });
+      expect(relocated).toEqual([]);
+      keep(exported, `${name}-comments-${mode}`);
+      expect(docxText(exported)).toEqual(docxText(await exportDocx(redline, revisions, chosen, options)));
+      const files = unzipSync(exported);
+      const all = Object.entries(files)
+        .filter(([path]) => /^word\/[^/]+\.xml$/.test(path) && path !== 'word/comments.xml')
+        .map(([, data]) => strFromU8(data))
+        .join('');
+      const ids = (pattern: RegExp) => [...all.matchAll(pattern)].map((match) => match[1]).sort();
+      const expected = comments.map((_, i) => String(i)).sort();
+      expect(ids(/<w:commentReference w:id="(\d+)"/g)).toEqual(expected);
+      expect(ids(/<w:commentRangeStart w:id="(\d+)"/g)).toEqual(expected);
+      expect(ids(/<w:commentRangeEnd w:id="(\d+)"/g)).toEqual(expected);
+      const commentsXml = strFromU8(files['word/comments.xml']!);
+      expect(commentsXml.match(/<w:comment /g)).toHaveLength(comments.length);
+      expect(commentsXml).toContain('<w:t xml:space="preserve">Comment 0</w:t>');
+      expect(strFromU8(files['[Content_Types].xml']!)).toContain('/word/comments.xml');
+      await expectDeliverable(exported, original);
+    },
+  );
+
   it('accepting one revision and rejecting the rest applies exactly that change, as the engine does', async () => {
     for (const revision of revisions) {
       const exported = await exportDocx(redline, revisions, decisions('reject', { [revision.id]: 'accept' }));
@@ -159,5 +194,53 @@ describe('exportDocx errors', () => {
     const accept = new Map(revisions.map((revision) => [revision.id, 'accept' as const]));
     await expect(exportDocx(redline, revisions, accept)).rejects.toThrow(UnsupportedRevisionError);
     await expect(exportDocx(redline, revisions, accept)).rejects.toMatchObject({ revisionId: revisions[0]!.id });
+  });
+});
+
+describe('exportDocx comments', () => {
+  /** A minimal package whose first paragraph carries a comment of its own. */
+  function withComment(paragraphs: string[]): Uint8Array {
+    const files = unzipSync(minimalDocx(paragraphs));
+    const w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    files['word/document.xml'] = strToU8(
+      strFromU8(files['word/document.xml']!).replace(
+        /<w:p>(<w:r>.*?<\/w:r>)<\/w:p>/,
+        '<w:p><w:commentRangeStart w:id="0"/>$1<w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r></w:p>',
+      ),
+    );
+    files['word/comments.xml'] = strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:comments ${w}><w:comment w:id="0" w:author="Author" w:date="2026-01-01T00:00:00Z" w:initials="A"><w:p><w:r><w:annotationRef/></w:r><w:r><w:t>Original note</w:t></w:r></w:p></w:comment></w:comments>`,
+    );
+    files['word/_rels/document.xml.rels'] = strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
+    );
+    files['[Content_Types].xml'] = strToU8(
+      strFromU8(files['[Content_Types].xml']!).replace(
+        '</Types>',
+        '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
+      ),
+    );
+    return zipSync(files);
+  }
+
+  it('keeps the comments the documents already have and numbers the new ones after them', async () => {
+    const original = withComment(['The quick brown fox.', 'Second paragraph.']);
+    const edited = withComment(['The quick red fox.', 'Second paragraph.']);
+    const redline = await compare(original, edited);
+    const revisions = await listRevisions(redline);
+    const accept = new Map(revisions.map((revision) => [revision.id, 'accept' as const]));
+    const comments = [{ revisionIds: revisions.map((revision) => revision.id), paragraphs: ['Mine'] }];
+    const exported = await exportDocx(redline, revisions, accept, { comments });
+    expect(docxText(exported)).toEqual(['The quick red fox.', 'Second paragraph.']);
+    const files = unzipSync(exported);
+    const part = strFromU8(files['word/comments.xml']!);
+    const ids = [...part.matchAll(/<w:comment w:id="(\d+)"/g)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(part).toContain('Original note');
+    expect(part).toContain('>Mine<');
+    // One relationship and one content type for the part.
+    expect(strFromU8(files['word/_rels/document.xml.rels']!).match(/relationships\/comments"/g)).toHaveLength(1);
+    expect(strFromU8(files['[Content_Types].xml']!).match(/\/word\/comments\.xml/g)).toHaveLength(1);
+    await expectDeliverable(exported, original);
   });
 });

@@ -18,6 +18,7 @@ function bytes(text: string): ArrayBuffer {
 const STATE: ReviewState = {
   range: { mode: 'auto', endPoint: 12 },
   decisions: { a: 'accepted', b: 'rejected' },
+  comments: { a: 'Agreed.' },
   formattingChoice: 'edited',
   compareSettings: DEFAULT_COMPARE_SETTINGS,
   formattingGroupExpanded: false,
@@ -96,6 +97,7 @@ describe('ReviewStore', () => {
       {
         ...record,
         decisions: { a: 'accepted', b: 'maybe', c: 3 },
+        comments: { a: 'Fine.', b: 7 },
         compareSettings: { ignoreQuotes: false, ignoreDashes: 'yes' },
         range: { mode: 'manual', endPoint: 'ten' },
         formattingChoice: 'both',
@@ -105,12 +107,17 @@ describe('ReviewStore', () => {
     );
     expect(await store.load()).toMatchObject({
       decisions: { a: 'accepted' },
+      comments: { a: 'Fine.' },
       compareSettings: { ...DEFAULT_COMPARE_SETTINGS, ignoreQuotes: false },
       range: { mode: 'off', endPoint: null },
       formattingChoice: 'edited',
       formattingGroupExpanded: false,
     });
     expect(Object.keys((await store.load())!.decisions)).toEqual(['a']);
+    expect(Object.keys((await store.load())!.comments)).toEqual(['a']);
+    // A record saved before comments existed has none.
+    await set('current-review', { ...record, comments: undefined }, useStore);
+    expect((await store.load())!.comments).toEqual({});
   });
 
   it('has no review when the files are missing', async () => {

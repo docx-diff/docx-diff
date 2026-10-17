@@ -30,10 +30,12 @@ function renderList(expanded: boolean, overrides: Partial<Parameters<typeof Chan
   const props = {
     entries: buildReviewList(text, formatting, expanded),
     decisions: { b: 'rejected' as const },
+    comments: {} as Record<string, string>,
     currentItemId: 'a',
     onSelect: vi.fn(),
     onDecide: vi.fn(),
     onDecideUntil: vi.fn(),
+    onComment: vi.fn(),
     onDecideAllUndecided: vi.fn(),
     formattingChoice: 'edited' as const,
     onFormattingChoice: vi.fn(),
@@ -139,8 +141,9 @@ describe('ChangesList', () => {
     const [first, second] = screen.getAllByTestId('change-card');
     fireEvent.click(within(second!).getByRole('button', { name: 'More Accept options' }));
     const menu = screen.getByRole('menu', { name: 'Accept options' });
-    const [thisItem, untilItem] = within(menu).getAllByRole('menuitem');
+    const [thisItem, withComment, untilItem] = within(menu).getAllByRole('menuitem');
     expect(thisItem!.textContent).toBe('Accept this a');
+    expect(withComment!.textContent).toBe('Accept this with comment');
     expect(untilItem!.textContent).toBe('Accept all undecided until here A');
     expect(document.activeElement).toBe(thisItem);
     fireEvent.click(untilItem!);
@@ -152,7 +155,7 @@ describe('ChangesList', () => {
     const arrow = within(first!).getByRole('button', { name: 'More Reject options' });
     fireEvent.click(arrow);
     const reject = screen.getByRole('menu', { name: 'Reject options' });
-    fireEvent.keyDown(reject, { key: 'ArrowDown' });
+    fireEvent.keyDown(reject, { key: 'End' });
     expect(document.activeElement!.textContent).toContain('until here');
     fireEvent.keyDown(reject, { key: 'r' });
     expect(props.onDecide).toHaveBeenCalledWith('a', 'rejected');
@@ -167,6 +170,32 @@ describe('ChangesList', () => {
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(props.onDecide).toHaveBeenCalledTimes(1);
+  });
+
+  it('decides with a comment, which is edited and removed under the card', () => {
+    const props = renderList(false);
+    const card = () => screen.getAllByTestId('change-card')[0]!;
+    expect(within(card()).queryByRole('textbox')).toBeNull();
+    fireEvent.click(within(card()).getByRole('button', { name: 'More Reject options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reject this with comment' }));
+    expect(props.onDecide).toHaveBeenCalledWith('a', 'rejected');
+    expect(props.onComment).toHaveBeenCalledWith('a', '');
+
+    // With the comment in the state, the card shows it, focused.
+    cleanup();
+    const next = renderList(false, { comments: { a: '' } });
+    const textbox = within(card()).getByRole('textbox', { name: 'Comment on change 1' });
+    fireEvent.click(within(card()).getByRole('button', { name: 'More Reject options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reject this with comment' }));
+    // An existing comment is kept.
+    expect(next.onComment).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(textbox);
+    fireEvent.change(textbox, { target: { value: 'Keep the old word.' } });
+    expect(next.onComment).toHaveBeenCalledWith('a', 'Keep the old word.');
+    fireEvent.click(textbox);
+    expect(next.onSelect).not.toHaveBeenCalled();
+    fireEvent.click(within(card()).getByRole('button', { name: 'Remove comment' }));
+    expect(next.onComment).toHaveBeenCalledWith('a', null);
   });
 
   it('disables the bulk actions when nothing is undecided', () => {

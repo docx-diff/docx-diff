@@ -1,4 +1,4 @@
-import { memo, type KeyboardEvent } from 'react';
+import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChangeItem, ChangeKind } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import { DecisionButton } from './DecisionButton';
@@ -54,11 +54,24 @@ interface Props {
   onDecide: (itemId: string, decision: Decision | null) => void;
   /** Decides every undecided item up to and including this one (FR-27a). */
   onDecideUntil: (itemId: string, decision: Decision) => void;
+  /** The reviewer's comment (FR-27b); undefined: none. */
+  comment: string | undefined;
+  /** `null` removes the comment. */
+  onComment: (itemId: string, text: string | null) => void;
 }
 
-/** One change in the changes list (FR-26, FR-27). Formatting items have no Accept/Reject (FR-30). */
-export const ChangeCard = memo(function ChangeCard({ item, label, decision, current, onSelect, onDecide, onDecideUntil }: Props) {
+/**
+ * One change in the changes list (FR-26, FR-27), with its comment under it (FR-27b). Formatting
+ * items have no Accept/Reject (FR-30).
+ */
+export const ChangeCard = memo(function ChangeCard({ item, label, decision, current, onSelect, onDecide, onDecideUntil, comment, onComment }: Props) {
   const formatting = item.kind === 'formatting';
+  const commentRef = useRef<HTMLTextAreaElement>(null);
+  // Bumped by "… with comment": focuses the comment once it is there.
+  const [focusComment, setFocusComment] = useState(0);
+  useEffect(() => {
+    if (focusComment > 0) commentRef.current?.focus();
+  }, [focusComment]);
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
   const delta = wordDeltaLabel(item.wordDelta);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -109,6 +122,11 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
               decision={value}
               pressed={decision === value}
               onThis={() => onDecide(item.id, value)}
+              onWithComment={() => {
+                onDecide(item.id, value);
+                if (comment === undefined) onComment(item.id, '');
+                setFocusComment((n) => n + 1);
+              }}
               onUntilHere={() => onDecideUntil(item.id, value)}
             />
           ))}
@@ -124,6 +142,23 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
               Reset
             </button>
           )}
+        </div>
+      )}
+      {!formatting && comment !== undefined && (
+        // Clicks and keys here are the comment's, not the card's.
+        <div className="change-card__comment" onClick={(event) => event.stopPropagation()}>
+          <textarea
+            ref={commentRef}
+            className="change-card__comment-text"
+            aria-label={`Comment on change ${label}`}
+            placeholder="Comment for the exported document"
+            rows={2}
+            value={comment}
+            onChange={(event) => onComment(item.id, event.target.value)}
+          />
+          <button type="button" className="button button--small button--plain" onClick={() => onComment(item.id, null)}>
+            Remove comment
+          </button>
         </div>
       )}
     </div>

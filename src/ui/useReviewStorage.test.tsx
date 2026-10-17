@@ -15,6 +15,7 @@ function newStore(): ReviewStore {
 const STATE: ReviewState = {
   range: { mode: 'off', endPoint: null },
   decisions: {},
+  comments: {},
   formattingChoice: 'edited',
   compareSettings: DEFAULT_COMPARE_SETTINGS,
   formattingGroupExpanded: false,

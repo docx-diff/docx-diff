@@ -66,15 +66,28 @@ describe('decisionsReducer', () => {
     expect(state.decisions).toEqual({ a: 'accepted', c: 'rejected' });
   });
 
+  it('sets, keeps and removes comments', () => {
+    let state = decisionsReducer(INITIAL_DECISIONS, { type: 'setComment', itemId: 'a', text: '' });
+    state = decisionsReducer(state, { type: 'setComment', itemId: 'a', text: 'Why?' });
+    expect(state.comments).toEqual({ a: 'Why?' });
+    expect(decisionsReducer(state, { type: 'setComment', itemId: 'a', text: 'Why?' })).toBe(state);
+    // Resetting the decision keeps the comment.
+    state = decisionsReducer(decisionsReducer(state, { type: 'set', itemId: 'a', decision: 'accepted' }), { type: 'reset', itemId: 'a' });
+    expect(state.comments).toEqual({ a: 'Why?' });
+    state = decisionsReducer(state, { type: 'setComment', itemId: 'a', text: null });
+    expect(state.comments).toEqual({});
+    expect(decisionsReducer(state, { type: 'setComment', itemId: 'a', text: null })).toBe(state);
+  });
+
   it('sets the formatting choice and clears everything', () => {
     let state = decisionsReducer(INITIAL_DECISIONS, { type: 'setFormattingChoice', choice: 'original' });
     expect(state.formattingChoice).toBe('original');
     state = decisionsReducer({ ...state, decisions: { a: 'accepted' } }, { type: 'clear' });
-    expect(state).toEqual({ decisions: {}, formattingChoice: 'edited' });
+    expect(state).toEqual({ decisions: {}, formattingChoice: 'edited', comments: {} });
   });
 
   it('restores a saved state', () => {
-    const saved = { decisions: { a: 'rejected' as const }, formattingChoice: 'original' as const };
+    const saved = { decisions: { a: 'rejected' as const }, formattingChoice: 'original' as const, comments: {} };
     expect(decisionsReducer(INITIAL_DECISIONS, { type: 'restore', state: saved })).toEqual(saved);
   });
 });
@@ -105,22 +118,22 @@ describe('finalRevisionDecisions', () => {
   });
 
   it('rejects out-of-range items whatever their decision', () => {
-    expect(decide({ decisions: { b: 'accepted' }, formattingChoice: 'edited' }).b).toBe('reject');
+    expect(decide({ decisions: { b: 'accepted' }, formattingChoice: 'edited', comments: {} }).b).toBe('reject');
   });
 
   it('applies the formatting choice to formatting items in range', () => {
-    const result = decide({ decisions: { f: 'accepted' }, formattingChoice: 'original' });
+    const result = decide({ decisions: { f: 'accepted' }, formattingChoice: 'original', comments: {} });
     expect(result.f).toBe('reject');
     expect(result.g).toBe('reject');
   });
 
   it('applies explicit decisions to all revisions of an item', () => {
-    const result = decide({ decisions: { a: 'rejected', c: 'accepted' }, formattingChoice: 'edited' }, 'reject');
+    const result = decide({ decisions: { a: 'rejected', c: 'accepted' }, formattingChoice: 'edited', comments: {} }, 'reject');
     expect([result.a, result.a2, result.c]).toEqual(['reject', 'reject', 'accept']);
   });
 
   it('keeps the decision of an item that a setting later ignores', () => {
-    expect(decide({ decisions: { i: 'rejected' }, formattingChoice: 'edited' }).i).toBe('reject');
+    expect(decide({ decisions: { i: 'rejected' }, formattingChoice: 'edited', comments: {} }).i).toBe('reject');
   });
 });
 

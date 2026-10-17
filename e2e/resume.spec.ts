@@ -50,10 +50,16 @@ async function reviewSomeChanges(page: Page) {
   await expect(cards).toHaveCount(2);
   await cards.nth(0).getByRole('button', { name: 'Reject', exact: true }).click();
   await cards.nth(1).getByRole('button', { name: 'Accept', exact: true }).click();
+  await cards.nth(1).getByRole('button', { name: 'More Accept options' }).click();
+  await page.getByRole('menuitem', { name: 'Accept this with comment' }).click();
+  await cards.nth(1).getByRole('textbox').fill('Fine.');
   // Wait for the debounced save.
   await expect
-    .poll(async () => Object.keys(((await savedReview(page))?.decisions as object | undefined) ?? {}).length)
-    .toBe(2);
+    .poll(async () => {
+      const saved = await savedReview(page);
+      return [Object.keys((saved?.decisions as object | undefined) ?? {}).length, saved?.comments];
+    })
+    .toEqual([2, { [(await cards.nth(1).getAttribute('data-item-id'))!]: 'Fine.' }]);
 }
 
 const prompt = (page: Page) => page.getByRole('dialog', { name: 'Resume review of original.docx → edited.docx?' });
@@ -69,6 +75,7 @@ test('a review is saved and resumed after a reload with the same decisions and r
   await expect(cards).toHaveCount(2, { timeout: 60_000 });
   await expect(cards.nth(0)).toContainText('Rejected');
   await expect(cards.nth(1)).toContainText('Accepted');
+  await expect(cards.nth(1).getByRole('textbox')).toHaveValue('Fine.');
   await expect(page.getByTestId('range-control')).toContainText('Comparing the Original up to paragraph 2.');
   await expect(page.getByTestId('changes-totals')).toContainText('2 text changes: 1 accepted, 1 rejected, 0 undecided');
   await expect(page.getByTestId('panel-left').locator('del.change-rejected')).toHaveCount(1);

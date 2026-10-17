@@ -17,6 +17,8 @@ export interface SavedFile {
 export interface ReviewState {
   range: RangeState;
   decisions: Record<string, Decision>;
+  /** The reviewer's comments by item id (FR-27b). */
+  comments: Record<string, string>;
   formattingChoice: FormattingChoice;
   /** Which changes are ignored. */
   compareSettings: CompareSettings;
@@ -73,8 +75,8 @@ function isStoredReview(value: unknown): value is StoredReview {
 /**
  * The reviewing state of a stored record, with anything malformed replaced by its default (a
  * record written by another version of the app, or edited by hand): only `accepted`/`rejected`
- * decisions, known compare settings over the defaults, a range of a known shape (whether it fits
- * the document is checked after the compare, `restoredRange`).
+ * decisions, text comments, known compare settings over the defaults, a range of a known shape
+ * (whether it fits the document is checked after the compare, `restoredRange`).
  */
 function sanitizeState(stored: StoredReview): ReviewState {
   const decisions: Record<string, Decision> = {};
@@ -82,6 +84,10 @@ function sanitizeState(stored: StoredReview): ReviewState {
     for (const [id, decision] of Object.entries(stored.decisions)) {
       if (decision === 'accepted' || decision === 'rejected') decisions[id] = decision;
     }
+  }
+  const comments: Record<string, string> = {};
+  if (isObject(stored.comments)) {
+    for (const [id, comment] of Object.entries(stored.comments)) if (typeof comment === 'string') comments[id] = comment;
   }
   const compareSettings = { ...DEFAULT_COMPARE_SETTINGS };
   if (isObject(stored.compareSettings)) {
@@ -96,6 +102,7 @@ function sanitizeState(stored: StoredReview): ReviewState {
     ((range.mode === 'off' && range.endPoint === null) || ((range.mode === 'auto' || range.mode === 'manual') && typeof range.endPoint === 'number'));
   return {
     decisions,
+    comments,
     compareSettings,
     range: validRange ? (range as RangeState) : { mode: 'off', endPoint: null },
     formattingChoice: stored.formattingChoice === 'original' ? 'original' : 'edited',

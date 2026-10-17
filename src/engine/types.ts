@@ -45,6 +45,14 @@ export interface ExportRequest {
   formattingChoice?: FormattingChoice;
   /** The revisions outside the comparison range (rejected, and the look leaves them as they are). */
   outOfRange?: string[];
+  /** Reviewer comments, added as Word comments (FR-27b). */
+  comments?: ExportComment[];
+}
+
+/** A reviewer comment for the export: anchored on its change's revisions, one string per paragraph. */
+export interface ExportComment {
+  revisionIds: string[];
+  paragraphs: string[];
 }
 
 export type WorkerRequestType = keyof WorkerRequests;

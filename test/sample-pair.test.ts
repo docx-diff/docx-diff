@@ -2,6 +2,7 @@
 // One compare result is shared by the whole file, since a compare takes several seconds.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { strFromU8, unzipSync } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { compare, listRevisions } from '../src/engine/docxodus';
@@ -10,6 +11,8 @@ import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
+import { exportComments } from '../src/model/comments';
+import { INITIAL_DECISIONS } from '../src/model/decisions';
 import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
@@ -384,6 +387,33 @@ describeWithSamples('sample pair', () => {
       expect(docxText(exported)).toEqual(docxText(withoutLook));
       // The tail keeps the Original's Palatino (FR-39a).
       expect([...documentLook(exported).runs].some((run) => run.includes('Palatino'))).toBe(true);
+      await expectDeliverable(exported, readSamples().original);
+    });
+
+    it('with the detected range, alternating decisions and a comment on every text change, anchors each comment once and keeps the text', async () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
+      let text = 0;
+      const decisions = byItem((item) =>
+        classes.get(item.id) === 'outOfRange' ? 'reject' : item.kind === 'formatting' ? 'accept' : text++ % 2 === 0 ? 'accept' : 'reject',
+      );
+      const state = { ...INITIAL_DECISIONS, comments: Object.fromEntries(analysis.items.map((item) => [item.id, `On ${item.id}`])) };
+      const comments = exportComments(analysis.items, state, classes, decisions);
+      expect(comments.length).toBe(analysis.items.filter((item) => item.kind !== 'formatting' && classes.get(item.id) !== 'outOfRange').length);
+      const relocated: string[][] = [];
+      const options = { formattingChoice: 'edited' as const, outOfRange };
+      const { exported, ms } = await exportWith(decisions, 'range-comments', { ...options, comments, onCommentsRelocated: (ids) => relocated.push(...ids) });
+      expect(relocated).toEqual([]);
+      const { exported: withoutComments, ms: withoutMs } = await exportWith(decisions, 'range-no-comments', options);
+      console.log(`sample pair export, ${comments.length} comments: ${ms} ms (without them: ${withoutMs} ms)`);
+      expect(docxText(exported)).toEqual(docxText(withoutComments));
+      const files = unzipSync(exported);
+      const body = strFromU8(files['word/document.xml']!);
+      const count = (pattern: RegExp) => body.match(pattern)?.length ?? 0;
+      expect(count(/<w:commentReference /g)).toBe(comments.length);
+      expect(count(/<w:commentRangeStart /g)).toBe(comments.length);
+      expect(count(/<w:commentRangeEnd /g)).toBe(comments.length);
+      expect(strFromU8(files['word/comments.xml']!).match(/<w:comment /g)).toHaveLength(comments.length);
       await expectDeliverable(exported, readSamples().original);
     });
 

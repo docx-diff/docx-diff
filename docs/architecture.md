@@ -34,7 +34,7 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/ooxml.ts` — zip/XML helpers, `parseConstituentKey`, `ElementIndex` (element name + `w:id` lookup).
 - `src/engine/normalizeText.ts` — text runs to NFC before comparing (FR-13a).
 - `src/engine/tagRedline.ts` — `w:author` → `rev:<id>` before rendering; `unlinkHyperlinksWithChanges`.
-- `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `notes.ts` — its steps.
+- `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `notes.ts`, `comments.ts` — its steps.
 
 Model (pure TypeScript, main thread)
 - `src/model/docIndex.ts` — the `DocIndex` built from the rendered HTML.
@@ -42,7 +42,8 @@ Model (pure TypeScript, main thread)
 - `src/model/equivalence.ts` — compare settings, ignored items, same-text relabelling, shared edges.
 - `src/model/range.ts` — trailing-region detection, positions, in/out-of-range classification.
 - `src/model/analyze.ts` — index + items + suggested end point from a worker result.
-- `src/model/decisions.ts` — decision state and reducer; `finalRevisionDecisions` for export.
+- `src/model/decisions.ts` — decision state (decisions, formatting choice, comments) and reducer; `finalRevisionDecisions` for export.
+- `src/model/comments.ts` — the text of the exported comments (FR-27b).
 - `src/model/reviewList.ts` — list entries, navigation order, Previous/Next, next undecided.
 
 UI (`src/ui/`, entry `src/App.tsx`)
@@ -223,12 +224,15 @@ accepts everything in one pass:
    item's explicit decision; ignored by the compare settings → accept; otherwise the export dialog's
    undecided choice. Every revision must have one; a revision whose `resolutionStatus` is not
    `supported` makes the export fail naming the change (`UnsupportedRevisionError`).
-2. Unzip the redline; parse `document.xml`, `footnotes.xml`, `endnotes.xml` (per the revision's part).
-3. Per part, plan `planConsistentLook` and `planRangeOrder` (before the rewrite, which discards the
+2. With reviewer comments: `anchorComments` puts their range markers into the redline
+   ([Comments](#comments)).
+3. Unzip the redline; parse `document.xml`, `footnotes.xml`, `endnotes.xml` (per the revision's part).
+4. Per part, plan `planConsistentLook` and `planRangeOrder` (before the rewrite, which discards the
    information they need), run `rejectRevisions`, then apply both plans.
-4. Re-zip; `docxDiffAcceptRevisions` once.
-5. `reconcileNotes` ([Notes](#notes)).
-6. `getRevisions(result)` must return `[]`, else throw.
+5. Re-zip; `docxDiffAcceptRevisions` once.
+6. `reconcileNotes` ([Notes](#notes)).
+7. With comments: `addComments`.
+8. `getRevisions(result)` must return `[]`, else throw.
 
 ### Reject rewrite
 
@@ -316,6 +320,41 @@ reference its own copy of the note, gives an empty note a paragraph, gives a ref
 its number (`w:footnoteRef`/`w:endnoteRef`) the number back, and removes notes the export no longer
 references.
 
+### Comments
+
+`src/engine/comments.ts`, FR-27b. The main thread builds each comment's text (`exportComments` in
+`src/model/comments.ts`) and sends it with the item's revision ids. Before the rewrite,
+`anchorComments` puts `w:commentRangeStart` before the first and `w:commentRangeEnd` after the last
+markup element of those revisions in `document.xml`, as siblings, never inside a `w:ins`/`w:del`:
+the rewrite renames and unwraps those elements, and the accept pass keeps markers next to them (a
+range whose text the decision removes collapses to a point). They go in before the other plans run,
+which look at runs and body elements, not at these markers; the reference runs (`w:r` with
+`w:commentReference`) are added only after the accept pass, so that the look never takes them for
+text. Comment ids continue after the ids the package already uses: the engine keeps the inputs'
+comments.
+
+Where a comment is anchored:
+- Run-level markup: just outside it. A paragraph mark, table row (`w:trPr`) or cell marker: the
+  content of its paragraph, or of the row's or cell's paragraphs. Move range markers and property
+  changes are not anchors.
+- A move: only the side the export keeps (`w:moveTo` if accepted, `w:moveFrom` if rejected), not
+  everything in between.
+- A change in a footnote or endnote: the note's reference in the main document (one the export keeps,
+  since a moved reference is a deletion plus an insertion). Comment markers inside notes fail
+  `verifyDeliverable` (`Sem_MissingReferenceElement`).
+- Markers in a table row the export removes go with the row: they go to the start of the paragraph
+  after the table, or the end of the one before it.
+- The accept pass merges a paragraph whose mark is removed into the next one, markers included, but
+  drops such paragraphs when no paragraph with a kept mark follows them before the next table or the
+  end of their container (the trailing deleted region on accept, a rejected inserted last paragraph).
+  A range starting there becomes a point at the end of the last kept paragraph before them.
+
+`addComments` adds the reference runs and the comments part (creating `word/comments.xml`, its
+relationship and its content type if needed). A comment whose markers are gone anyway is placed at
+the end of the document rather than lost (`onCommentsRelocated` tells the tests; none on the fixtures
+or the sample, with a comment on every text revision under all-accept, all-reject and alternating
+decisions). LibreOffice imports them as annotations on the commented text.
+
 ### Why not DocxSession
 
 `DocxSession.acceptRevision`/`rejectRevision`/`acceptAllRevisions` cost ~100 ms per revision even
@@ -332,10 +371,10 @@ planning phase (reject-all on the sample gave exactly the Original text and pass
 `src/storage/reviewStore.ts`, FR-46 – FR-50. One review at a time: the state without the bytes under
 `current-review` (rewritten while reviewing, debounced 300 ms, at once on `pagehide`), the files with
 their SHA-256 under `current-review-files` (written once per comparison). Schema 1: engine version,
-files, range, decisions, formatting choice, compare settings, formatting group expanded. A loaded
-record's state is sanitized (unknown fields replaced by defaults). Resume compares the stored files
-again and applies the state only if both hashes and the engine version match. A probe write at start-up
-detects unavailable storage; a write that throws (e.g. no `crypto.subtle` outside a secure context)
+files, range, decisions, comments (added later; a record without them loads with none), formatting
+choice, compare settings, formatting group expanded. A loaded record's state is sanitized (unknown
+fields replaced by defaults). Resume compares the stored files again and applies the state only if
+both hashes and the engine version match. A probe write at start-up detects unavailable storage; a write that throws (e.g. no `crypto.subtle` outside a secure context)
 marks storage unavailable without stopping later writes.
 
 ## Service worker and deployment

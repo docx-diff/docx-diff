@@ -16,9 +16,11 @@ export interface DecisionState {
   /** Decisions of text items by item id; an absent id is undecided. */
   decisions: Record<string, Decision>;
   formattingChoice: FormattingChoice;
+  /** The reviewer's comments on text items by item id (FR-27b); kept when the decision is reset. */
+  comments: Record<string, string>;
 }
 
-export const INITIAL_DECISIONS: DecisionState = { decisions: {}, formattingChoice: 'edited' };
+export const INITIAL_DECISIONS: DecisionState = { decisions: {}, formattingChoice: 'edited', comments: {} };
 
 export type DecisionAction =
   | { type: 'set'; itemId: string; decision: Decision }
@@ -27,6 +29,8 @@ export type DecisionAction =
   | { type: 'acceptAllUndecided'; itemIds: readonly string[] }
   | { type: 'rejectAllUndecided'; itemIds: readonly string[] }
   | { type: 'setFormattingChoice'; choice: FormattingChoice }
+  /** `null` removes the comment. */
+  | { type: 'setComment'; itemId: string; text: string | null }
   /** Back to no decisions, e.g. for a new comparison. */
   | { type: 'clear' }
   /** A saved review's decisions. */
@@ -53,6 +57,15 @@ export function decisionsReducer(state: DecisionState, action: DecisionAction): 
     }
     case 'setFormattingChoice':
       return state.formattingChoice === action.choice ? state : { ...state, formattingChoice: action.choice };
+    case 'setComment': {
+      if (action.text === null) {
+        if (!(action.itemId in state.comments)) return state;
+        const { [action.itemId]: _removed, ...comments } = state.comments;
+        return { ...state, comments };
+      }
+      if (state.comments[action.itemId] === action.text) return state;
+      return { ...state, comments: { ...state.comments, [action.itemId]: action.text } };
+    }
     case 'clear':
       return INITIAL_DECISIONS;
     case 'restore':

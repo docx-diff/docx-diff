@@ -14,11 +14,15 @@ export interface ListTotals {
 interface Props {
   entries: readonly ListEntry[];
   decisions: Readonly<Record<string, Decision>>;
+  /** The reviewer's comments by item id (FR-27b). */
+  comments: Readonly<Record<string, string>>;
   currentItemId: string | null;
   onSelect: (itemId: string) => void;
   onDecide: (itemId: string, decision: Decision | null) => void;
   /** Decides every undecided text item from the start of the list up to and including `itemId`. */
   onDecideUntil: (itemId: string, decision: Decision) => void;
+  /** `null` removes the comment. */
+  onComment: (itemId: string, text: string | null) => void;
   /** Decides every undecided text item in the list. */
   onDecideAllUndecided: (decision: Decision) => void;
   formattingChoice: FormattingChoice;
@@ -89,6 +93,8 @@ export function ChangesList(props: Props) {
                     onSelect={onSelect}
                     onDecide={onDecide}
                     onDecideUntil={props.onDecideUntil}
+                    comment={props.comments[entry.item.id]}
+                    onComment={props.onComment}
                   />
                 ) : (
                   <FormattingGroupHeader
