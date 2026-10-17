@@ -1,4 +1,4 @@
-const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 /** `<edited name without .docx>.reviewed.docx` (FR-43). */
 export function reviewedFileName(editedName: string): string {

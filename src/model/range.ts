@@ -19,6 +19,16 @@ export function initialRange(suggestedEndPoint: number | null): RangeState {
 }
 
 /**
+ * A saved range, if it still fits the document (an end point from 1 to the last paragraph);
+ * otherwise the range a new comparison starts with.
+ */
+export function restoredRange(saved: RangeState, paragraphCount: number, suggestedEndPoint: number | null): RangeState {
+  if (saved.mode === 'off') return saved;
+  const valid = (saved.mode === 'auto' || saved.mode === 'manual') && Number.isInteger(saved.endPoint) && saved.endPoint >= 1 && saved.endPoint < paragraphCount;
+  return valid ? saved : initialRange(suggestedEndPoint);
+}
+
+/**
  * Position of every block on the Original's paragraph axis. An Original body paragraph sits at its
  * index in `bodyParagraphs`; a block not in the Original sits half a step after the Original
  * paragraph before it; a note paragraph sits where its note is referenced.

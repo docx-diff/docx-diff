@@ -12,8 +12,18 @@ import {
   type UndecidedChoice,
 } from './model/decisions';
 import { ignoredItems } from './model/equivalence';
-import { blockPositions, classify, initialRange, outOfRangeBlocks, spanningItems, type RangeClass, type RangeState } from './model/range';
+import {
+  blockPositions,
+  classify,
+  initialRange,
+  outOfRangeBlocks,
+  restoredRange,
+  spanningItems,
+  type RangeClass,
+  type RangeState,
+} from './model/range';
 import { buildReviewList, navigationOrder, nextUndecided, step } from './model/reviewList';
+import { savedFilesMatch, type ReviewState, type SavedReview } from './storage/reviewStore';
 import { ChangesList } from './ui/ChangesList';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
@@ -23,11 +33,13 @@ import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
 import { LoadingModal } from './ui/LoadingModal';
 import { Progress } from './ui/Progress';
 import { RangeControl } from './ui/RangeControl';
+import { ResumePrompt } from './ui/ResumePrompt';
 import { Toolbar } from './ui/Toolbar';
-import { reviewedFileName, saveDocx } from './ui/download';
+import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
 import { useCompareSettings } from './ui/useCompareSettings';
 import { useEngine } from './ui/useEngine';
+import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
 import { revealItem } from './ui/reveal';
 import { useScrollSync } from './ui/scrollSync';
 import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShortcuts';
@@ -35,10 +47,22 @@ import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShort
 export function App() {
   const { state: engineState, retry } = useEngine();
   const engine = engineState.status === 'ready' ? engineState.engine : null;
+  const engineVersion = engineState.status === 'ready' ? engineState.version.docxodus : null;
 
   const [files, setFiles] = useState<{ original: File | null; edited: File | null }>({ original: null, edited: null });
   const comparisonState = useComparison(engine, files.original, files.edited);
   const comparison = comparisonState.status === 'done' ? comparisonState.comparison : null;
+
+  const { storage, markUnavailable } = useReviewStorage();
+  const store = storage.status === 'ready' ? storage.store : null;
+  const [storageNoticeDismissed, setStorageNoticeDismissed] = useState(false);
+  // The review saved by an earlier visit is offered once, before any file is chosen (FR-47).
+  const [promptDone, setPromptDone] = useState(false);
+  const offeredReview = storage.status === 'ready' && !promptDone && !files.original && !files.edited ? storage.saved : null;
+  const [checkingSaved, setCheckingSaved] = useState(false);
+  /** Files being compared again to resume a review; `review` is null when its decisions must not be applied. */
+  const [resuming, setResuming] = useState<{ original: File; edited: File; review: SavedReview | null } | null>(null);
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
 
   const [settings, setSettings] = useCompareSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -63,12 +87,63 @@ export function App() {
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
   if (comparison !== reviewedComparison) {
     setReviewedComparison(comparison);
-    dispatch({ type: 'clear' });
+    const resumed = comparison && resuming?.original === comparison.original && resuming.edited === comparison.edited;
+    if (resumed) setResuming(null);
+    const saved = resumed ? resuming.review : null;
+    const suggested = comparison?.analysis.suggestedEndPoint ?? null;
+    if (comparison && saved) {
+      // Item ids are stable for the same files and engine version; drop any that are not there anyway.
+      const known = new Set(comparison.analysis.items.map((item) => item.id));
+      const decisions = Object.fromEntries(Object.entries(saved.decisions).filter(([id]) => known.has(id)));
+      dispatch({ type: 'restore', state: { decisions, formattingChoice: saved.formattingChoice } });
+      setFormattingExpanded(saved.formattingGroupExpanded);
+      setRangeState(restoredRange(saved.range, comparison.analysis.index.bodyParagraphs.length, suggested));
+    } else {
+      dispatch({ type: 'clear' });
+      setFormattingExpanded(false);
+      setRangeState(initialRange(suggested));
+    }
     setCurrentItemId(null);
-    setFormattingExpanded(false);
-    setRangeState(initialRange(comparison?.analysis.suggestedEndPoint ?? null));
     setPicking(false);
   }
+
+  const reviewState = useMemo<ReviewState>(
+    () => ({
+      range: rangeState,
+      decisions: review.decisions,
+      formattingChoice: review.formattingChoice,
+      compareSettings: settings,
+      formattingGroupExpanded: formattingExpanded,
+    }),
+    [rangeState, review, settings, formattingExpanded],
+  );
+  useAutoSave(store, comparison, engineVersion, reviewState, markUnavailable);
+
+  /** Compares the saved files again; their decisions and range are applied only if the files and engine version match (FR-49). */
+  const resume = async (saved: SavedReview) => {
+    if (engineVersion === null) return;
+    setCheckingSaved(true);
+    const match = await savedFilesMatch(saved, engineVersion);
+    const original = new File([saved.original.bytes], saved.original.name, { type: DOCX_TYPE });
+    const edited = new File([saved.edited.bytes], saved.edited.name, { type: DOCX_TYPE });
+    setSettings(saved.compareSettings);
+    setResuming({ original, edited, review: match === 'match' ? saved : null });
+    setResumeNotice(
+      match === 'match'
+        ? null
+        : match === 'engine'
+          ? `The saved decisions could not be restored: they were made with version ${saved.engineVersion} of the comparison engine, and this is version ${engineVersion}. The documents were compared again; please review them anew.`
+          : 'The saved decisions could not be restored: the saved documents are damaged. They were compared again; please review them anew.',
+    );
+    setFiles({ original, edited });
+    setCheckingSaved(false);
+    setPromptDone(true);
+  };
+  const discardSaved = () => {
+    void store?.discard();
+    setPromptDone(true);
+  };
+  const startNew = useCallback(() => setPromptDone(true), []);
 
   const items = comparison?.analysis.items;
   // The comparison range only reclassifies the changes (FR-19); their decisions are kept.
@@ -183,7 +258,10 @@ export function App() {
     };
   }, [ignored, range, review.decisions, items, outOfRange]);
 
-  const setFile = useCallback((role: DocumentRole, file: File) => setFiles((current) => ({ ...current, [role]: file })), []);
+  const setFile = useCallback((role: DocumentRole, file: File) => {
+    setFiles((current) => ({ ...current, [role]: file }));
+    setResumeNotice(null);
+  }, []);
   const swap = useCallback(() => setFiles(({ original, edited }) => ({ original: edited, edited: original })), []);
 
   const download = async (current: Comparison, state: DecisionState, undecided: UndecidedChoice) => {
@@ -239,6 +317,10 @@ export function App() {
         comparisonRunning={comparisonState.status === 'running' ? comparisonState : null}
         comparisonError={comparisonState.status === 'error' ? comparisonState.message : null}
         inputsHadRevisions={comparison?.result.inputsHadRevisions ?? false}
+        storageUnavailable={storage.status === 'unavailable' && !storageNoticeDismissed}
+        onDismissStorage={() => setStorageNoticeDismissed(true)}
+        resumeNotice={resumeNotice}
+        onDismissResume={() => setResumeNotice(null)}
       />
 
       {comparison && (
@@ -316,6 +398,17 @@ export function App() {
           onCancel={closeExport}
         />
       )}
+      {offeredReview && engine && (
+        <ResumePrompt
+          originalName={offeredReview.original.name}
+          editedName={offeredReview.edited.name}
+          savedAt={offeredReview.savedAt}
+          disabled={checkingSaved}
+          onResume={() => void resume(offeredReview)}
+          onStartNew={startNew}
+          onDiscard={discardSaved}
+        />
+      )}
       {settingsOpen && (
         <CompareSettingsDialog settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />
       )}
@@ -327,6 +420,10 @@ function Notices(props: {
   comparisonRunning: { startedAt: number; stage: ProgressStage | null } | null;
   comparisonError: string | null;
   inputsHadRevisions: boolean;
+  storageUnavailable: boolean;
+  onDismissStorage: () => void;
+  resumeNotice: string | null;
+  onDismissResume: () => void;
 }) {
   const { comparisonRunning, comparisonError } = props;
   return (
@@ -347,6 +444,27 @@ function Notices(props: {
           been accepted.
         </p>
       )}
+      {props.resumeNotice && (
+        <p className="notice notice--info">
+          {props.resumeNotice}
+          <DismissButton onClick={props.onDismissResume} />
+        </p>
+      )}
+      {props.storageUnavailable && (
+        <p className="notice notice--info" data-testid="storage-unavailable">
+          This browser does not allow saving here (e.g. in a private window, or its storage is full), so the review
+          will not be remembered when the page is closed.
+          <DismissButton onClick={props.onDismissStorage} />
+        </p>
+      )}
     </div>
+  );
+}
+
+function DismissButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="notice__dismiss" aria-label="Dismiss" onClick={onClick}>
+      ×
+    </button>
   );
 }

@@ -71,6 +71,11 @@ describe('decisionsReducer', () => {
     state = decisionsReducer({ ...state, decisions: { a: 'accepted' } }, { type: 'clear' });
     expect(state).toEqual({ decisions: {}, formattingChoice: 'edited' });
   });
+
+  it('restores a saved state', () => {
+    const saved = { decisions: { a: 'rejected' as const }, formattingChoice: 'original' as const };
+    expect(decisionsReducer(INITIAL_DECISIONS, { type: 'restore', state: saved })).toEqual(saved);
+  });
 });
 
 describe('reviewableItems and formattingItems', () => {

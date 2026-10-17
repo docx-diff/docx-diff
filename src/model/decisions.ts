@@ -28,7 +28,9 @@ export type DecisionAction =
   | { type: 'rejectAllUndecided'; itemIds: readonly string[] }
   | { type: 'setFormattingChoice'; choice: FormattingChoice }
   /** Back to no decisions, e.g. for a new comparison. */
-  | { type: 'clear' };
+  | { type: 'clear' }
+  /** A saved review's decisions. */
+  | { type: 'restore'; state: DecisionState };
 
 export function decisionsReducer(state: DecisionState, action: DecisionAction): DecisionState {
   switch (action.type) {
@@ -53,6 +55,8 @@ export function decisionsReducer(state: DecisionState, action: DecisionAction): 
       return state.formattingChoice === action.choice ? state : { ...state, formattingChoice: action.choice };
     case 'clear':
       return INITIAL_DECISIONS;
+    case 'restore':
+      return action.state;
   }
 }
 

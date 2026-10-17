@@ -3,7 +3,7 @@ import { SMALL_HTML } from '../../test/small-html';
 import type { RevisionListEntry } from '../engine/types';
 import { buildChangeItems, type ChangeItem, type ChangeKind } from './changes';
 import { buildDocIndex } from './docIndex';
-import { blockPositions, classify, detectTrailingRegion, initialRange, outOfRangeBlocks, spanningItems } from './range';
+import { blockPositions, classify, detectTrailingRegion, initialRange, outOfRangeBlocks, restoredRange, spanningItems } from './range';
 
 // Original body paragraphs of SMALL_HTML: a(0) c(1) d(2) e(3) t(4); b, f and g are not in the Original;
 // footnote paragraph n is referenced from a, endnote paragraph m from t.
@@ -137,5 +137,17 @@ describe('initialRange', () => {
   it('uses the detected end point, or no range', () => {
     expect(initialRange(168)).toEqual({ mode: 'auto', endPoint: 168 });
     expect(initialRange(null)).toEqual({ mode: 'off', endPoint: null });
+  });
+});
+
+describe('restoredRange', () => {
+  it('keeps a saved range that fits the document', () => {
+    expect(restoredRange({ mode: 'manual', endPoint: 5 }, 10, 8)).toEqual({ mode: 'manual', endPoint: 5 });
+    expect(restoredRange({ mode: 'off', endPoint: null }, 10, 8)).toEqual({ mode: 'off', endPoint: null });
+  });
+
+  it('falls back to the detected range otherwise', () => {
+    expect(restoredRange({ mode: 'manual', endPoint: 10 }, 10, 8)).toEqual({ mode: 'auto', endPoint: 8 });
+    expect(restoredRange({ mode: 'auto', endPoint: 0 }, 10, null)).toEqual({ mode: 'off', endPoint: null });
   });
 });

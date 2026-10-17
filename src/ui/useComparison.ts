@@ -5,6 +5,9 @@ import type { ItemText } from '../model/equivalence';
 import { prepareRenderedDocument, type RenderedDocument } from './renderedDocument';
 
 export interface Comparison {
+  /** The compared files (saved with the review). */
+  original: File;
+  edited: File;
   originalName: string;
   editedName: string;
   result: CompareResult;
@@ -50,6 +53,8 @@ export function useComparison(engine: ComparisonEngine | null, original: File | 
         analyzeComparison(result, () => parsed),
       );
       const comparison: Comparison = {
+        original,
+        edited,
         originalName: original.name,
         editedName: edited.name,
         result,
