@@ -44,11 +44,15 @@ import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
 import { revealItem } from './ui/reveal';
 import { useScrollSync } from './ui/scrollSync';
 import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShortcuts';
+import { registerServiceWorker } from './serviceWorker';
 
 export function App() {
   const { state: engineState, retry } = useEngine();
   const engine = engineState.status === 'ready' ? engineState.engine : null;
   const engineVersion = engineState.status === 'ready' ? engineState.version.docxodus : null;
+  useEffect(() => {
+    if (engine) registerServiceWorker();
+  }, [engine]);
 
   const [files, setFiles] = useState<{ original: File | null; edited: File | null }>({ original: null, edited: null });
   const comparisonState = useComparison(engine, files.original, files.edited);

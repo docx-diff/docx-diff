@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 
-test('loads the engine from the app subpath, with no requests to other sites', async ({ page, baseURL }) => {
+test('loads the engine from the base path, with no requests to other sites', async ({ page, baseURL }) => {
   const { origin, pathname: basePath } = new URL(baseURL!);
   const foreignRequests: string[] = [];
   const engineFiles: string[] = [];

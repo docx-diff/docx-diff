@@ -1,10 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
-// Served from a GitHub Pages project subpath in production, e.g. BASE_PATH=/docx-diff/.
+// Published at the root of https://docx-diff.github.io/; BASE_PATH=/<subpath>/ builds for a subpath.
 const base = process.env.BASE_PATH ?? '/';
+
+const ENGINE_DIR = 'node_modules/docxodus/dist/wasm/_framework';
+const engineFiles = readdirSync(ENGINE_DIR).filter((name) => !name.endsWith('.br'));
 
 // The engine does not report its package version at run time; saved reviews are tied to it.
 const docxodusVersion: string = JSON.parse(
@@ -27,7 +31,33 @@ export default defineConfig({
           dest: 'wasm/_framework',
           rename: { stripBase: true },
         },
+        { src: 'LICENSE', dest: '.' },
+        { src: 'node_modules/docxodus/LICENSE', dest: 'licenses', rename: { stripBase: true, name: 'docxodus.txt' } },
       ],
+    }),
+    // Precaches the app and the engine, so repeat visits start quickly and work offline
+    // (GitHub Pages lets browsers cache files for 10 minutes only).
+    VitePWA({
+      // Registered by the app once the engine is ready (src/serviceWorker.ts). Not the autoUpdate
+      // module either: it reloads open pages, which would interrupt a review.
+      injectRegister: false,
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{html,js,css,wasm}'],
+        // dotnet.native.wasm is ~10 MB.
+        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
+        // A new version takes over at once; open pages keep what they loaded (nothing is loaded lazily).
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        manifestTransforms: [
+          async (entries) => {
+            const missing = engineFiles.filter((name) => !entries.some((entry) => entry.url === `wasm/_framework/${name}`));
+            if (missing.length > 0) throw new Error(`Engine files missing from the precache: ${missing.join(', ')}`);
+            return { manifest: entries, warnings: [] };
+          },
+        ],
+      },
     }),
   ],
   worker: {

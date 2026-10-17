@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// The e2e tests run against a production build served under a subpath, as on GitHub Pages.
-const BASE_PATH = '/docx-diff/';
+// The e2e tests run against a production build served at the root, as published on https://docx-diff.github.io/.
+const BASE_PATH = '/';
 const PORT = 4173;
 
 export default defineConfig({
