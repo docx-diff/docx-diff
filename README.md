@@ -10,9 +10,20 @@ Compare two Word documents (`.docx`) side by side in the browser, accept or reje
 
 The comparison engine is [Docxodus](https://github.com/JSv4/Docxodus) (MIT), a .NET OOXML engine compiled to WebAssembly, used through its npm package `docxodus`.
 
+## Usage
+
+Open <https://docx-diff.github.io/>. The comparison engine (~8 MB) loads on the first visit; after that the app and the engine come from the browser's cache and also work offline.
+
+1. Choose the **Original** and the **Edited** `.docx` (or drop them on the page). Both panels show the changes; scrolling is synced.
+2. If the Edited document covers only the first part of the Original, the end of the edited part is detected and the rest of the Original is kept as it is. The range bar shows the end point; you can move it or compare the full documents.
+3. Go through the changes list: accept or reject each change (keyboard: `j`/`k` or `↓`/`↑` to move, `a` accept, `r` reject, `u` undecided; `?` lists the shortcuts), or decide in bulk. Formatting changes are one group.
+4. **Download…** applies your decisions; undecided changes are accepted or rejected, as you choose. The result is a `.docx` without tracked changes.
+
+The review (files, decisions, range) is saved in the browser and offered again when you come back.
+
 ## Status
 
-Work in progress. Two documents can be loaded and compared, and are shown side by side with synced scrolling; Download exports the Edited version (every change accepted). Compare settings ignore quote, dash and whitespace changes. The export can also reject changes (any mix of decisions; tested on the samples and on synthetic fixtures), but the UI to decide changes is still to come. Next: the changes list and review workflow, the comparison range UI, the export dialog, saving the review and deployment.
+All planned features are done (task list below). Open: whether to remove two misleading "Moved" items at the end of the edited part on long cut-short documents (`docs/false-moves-at-trailing-tail.md`).
 
 - Requirements: [`tasks/2026-10-15-203451-prd---docx-diff.md`](tasks/2026-10-15-203451-prd---docx-diff.md)
 - Task list: [`tasks/2026-10-15-203451-tasks-docx-diff.md`](tasks/2026-10-15-203451-tasks-docx-diff.md)
@@ -28,7 +39,8 @@ npm run dev          # dev server at http://localhost:5173/
 npm run build        # production build into dist/ (BASE_PATH sets the base path, default /)
 npm run preview      # serve dist/
 npm test             # unit + engine tests (Vitest; engine tests run the real WASM under Node)
-npm run test:e2e     # Playwright: builds with BASE_PATH=/docx-diff/ and tests in Chromium
+npm run test:e2e     # Playwright: builds and tests in Chromium (also offline, through the service worker)
+PERF=1 npx playwright test e2e/perf.spec.ts      # opt-in timing checks against the budgets in the PRD
 npm run typecheck    # tsc --noEmit
 BIG_PAIR=1 npx vitest run test/big-pair.test.ts   # opt-in timing check on a synthetic ~300-page pair
 node test/fixtures/make-fixtures.ts               # regenerate the synthetic fixture pairs (commit the .docx files)
@@ -38,7 +50,19 @@ scripts/check-libreoffice.sh /tmp/exports/*.docx                           # …
 
 Node is pinned to **24.22.0** (Active LTS) in `.tool-versions` (asdf). `package.json` `engines` plus `engine-strict` in `.npmrc` make `npm install` fail on a Node outside `^24.22.0`. Details in `CLAUDE.md` ("Node version").
 
-The engine runtime (`node_modules/docxodus/dist/wasm/_framework/`, without the `.br` files) is copied into the build at `<base>/wasm/_framework/` and loaded from there by our own Web Worker (`src/engine/engine.worker.ts`).
+The engine runtime (`node_modules/docxodus/dist/wasm/_framework/`, without the `.br` files) is copied into the build at `<base>/wasm/_framework/` and loaded from there by our own Web Worker (`src/engine/engine.worker.ts`). A service worker (`vite-plugin-pwa`, configured in `vite.config.ts`) precaches the app and every engine file; the app registers it once the engine has loaded (`src/serviceWorker.ts`), since the precache downloads the engine again. There is no service worker in `npm run dev`.
+
+## Publishing
+
+There is no CI. The site is the repository [docx-diff/docx-diff.github.io](https://github.com/docx-diff/docx-diff.github.io), served by GitHub Pages at <https://docx-diff.github.io/>, and is built here:
+
+```sh
+git clone git@github.com:docx-diff/docx-diff.github.io.git ../docx-diff.github.io   # once
+scripts/publish.sh                            # checks, build, copy into ../docx-diff.github.io, commit there
+git -C ../docx-diff.github.io push            # publish
+```
+
+`scripts/publish.sh` refuses to run with uncommitted changes (in either repository), runs typecheck, unit and e2e tests (`SKIP_TESTS=1` skips them), builds with `BASE_PATH=/`, replaces the clone's files with `dist/` and commits them as `Publish docx-diff <commit>`. `PAGES_DIR` sets another clone. The build includes `.nojekyll` (from `public/`): without it GitHub Pages runs Jekyll, which drops the engine's `wasm/_framework/` directory. A new version reaches users on their next page load; an open tab keeps the version it loaded.
 
 ## Sample documents
 
