@@ -139,6 +139,30 @@ describe('mergeJoinedParagraphs', () => {
     expect(block(left, 't').textContent).toBe('Split here');
     expect(block(left, 'li').textContent).toBe('1.Item');
   });
+
+  // The accept pass keeps the text of a paragraph whose mark is removed as a paragraph of its own
+  // when a table follows it. The converter wraps each table in a `div`; the bare table is defensive.
+  it.each([
+    ['in its wrapper', (table: string) => `<div align="left">${table}</div>`],
+    ['bare', (table: string) => table],
+  ])('never joins a paragraph into a table that follows it (%s)', (_, wrap) => {
+    const table = '<table data-anchor="tbl"><tbody><tr><td data-anchor="td"><p data-anchor="cell">Time</p></td></tr></tbody></table>';
+    const root = new DOMParser().parseFromString(
+      `<div><p data-anchor="del" class="rev-para-del">Kept</p>${wrap(table)}<p data-anchor="ins" class="rev-para-ins">Kept too</p>${wrap(table)}<h2 data-anchor="h">Heading</h2></div>`,
+      'text/html',
+    ).body.firstElementChild!;
+    const before = root.innerHTML;
+    mergeJoinedParagraphs(root, 'right');
+    mergeJoinedParagraphs(root, 'left');
+    expect(root.innerHTML).toBe(before);
+  });
+
+  it('joins a paragraph into a heading that follows it', () => {
+    const root = new DOMParser().parseFromString('<div><p data-anchor="a" class="rev-para-del">A </p><h2 data-anchor="h">Heading</h2></div>', 'text/html').body
+      .firstElementChild!;
+    mergeJoinedParagraphs(root, 'right');
+    expect(block(root, 'h').textContent).toBe('A Heading');
+  });
 });
 
 describe('combineTypedListNumbers', () => {

@@ -176,7 +176,13 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   panel moves the content of a paragraph whose mark its version lacks (right: deleted, left: inserted)
   to the start of the next shown paragraph, after its list label (`mergeJoinedParagraphs`). On the
   sample, typed "1. " numbers replaced by automatic numbering otherwise showed the text before its
-  number.
+  number. A join never crosses a table or the end of its container (body, cell, note): the next
+  shown sibling must be a paragraph (`p`, `h1`–`h6`), and the paragraph stays as it is otherwise.
+  That is what the export's accept pass does with such a paragraph's text (checked on hand-written
+  redlines: kept as a paragraph of its own, before a table and as the last in a cell). The engine
+  puts a paragraph with a removed mark right before a table only when the whole paragraph goes
+  (its text moved into the table's first cell, fixture `paragraph-join-table`), which the panel
+  hides anyway; and the converter wraps each table in a `div` without `data-anchor`.
 - **Scroll sync** (`scrollSync.ts`): both panels have the same `data-anchor`s. The top-most visible
   anchor of the scrolled panel is aligned in the other, interpolating between blocks both panels show;
   the sync's own scroll events are ignored. `reveal.ts` centres a change's first shown element in each

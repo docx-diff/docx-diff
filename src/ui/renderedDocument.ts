@@ -115,7 +115,9 @@ export function markItems(root: ParentNode, itemIds: ReadonlySet<string>, classN
  * has them as one. A paragraph whose mark that version lacks (right: deleted, left: inserted)
  * continues in the next paragraph it shows, which owns the surviving mark and so the paragraph's
  * properties (e.g. a list number): its content moves to the start of that paragraph, after the
- * list label, and the emptied paragraph gets `merged-into-next`.
+ * list label, and the emptied paragraph gets `merged-into-next`. A join never crosses a table or
+ * the end of its container (body, cell, note): there the paragraph stays as it is, as the export's
+ * accept pass keeps it.
  */
 export function mergeJoinedParagraphs(root: ParentNode, side: 'left' | 'right'): void {
   const missingMark = side === 'left' ? 'rev-para-ins' : 'rev-para-del';
@@ -125,13 +127,16 @@ export function mergeJoinedParagraphs(root: ParentNode, side: 'left' | 'right'):
   for (const block of blocks.reverse()) {
     let next = block.nextElementSibling;
     while (next?.matches(`[data-anchor]:is(.${missingBlock}, .merged-into-next)`)) next = next.nextElementSibling;
-    if (!next?.hasAttribute('data-anchor')) continue;
+    if (!next?.matches(PARAGRAPH_BLOCK)) continue;
     let insertBefore = next.firstChild;
     while (insertBefore?.nodeType === ELEMENT_NODE && isListLabel(insertBefore as Element)) insertBefore = insertBefore.nextSibling;
     next.insertBefore(moveChildren(block), insertBefore);
     block.classList.add('merged-into-next');
   }
 }
+
+/** The converter renders a paragraph as `p`, or `h1`–`h6` when its style has an outline level. */
+const PARAGRAPH_BLOCK = ':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]';
 
 /** `Node.ELEMENT_NODE` (`Node` is not a global with jsdom in Node). */
 const ELEMENT_NODE = 1;

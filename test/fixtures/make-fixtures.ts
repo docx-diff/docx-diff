@@ -276,6 +276,31 @@ export const FIXTURES: FixturePair[] = [
     edited: { body: body(p(`${L0} ${L1}`), p(`${L2} Then ${L3.charAt(0).toLowerCase()}${L3.slice(1)}`)) },
   },
   {
+    name: 'paragraph-join-table',
+    description:
+      'a paragraph joined into the first cell of the table after it, and a first cell split into a paragraph before its table (the redline has a paragraph with a deleted, then an inserted mark right before a table)',
+    original: {
+      body: body(
+        p(L0),
+        p(L1),
+        table({ rows: [['Time', 'Activity'], ['4:00', 'Morning chanting']] }),
+        p(L2),
+        table({ rows: [[`${L3} Time`, 'Activity'], ['6:00', 'Alms round']] }),
+        p(L4),
+      ),
+    },
+    edited: {
+      body: body(
+        p(L0),
+        table({ rows: [[`${L1} Time`, 'Activity'], ['4:00', 'Morning chanting']] }),
+        p(L2),
+        p(L3),
+        table({ rows: [['Time', 'Activity'], ['6:00', 'Alms round']] }),
+        p(L4),
+      ),
+    },
+  },
+  {
     name: 'table-cell-edit',
     description: 'text edited inside table cells',
     original: {
