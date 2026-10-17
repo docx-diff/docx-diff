@@ -3,7 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>docx-diff</title>
+    <script>
+      // The theme before the first paint (src/ui/theme.ts keeps it up to date): the reviewer's
+      // choice, else the browser's preference.
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem('docx-diff:theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <style>
       /* The loading modal, inline so it shows before the app's scripts and styles have arrived.
          The app renders the same markup (src/ui/LoadingModal.tsx) until the engine is ready. */
@@ -45,6 +60,25 @@
         border-top-color: #0969da;
         border-radius: 50%;
         animation: loading-modal-spin 0.8s linear infinite;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        background: #0d1117;
+      }
+      :root[data-theme='dark'] .loading-modal {
+        background: rgb(13 17 23 / 85%);
+        color: #e6edf3;
+      }
+      :root[data-theme='dark'] .loading-modal__box {
+        background: #1c2128;
+        box-shadow: 0 8px 24px rgb(1 4 9 / 60%);
+      }
+      :root[data-theme='dark'] .loading-modal__detail {
+        color: #8d96a0;
+      }
+      :root[data-theme='dark'] .loading-modal__spinner {
+        border-color: #30363d;
+        border-top-color: #4493f8;
       }
       @keyframes loading-modal-spin {
         to {

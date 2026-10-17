@@ -3,14 +3,18 @@ import panelCss from './panel.css?inline';
 import type { ChangeItem } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import type { CompareSettings } from '../model/equivalence';
+import { darkColors } from './darkColors';
 import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
+import type { Theme } from './theme';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
 
 export type PanelSide = 'left' | 'right';
 
 interface Props {
   side: PanelSide;
+  /** In dark mode the document's own colours are made dark too (darkColors.ts). */
+  theme: Theme;
   title: string;
   document: RenderedDocument;
   /** Changes the compare settings ignore: shown as plain text. */
@@ -78,12 +82,15 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
  * scrolling element, which is also the shadow host.
  */
 export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function DocumentPanel(props, ref) {
-  const { side, title, document, ignored, settings, decisions, currentItemId, onChangeClick, overviewItems, outOfRangeItems, onPickParagraph } = props;
+  const { side, theme, title, document, ignored, settings, decisions, currentItemId, onChangeClick, overviewItems, outOfRangeItems, onPickParagraph } = props;
   const outOfRangeBlocks = props.outOfRangeBlocks ?? NO_BLOCKS;
   const scrollerRef = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => scrollerRef.current!, []);
   const elementsRef = useRef<ElementMap>(new Map());
   const blocksRef = useRef<HTMLElement[]>([]);
+  const documentStyleRef = useRef<HTMLStyleElement | null>(null);
+  /** Elements with a `style` attribute, and its value as the converter wrote it. */
+  const styledRef = useRef<[HTMLElement, string][]>([]);
   const appliedDecisions = useRef<Readonly<Record<string, Decision>>>({});
   const appliedCurrent = useRef<string | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
@@ -93,7 +100,6 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
     const owner = host.ownerDocument;
     const documentStyle = owner.createElement('style');
-    documentStyle.textContent = document.css;
     const panelStyle = owner.createElement('style');
     panelStyle.textContent = panelCss;
     const wrapper = owner.createElement('div');
@@ -107,10 +113,18 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     host.scrollTop = 0;
     elementsRef.current = elementMap(wrapper);
     blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
+    documentStyleRef.current = documentStyle;
+    styledRef.current = Array.from(wrapper.querySelectorAll<HTMLElement>('[style]'), (element) => [element, element.getAttribute('style')!]);
     appliedDecisions.current = {};
     appliedCurrent.current = null;
     setContentVersion((version) => version + 1);
   }, [document, side]);
+
+  useLayoutEffect(() => {
+    const dark = theme === 'dark';
+    documentStyleRef.current!.textContent = dark ? darkColors(document.css) : document.css;
+    for (const [element, style] of styledRef.current) element.setAttribute('style', dark ? darkColors(style) : style);
+  }, [document, side, theme]);
 
   useLayoutEffect(() => {
     const root = scrollerRef.current?.shadowRoot;

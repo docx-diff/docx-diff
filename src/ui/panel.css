@@ -6,8 +6,8 @@
   margin: 0;
   padding: 1.5rem 2rem 50vh;
   max-width: 48rem;
-  color: #1f2328;
-  background: #ffffff;
+  color: var(--page-fg);
+  background: var(--page-bg);
 }
 
 /* Changes are marked within the text only. The converter's paragraph rules (inserted, deleted or
@@ -108,12 +108,12 @@
 
 .doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✓';
-  color: #1a7f37;
+  color: var(--success);
 }
 
 .doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✗';
-  color: #cf222e;
+  color: var(--danger);
 }
 
 /* Changes can be clicked to select them in the list. */
@@ -138,7 +138,7 @@
   align-items: center;
   gap: 0.75rem;
   margin: 1.5rem 0;
-  color: #57606a;
+  color: var(--muted);
   font: 600 0.8125rem/1.4 system-ui, sans-serif;
   font-style: normal;
   text-align: left;
@@ -149,7 +149,7 @@
 .doc .range-divider::after {
   content: '';
   flex: 1;
-  border-top: 2px dashed #8c959f;
+  border-top: 2px dashed var(--divider);
 }
 
 /* Picking the end point: any paragraph can be clicked. */

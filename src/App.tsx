@@ -38,10 +38,12 @@ import { LoadingModal } from './ui/LoadingModal';
 import { Progress } from './ui/Progress';
 import { RangeControl } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
+import { ThemeToggle } from './ui/ThemeToggle';
 import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
 import { useCompareSettings } from './ui/useCompareSettings';
+import { useTheme } from './ui/theme';
 import { useViewSettings } from './ui/useViewSettings';
 import { useEngine } from './ui/useEngine';
 import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
@@ -76,6 +78,7 @@ export function App() {
   const [settings, setSettings] = useCompareSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [view, setView] = useViewSettings();
+  const [theme, toggleTheme] = useTheme();
   const ignored = useMemo(
     () => (comparison ? ignoredItems(comparison.analysis.items, comparison.itemTexts, settings) : new Set<string>()),
     [comparison, settings],
@@ -383,6 +386,7 @@ export function App() {
           ⚙ Compare settings
         </button>
         <EngineStatus state={engineState} onRetry={retry} />
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </header>
 
       <Notices
@@ -416,6 +420,7 @@ export function App() {
                 key={side}
                 ref={side === 'left' ? leftRef : rightRef}
                 side={side}
+                theme={theme}
                 title={side === 'left' ? comparison.originalName : comparison.editedName}
                 document={comparison.document}
                 ignored={ignored}

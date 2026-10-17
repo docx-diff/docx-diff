@@ -121,6 +121,10 @@ to ~300 pages; no backend.
 23. A "Scroll lock" toggle turns sync off.
 24. Each panel has a narrow overview bar showing where the changes are; clicking scrolls there.
 25. Accepted/rejected changes are distinguishable from undecided ones in both panels (dimmed, ✓ / ✗).
+    25a. Light and dark colours: the app follows the browser's preference, and an icon button at the
+    end of the top bar switches between them (remembered in this browser; switching back to the
+    browser's preference follows it again). In dark mode the documents are dark too: their own text,
+    highlight and shading colours are adapted, keeping their hue, so that they stay readable.
 
 ### Changes list
 
@@ -237,7 +241,7 @@ to ~300 pages; no backend.
 ## Design
 
 - **Toolbar:** file names / pickers, Swap, Scroll lock, Previous / Next, compare settings, Download…,
-  Close review, legend, Help. The comparison range has its own bar below the header.
+  Close review, legend, Help, light/dark toggle. The comparison range has its own bar below the header.
 - **Main area:** Original panel | Edited panel, each with its overview bar. **Right sidebar:** the
   changes list, Accept all / Reject all at the top, the formatting group, totals at the bottom.
 - **Colours:** deletions red, insertions blue, moves purple; never colour alone (strikethrough,

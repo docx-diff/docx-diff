@@ -49,7 +49,7 @@ Model (pure TypeScript, main thread)
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
 - `renderedDocument.ts` — prepares the HTML once for both panels; `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts`, `reveal.ts`, `OverviewBar.tsx`.
-- `ChangesList.tsx`, `ChangeCard.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
+- `ChangesList.tsx`, `ChangeCard.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
 
 Storage: `src/storage/reviewStore.ts`. Service worker registration: `src/serviceWorker.ts`.
 
@@ -187,6 +187,17 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   resize of the scroller or the content. Locators on `panel-right` now also match the card's
   `ins`/`del`: use `ins.rev-ins` etc. View settings (`useViewSettings.ts`: this card, the list
   collapsed) are kept apart from the compare settings, which belong to the saved review.
+- **Dark mode** (FR-25a): every colour in `index.css` and `panel.css` is a custom property on
+  `:root`, redefined under `:root[data-theme='dark']`; the panels' shadow roots inherit them.
+  `data-theme` is always set (`light` or `dark`): an inline script in `index.html` sets it before the
+  first paint (so does its loading modal's dark variant), then `useTheme` (`src/ui/theme.ts`) keeps it
+  up to date with the stored choice or `prefers-color-scheme`. The converter writes the document's own
+  colours into its stylesheet (and rarely a `style` attribute), with Word's "auto" as explicit `black`
+  text / `white` background, so in dark mode `DocumentPanel` swaps in `darkColors(document.css)` and
+  rewrites those attributes (`src/ui/darkColors.ts`: in OKLab, text darker than L 0.72 is lightened
+  into 0.72–0.95 and backgrounds lighter than 0.38 darkened into 0.2–0.38, hue kept, vivid ones less;
+  so text stays apart from the shading behind it). Switching only swaps the style text: the panel's
+  content is not rebuilt.
 - The panel and list scrollers have `contain: strict`: without it, every list change laid out the long
   panel documents again.
 
