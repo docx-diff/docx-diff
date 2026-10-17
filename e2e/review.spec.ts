@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
+import { downloadReviewed } from './download';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -14,9 +14,8 @@ async function openAndCompare(page: Page, original: Uint8Array, edited: Uint8Arr
   await expect(page.getByTestId('change-card').first()).toBeVisible({ timeout: 60_000 });
 }
 
-async function download(page: Page): Promise<Uint8Array> {
-  const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.getByRole('button', { name: 'Download' }).click()]);
-  return new Uint8Array(await readFile((await file.path())!));
+async function download(page: Page, undecided: 'accept' | 'reject' = 'accept'): Promise<Uint8Array> {
+  return (await downloadReviewed(page, undecided)).bytes;
 }
 
 async function acceptAllUndecided(page: Page) {
@@ -148,4 +147,45 @@ test('on the sample pair, rejecting the first text change and accepting the rest
     expect(expected[at]).toContain(words(added));
     expect(exported[at]).not.toContain(words(added));
   }
+});
+
+test('the export dialog shows the undecided changes, and rejecting them gives the Original text', async ({ page }) => {
+  const original = minimalDocx(['The quick brown fox.', 'Second paragraph.']);
+  const edited = minimalDocx(['The quick red fox.', 'Second paragraph.', 'A new ending.']);
+  await openAndCompare(page, original, edited);
+
+  await page.getByRole('toolbar').getByRole('button', { name: 'Download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Download the reviewed document' });
+  await expect(dialog).toContainText('2 text changes are undecided.');
+  await expect(dialog.getByLabel(/Accept undecided changes/)).toBeChecked();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+
+  expect(docxText(await download(page, 'reject'))).toEqual(docxText(original));
+});
+
+test('on the sample pair, rejecting every undecided change gives the Original text once nothing is ignored', async ({ page }) => {
+  test.skip(!samplesAvailable, 'sample documents not present');
+  const { original, edited } = readSamples();
+  await openAndCompare(page, original, edited);
+
+  // Ignored changes take the Edited text whatever the choice; the dialog says so (53 in range,
+  // 54 in the full documents).
+  await page.getByRole('toolbar').getByRole('button', { name: 'Download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Download the reviewed document' });
+  await expect(dialog.getByTestId('export-ignored')).toHaveText(/^53 changes are ignored by the compare settings and take the Edited text\.$/);
+  await expect(dialog.getByTestId('export-out-of-range')).toContainText('outside the comparison range');
+  // The typed list numbers that became automatic numbering are formatting changes: the Original's
+  // formatting keeps them as text. The choice made here is the one in the changes list.
+  await dialog.getByLabel("Keep the Original's formatting").check();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('formatting-group').getByRole('radio', { name: "Keep the Original's formatting" })).toBeChecked();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole('button', { name: /Compare settings/ }).click();
+  for (const setting of [/Ignore quote style/, /Ignore dash changes/, /Ignore whitespace changes/]) await page.getByLabel(setting).uncheck();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('change-summary')).toHaveText(/· 0 ignored/);
+
+  expect(docxText(await download(page, 'reject'))).toEqual(docxText(original));
 });

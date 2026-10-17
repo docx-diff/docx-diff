@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
+import { downloadReviewed } from './download';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -16,11 +16,7 @@ async function chooseFiles(page: Page, original: { name: string; bytes: Uint8Arr
   await page.getByLabel('Edited document').setInputFiles({ name: edited.name, mimeType: DOCX_TYPE, buffer: Buffer.from(edited.bytes) });
 }
 
-/** Clicks Download and returns the downloaded file's name and bytes. */
-async function download(page: Page): Promise<{ name: string; bytes: Uint8Array }> {
-  const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.getByRole('button', { name: 'Download' }).click()]);
-  return { name: file.suggestedFilename(), bytes: new Uint8Array(await readFile((await file.path())!)) };
-}
+const download = downloadReviewed;
 
 test('rejects a file that is not a .docx', async ({ page }) => {
   await openApp(page);

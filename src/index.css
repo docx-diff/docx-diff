@@ -815,3 +815,51 @@ kbd {
 .loading-modal .progress__spinner {
   display: none;
 }
+
+/* Export dialog */
+
+.export-dialog__group {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.export-dialog__group legend {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.export-dialog__notes {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.export-dialog__notes:empty {
+  display: none;
+}
+
+.export-dialog__status {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+
+.export-dialog__error {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #ffebe9;
+  color: #82071e;
+  font-size: 0.875rem;
+}
+
+.export-dialog__error p {
+  margin: 0 0 0.25rem;
+}
+
+.export-dialog__error pre {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

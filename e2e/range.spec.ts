@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
+import { downloadReviewed } from './download';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -14,9 +14,8 @@ async function openAndCompare(page: Page, original: Uint8Array, edited: Uint8Arr
   await expect(page.getByTestId('range-control')).toBeVisible({ timeout: 60_000 });
 }
 
-async function download(page: Page): Promise<Uint8Array> {
-  const [file] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.getByRole('button', { name: 'Download' }).click()]);
-  return new Uint8Array(await readFile((await file.path())!));
+async function download(page: Page, undecided: 'accept' | 'reject' = 'accept'): Promise<Uint8Array> {
+  return (await downloadReviewed(page, undecided)).bytes;
 }
 
 /** "N text changes: …" from the list footer. */

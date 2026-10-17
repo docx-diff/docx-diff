@@ -9,6 +9,7 @@ import {
   reviewableItems,
   type Decision,
   type DecisionState,
+  type UndecidedChoice,
 } from './model/decisions';
 import { ignoredItems } from './model/equivalence';
 import { blockPositions, classify, initialRange, outOfRangeBlocks, spanningItems, type RangeClass, type RangeState } from './model/range';
@@ -17,6 +18,7 @@ import { ChangesList } from './ui/ChangesList';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
 import { EngineStatus } from './ui/EngineStatus';
+import { ExportDialog, exportFailure, type ExportStatus } from './ui/ExportDialog';
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
 import { LoadingModal } from './ui/LoadingModal';
 import { Progress } from './ui/Progress';
@@ -29,8 +31,6 @@ import { useEngine } from './ui/useEngine';
 import { revealItem } from './ui/reveal';
 import { useScrollSync } from './ui/scrollSync';
 import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShortcuts';
-
-type ExportState = { status: 'idle' } | { status: 'running'; startedAt: number } | { status: 'error'; message: string };
 
 export function App() {
   const { state: engineState, retry } = useEngine();
@@ -168,17 +168,29 @@ export function App() {
   };
   useKeyboardShortcuts(onShortcut, comparison !== null && !settingsOpen);
 
-  const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportState, setExportState] = useState<ExportStatus>({ status: 'idle' });
+  const openExport = useCallback(() => {
+    setExportState({ status: 'idle' });
+    setExportOpen(true);
+  }, []);
+  const closeExport = useCallback(() => setExportOpen(false), []);
+  const exportCounts = useMemo(() => {
+    const inRangeIgnored = [...ignored].filter((id) => range.get(id) !== 'outOfRange');
+    return {
+      ignored: { count: inRangeIgnored.length, decided: inRangeIgnored.filter((id) => id in review.decisions).length },
+      outOfRange: (items ?? []).filter((item) => item.kind !== 'formatting' && outOfRange.has(item.id)).length,
+    };
+  }, [ignored, range, review.decisions, items, outOfRange]);
 
   const setFile = useCallback((role: DocumentRole, file: File) => setFiles((current) => ({ ...current, [role]: file })), []);
   const swap = useCallback(() => setFiles(({ original, edited }) => ({ original: edited, edited: original })), []);
 
-  const download = async (current: Comparison, state: DecisionState) => {
+  const download = async (current: Comparison, state: DecisionState, undecided: UndecidedChoice) => {
     if (!engine) return;
     setExportState({ status: 'running', startedAt: performance.now() });
     try {
-      // Undecided changes are accepted until the export dialog lets the reviewer choose.
-      const decisions = Object.fromEntries(finalRevisionDecisions(current.analysis.items, state, range, 'accept', ignored));
+      const decisions = Object.fromEntries(finalRevisionDecisions(current.analysis.items, state, range, undecided, ignored));
       const bytes = await engine.exportDocx({
         redline: current.result.redline.slice(0),
         revisions: current.result.revisions,
@@ -188,8 +200,11 @@ export function App() {
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });
+      setExportOpen(false);
     } catch (error) {
-      setExportState({ status: 'error', message: error instanceof Error ? error.message : String(error) });
+      const labels = new Map<string, string>();
+      for (const entry of buildReviewList(reviewable, formatting, true)) if (entry.type === 'item') labels.set(entry.item.id, entry.label);
+      setExportState({ status: 'error', failure: exportFailure(error, current.analysis.items, labels) });
     }
   };
 
@@ -205,7 +220,7 @@ export function App() {
             onSwap={swap}
             scrollLock={scrollLock}
             onScrollLockChange={setScrollLock}
-            onDownload={() => void download(comparison, review)}
+            onDownload={openExport}
             downloading={exportState.status === 'running'}
             summary={{ text: totals.text.total, formatting: totals.formatting, ignored: totals.ignored }}
             onPrevious={() => onShortcut('previous')}
@@ -224,8 +239,6 @@ export function App() {
       <Notices
         comparisonRunning={comparisonState.status === 'running' ? comparisonState : null}
         comparisonError={comparisonState.status === 'error' ? comparisonState.message : null}
-        exportState={exportState}
-        onDismissExportError={() => setExportState({ status: 'idle' })}
         inputsHadRevisions={comparison?.result.inputsHadRevisions ?? false}
       />
 
@@ -291,6 +304,19 @@ export function App() {
       {engineState.status === 'loading' && (
         <LoadingModal detail={<Progress startedAt={engineState.startedAt} stage={engineState.stage ?? 'loading-engine'} />} />
       )}
+      {comparison && exportOpen && (
+        <ExportDialog
+          undecided={totals.text.undecided}
+          formattingCount={totals.formatting}
+          formattingChoice={review.formattingChoice}
+          onFormattingChoice={(choice) => dispatch({ type: 'setFormattingChoice', choice })}
+          ignored={exportCounts.ignored}
+          outOfRange={rangeState.endPoint === null ? null : { endPoint: rangeState.endPoint, count: exportCounts.outOfRange }}
+          status={exportState}
+          onDownload={(undecided) => void download(comparison, review, undecided)}
+          onCancel={closeExport}
+        />
+      )}
       {settingsOpen && (
         <CompareSettingsDialog settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />
       )}
@@ -301,11 +327,9 @@ export function App() {
 function Notices(props: {
   comparisonRunning: { startedAt: number; stage: ProgressStage | null } | null;
   comparisonError: string | null;
-  exportState: ExportState;
-  onDismissExportError: () => void;
   inputsHadRevisions: boolean;
 }) {
-  const { comparisonRunning, comparisonError, exportState } = props;
+  const { comparisonRunning, comparisonError } = props;
   return (
     <div className="notices" aria-live="polite">
       {comparisonRunning && (
@@ -316,19 +340,6 @@ function Notices(props: {
       {comparisonError && (
         <p className="notice notice--error" role="alert">
           The documents could not be compared: {comparisonError}
-        </p>
-      )}
-      {exportState.status === 'running' && (
-        <p className="notice notice--progress">
-          <Progress startedAt={exportState.startedAt} stage="exporting" />
-        </p>
-      )}
-      {exportState.status === 'error' && (
-        <p className="notice notice--error" role="alert">
-          The download could not be prepared: {exportState.message}{' '}
-          <button type="button" className="button" onClick={props.onDismissExportError}>
-            Dismiss
-          </button>
         </p>
       )}
       {props.inputsHadRevisions && (

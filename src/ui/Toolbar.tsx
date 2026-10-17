@@ -47,7 +47,7 @@ export function Toolbar(props: Props) {
         ↓ Next
       </button>
       <button type="button" className="button button--primary" onClick={onDownload} disabled={downloading}>
-        Download
+        Download…
       </button>
       <span className="toolbar__separator" />
       <span className="toolbar__summary" data-testid="change-summary">

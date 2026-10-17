@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { ChangeItem } from '../model/changes';
 import type { RangeState } from '../model/range';
+import { excerpt } from './ChangeCard';
 
 interface Props {
   range: RangeState;
@@ -136,9 +137,4 @@ export function RangeControl(props: Props) {
       </div>
     </div>
   );
-}
-
-function excerpt(item: ChangeItem): string {
-  const text = (item.removedText || item.addedText).replace(/¶/g, ' ').replace(/\s+/g, ' ').trim();
-  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }

@@ -18,6 +18,12 @@ export function truncate(text: string, max = MAX_TEXT): string {
   return text.length <= max ? text : `${text.slice(0, max).trimEnd()}…`;
 }
 
+/** A short one-line quote of an item's text, for naming it in a message. */
+export function excerpt(item: ChangeItem): string {
+  const text = (item.removedText || item.addedText || item.text || '').replace(/¶/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+}
+
 export function locationLabel(item: ChangeItem): string {
   switch (item.location.scope) {
     case 'footnote':
