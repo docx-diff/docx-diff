@@ -37,7 +37,7 @@ export function Toolbar(props: Props) {
         className="button"
         aria-pressed={scrollLock}
         onClick={() => onScrollLockChange(!scrollLock)}
-        title="Scroll both panels together"
+        title="Scroll the panels together"
       >
         {scrollLock ? '🔒' : '🔓'} Scroll lock
       </button>

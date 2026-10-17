@@ -1,7 +1,7 @@
-// Anchor-based scroll synchronization between the two panels (FR-22, docs/architecture.md). Both
-// panels show the same HTML, so a block has the same `data-anchor` in both. Blocks visible in both
+// Anchor-based scroll synchronization between the panels (FR-22, docs/architecture.md). All
+// panels show the same HTML, so a block has the same `data-anchor` in each. Blocks visible in two
 // panels are paired by their offsets; a scroll position between two paired blocks maps
-// proportionally to the same place between them in the other panel, so regions shown on one side
+// proportionally to the same place between them in the other panel, so regions shown in one panel
 // only (an inserted passage, a deleted tail) don't make the other panel jump.
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 
@@ -74,7 +74,7 @@ export function measureBlocks(scroller: HTMLElement): BlockOffset[] {
 
 /** Scrolling the panels from code, without the sync undoing it. */
 export interface ScrollController {
-  /** Sets a panel's scroll position; the scroll event it causes is not synced to the other panel. */
+  /** Sets a panel's scroll position; the scroll event it causes is not synced to the other panels. */
   scrollQuietly(scroller: HTMLElement, top: number): void;
   /** Aligns `target` with `source`'s current position (also while the sync is off). */
   align(source: HTMLElement, target: HTMLElement): void;
@@ -85,12 +85,12 @@ function clampTop(scroller: HTMLElement, top: number): number {
 }
 
 /**
- * Keeps the two panels aligned while `enabled`. `contentKey` changes whenever the panels get new
- * content. Offsets are measured lazily and again after any size change of either panel's content.
+ * Keeps the panels aligned while `enabled`: a scroll of any of them moves the others. `contentKey`
+ * changes whenever the panels get new content; `panels` is a new array when the panels shown
+ * change. Each panel's offsets are measured lazily, and again after any size change of its content.
  */
 export function useScrollSync(
-  left: RefObject<HTMLElement | null>,
-  right: RefObject<HTMLElement | null>,
+  panels: readonly RefObject<HTMLElement | null>[],
   enabled: boolean,
   contentKey: unknown,
 ): ScrollController {
@@ -113,53 +113,71 @@ export function useScrollSync(
   }, []);
 
   useEffect(() => {
-    const leftScroller = left.current;
-    const rightScroller = right.current;
-    if (!enabled || !leftScroller || !rightScroller) return;
+    const scrollers = panels.map((panel) => panel.current);
+    if (!enabled || scrollers.length < 2 || scrollers.some((scroller) => !scroller)) return;
+    const shown = scrollers as HTMLElement[];
 
-    let pairs: { leftToRight: OffsetPair[]; rightToLeft: OffsetPair[] } | null = null;
-    const measure = () => {
-      const leftBlocks = measureBlocks(leftScroller);
-      const rightBlocks = measureBlocks(rightScroller);
-      return { leftToRight: pairOffsets(leftBlocks, rightBlocks), rightToLeft: pairOffsets(rightBlocks, leftBlocks) };
+    // Measured once per panel and kept until its size changes; the pairs of each direction likewise.
+    const blocks = new Map<HTMLElement, BlockOffset[]>();
+    const pairs = new Map<HTMLElement, Map<HTMLElement, OffsetPair[]>>();
+    const blocksOf = (scroller: HTMLElement) => {
+      let measured = blocks.get(scroller);
+      if (!measured) blocks.set(scroller, (measured = measureBlocks(scroller)));
+      return measured;
+    };
+    const pairsOf = (source: HTMLElement, target: HTMLElement) => {
+      let bySource = pairs.get(source);
+      if (!bySource) pairs.set(source, (bySource = new Map()));
+      let found = bySource.get(target);
+      if (!found) bySource.set(target, (found = pairOffsets(blocksOf(source), blocksOf(target))));
+      return found;
+    };
+    const invalidate = (scroller: HTMLElement) => {
+      blocks.delete(scroller);
+      pairs.delete(scroller);
+      for (const bySource of pairs.values()) bySource.delete(scroller);
     };
 
     const expected = expectedRef.current;
     expected.clear();
-    const sync = (source: HTMLElement, target: HTMLElement, direction: 'leftToRight' | 'rightToLeft') => {
+    const sync = (source: HTMLElement) => {
       const seen = expected.get(source);
       if (seen !== undefined && Math.abs(source.scrollTop - seen) <= 1) {
         expected.delete(source);
         return;
       }
       expected.delete(source);
-      pairs ??= measure();
-      const top = mapScrollTop(pairs[direction], source.scrollTop);
-      if (top === null) return;
-      controller.scrollQuietly(target, top);
+      for (const target of shown) {
+        if (target === source) continue;
+        const top = mapScrollTop(pairsOf(source, target), source.scrollTop);
+        if (top !== null) controller.scrollQuietly(target, top);
+      }
     };
-    const onLeftScroll = () => sync(leftScroller, rightScroller, 'leftToRight');
-    const onRightScroll = () => sync(rightScroller, leftScroller, 'rightToLeft');
-    leftScroller.addEventListener('scroll', onLeftScroll, { passive: true });
-    rightScroller.addEventListener('scroll', onRightScroll, { passive: true });
-
-    const resizeObserver = new ResizeObserver(() => {
-      pairs = null;
+    const listeners = shown.map((scroller) => {
+      const onScroll = () => sync(scroller);
+      scroller.addEventListener('scroll', onScroll, { passive: true });
+      return onScroll;
     });
-    for (const scroller of [leftScroller, rightScroller]) {
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const scroller = shown.find((candidate) => candidate === entry.target || candidate.shadowRoot?.contains(entry.target));
+        if (scroller) invalidate(scroller);
+      }
+    });
+    for (const scroller of shown) {
       resizeObserver.observe(scroller);
       const content = scroller.shadowRoot?.querySelector('.doc');
       if (content) resizeObserver.observe(content);
     }
-    // Turning sync back on aligns the right panel with the left one.
-    onLeftScroll();
+    // Turning sync back on (or showing another panel) aligns the others with the first panel.
+    listeners[0]!();
 
     return () => {
-      leftScroller.removeEventListener('scroll', onLeftScroll);
-      rightScroller.removeEventListener('scroll', onRightScroll);
+      shown.forEach((scroller, i) => scroller.removeEventListener('scroll', listeners[i]!));
       resizeObserver.disconnect();
     };
-  }, [left, right, enabled, contentKey, controller]);
+  }, [panels, enabled, contentKey, controller]);
 
   return controller;
 }

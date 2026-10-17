@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { TWO_COLUMNS, pinView } from './viewSettings';
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test("follows the browser's dark preference, and the top bar's button switches it", async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });

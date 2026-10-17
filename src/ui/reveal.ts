@@ -1,6 +1,6 @@
-// Scrolling both panels to a change (FR-28): each panel centres the first element of the change
+// Scrolling the panels to a change (FR-28): each panel centres the first element of the change
 // that it shows; a panel that shows none of it (e.g. the Original's panel for an insertion) is
-// aligned with the other one by the scroll sync's anchor mapping.
+// aligned with the first panel that does, by the scroll sync's anchor mapping.
 import type { ScrollController } from './scrollSync';
 
 function root(scroller: HTMLElement): ParentNode {
@@ -31,42 +31,48 @@ export function centredTop(scroller: HTMLElement, element: Element): number {
   return offset - (scroller.clientHeight - Math.min(box.height, scroller.clientHeight)) / 2;
 }
 
-export function revealItem(
-  left: HTMLElement,
-  right: HTMLElement,
-  itemId: string,
-  anchors: readonly string[],
+/**
+ * Scrolls each panel that shows the target to `top(scroller, element)`, then aligns the others with
+ * the first panel that showed it. Nothing moves when no panel shows it.
+ */
+function revealIn(
+  scrollers: readonly HTMLElement[],
+  find: (scroller: HTMLElement) => HTMLElement | null,
+  top: (scroller: HTMLElement, element: HTMLElement) => number,
   controller: ScrollController,
 ): void {
-  const leftElement = firstShownElement(left, itemId, anchors);
-  const rightElement = firstShownElement(right, itemId, anchors);
-  if (leftElement) controller.scrollQuietly(left, centredTop(left, leftElement));
-  if (rightElement) controller.scrollQuietly(right, centredTop(right, rightElement));
-  if (leftElement && !rightElement) controller.align(left, right);
-  if (rightElement && !leftElement) controller.align(right, left);
+  const found = scrollers.map(find);
+  scrollers.forEach((scroller, i) => {
+    const element = found[i];
+    if (element) controller.scrollQuietly(scroller, top(scroller, element));
+  });
+  const source = scrollers.find((_, i) => found[i]);
+  if (!source) return;
+  scrollers.forEach((scroller, i) => {
+    if (!found[i]) controller.align(source, scroller);
+  });
+}
+
+export function revealItem(scrollers: readonly HTMLElement[], itemId: string, anchors: readonly string[], controller: ScrollController): void {
+  revealIn(scrollers, (scroller) => firstShownElement(scroller, itemId, anchors), centredTop, controller);
 }
 
 /** Space left above a block scrolled to the top of a panel. */
 const TOP_MARGIN = 16;
 
 /**
- * Scrolling both panels to a block, e.g. an outline heading (FR-24a): each panel that shows it puts
+ * Scrolling the panels to a block, e.g. an outline heading (FR-24a): each panel that shows it puts
  * it near the top; a panel that doesn't (a deleted heading in the Edited's panel) is aligned with
- * the other one.
+ * the first one that does.
  */
-export function revealBlock(left: HTMLElement, right: HTMLElement, unid: string, controller: ScrollController): void {
+export function revealBlock(scrollers: readonly HTMLElement[], unid: string, controller: ScrollController): void {
   const shown = (scroller: HTMLElement) => {
     const block = root(scroller).querySelector<HTMLElement>(`[data-anchor="${CSS.escape(unid)}"]`);
     return block && isShown(block) ? block : null;
   };
-  const leftBlock = shown(left);
-  const rightBlock = shown(right);
   const top = (scroller: HTMLElement, block: HTMLElement) =>
     block.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - TOP_MARGIN;
-  if (leftBlock) controller.scrollQuietly(left, top(left, leftBlock));
-  if (rightBlock) controller.scrollQuietly(right, top(right, rightBlock));
-  if (leftBlock && !rightBlock) controller.align(left, right);
-  if (rightBlock && !leftBlock) controller.align(right, left);
+  revealIn(scrollers, shown, top, controller);
 }
 
 /** A box in the scroller's content coordinates (unchanged by scrolling). */

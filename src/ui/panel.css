@@ -1,10 +1,12 @@
 /* Styles for the rendered document inside a panel's shadow root, after the converter's CSS.
-   Both panels show the same HTML: the left one hides what only the Edited document has, the
-   right one what only the Original has. Colours come from custom properties in index.css. */
+   All panels show the same HTML: the left one hides what only the Edited document has, the
+   right one what only the Original has, and the Resolved column (between them) what the export
+   drops, as classes set by resolvedView.ts. Colours and the side padding come from custom
+   properties in index.css (custom properties inherit into shadow roots). */
 
 .doc {
   margin: 0;
-  padding: 1.5rem 2rem 50vh;
+  padding: 1.5rem var(--doc-padding-inline, 2rem) 50vh;
   max-width: 48rem;
   color: var(--page-fg);
   background: var(--page-bg);
@@ -61,6 +63,19 @@
   box-shadow: inset 0 -2px 0 var(--change-move-line);
 }
 
+/* The Resolved column: what the export drops is hidden; the rest is plain text (it shows the
+   result, not the changes). */
+.doc[data-side='resolved'] .resolved-hidden {
+  display: none;
+}
+
+.doc[data-side='resolved'] :is(ins, del) {
+  color: inherit;
+  background: none;
+  text-decoration: none;
+  box-shadow: none;
+}
+
 /* Marker element of a formatting change without an element of its own (scroll target). */
 .doc .rev-format-marker {
   display: inline;
@@ -92,13 +107,13 @@
   border-radius: 2px;
 }
 
-/* Decided changes (FR-25): dimmed, with ✓ or ✗ after the last insertion or deletion the panel shows.
-   Ignored changes are plain text whatever their decision. */
-.doc :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range) {
+/* Decided changes in the side panels (FR-25): dimmed, with ✓ or ✗ after the last insertion or
+   deletion the panel shows. Ignored changes are plain text whatever their decision. */
+.doc:is([data-side='left'], [data-side='right']) :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range) {
   opacity: 0.5;
 }
 
-.doc :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc:is([data-side='left'], [data-side='right']) :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   display: inline-block;
   margin-left: 0.15em;
   font-size: 0.75em;
@@ -106,12 +121,12 @@
   text-decoration: none;
 }
 
-.doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc:is([data-side='left'], [data-side='right']) .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✓';
   color: var(--success);
 }
 
-.doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc:is([data-side='left'], [data-side='right']) .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✗';
   color: var(--danger);
 }
@@ -122,9 +137,9 @@
 }
 
 /* The comparison range (FR-18): the Original's content after the end point is greyed (its
-   changes are plain text, above), after a divider. In the Edited's panel, the text of changes
-   outside the range (the export drops their insertions) is greyed too. */
-.doc[data-side='left'] .out-of-range:not(.out-of-range .out-of-range) {
+   changes are plain text, above), after a divider, also in the Resolved column. In the Edited's
+   panel, the text of changes outside the range (the export drops their insertions) is greyed too. */
+.doc:is([data-side='left'], [data-side='resolved']) .out-of-range:not(.out-of-range .out-of-range) {
   opacity: 0.45;
 }
 

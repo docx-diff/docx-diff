@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
+import { TWO_COLUMNS, pinView } from './viewSettings';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test('a repeat visit loads the app and the engine from the service worker and works offline', async ({ page, context }) => {
   // Requests for engine files on the first visit, by the page (and its worker) and by the service worker.

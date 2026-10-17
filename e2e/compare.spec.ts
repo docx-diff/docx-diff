@@ -3,6 +3,7 @@ import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
 import { downloadReviewed } from './download';
+import { TWO_COLUMNS, pinView } from './viewSettings';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -17,6 +18,9 @@ async function chooseFiles(page: Page, original: { name: string; bytes: Uint8Arr
 }
 
 const download = downloadReviewed;
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test('rejects a file that is not a .docx', async ({ page }) => {
   await openApp(page);

@@ -159,14 +159,24 @@ body {
   font-size: 1.125rem;
 }
 
-/* The engine status and the theme toggle sit at the end of the bar; the status is hidden once ready. */
+/* The engine status and the view toggles sit at the end of the bar; the status is hidden once ready. */
 .engine-status,
+.columns-toggle,
 .theme-toggle {
   margin-left: auto;
 }
 
-.engine-status:not(.visually-hidden) + .theme-toggle {
+.engine-status:not(.visually-hidden) + :is(.columns-toggle, .theme-toggle) {
   margin-left: 0;
+}
+
+/* The two icon buttons side by side, closer than the bar's gap. */
+.columns-toggle + .theme-toggle {
+  margin-left: -1rem;
+}
+
+.columns-toggle__icon {
+  display: block;
 }
 
 .engine-status {
@@ -252,7 +262,7 @@ body {
   background: var(--primary-hover);
 }
 
-/* A square button holding one symbol (the theme toggle). */
+/* A square button holding one symbol (the view toggles). */
 .button--icon {
   justify-content: center;
   width: 2rem;
@@ -568,6 +578,9 @@ body {
   font: inherit;
   font-size: 0.8125rem;
   writing-mode: vertical-rl;
+  /* The label at the top (the inline start in vertical writing), where the sidebar's own hide
+     button is when it is open; the whole strip stays clickable. */
+  text-align: start;
   cursor: pointer;
 }
 
@@ -580,6 +593,13 @@ body {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* Original | Resolved | Edited, with less padding beside the text (read by panel.css inside the
+   panels' shadow roots). */
+.panels--three {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  --doc-padding-inline: 1rem;
 }
 
 .document-panel {
@@ -730,6 +750,9 @@ body {
   font: inherit;
   font-size: 0.8125rem;
   writing-mode: vertical-rl;
+  /* The label at the top (the inline start in vertical writing), where the sidebar's own hide
+     button is when it is open; the whole strip stays clickable. */
+  text-align: start;
   cursor: pointer;
 }
 

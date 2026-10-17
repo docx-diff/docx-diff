@@ -3,6 +3,7 @@ import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
 import { downloadReviewed } from './download';
+import { TWO_COLUMNS, pinView } from './viewSettings';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -25,6 +26,9 @@ async function textChangeCount(page: Page): Promise<number> {
 }
 
 const body = (bytes: Uint8Array) => docxText(bytes, ['word/document.xml']);
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test('a document cut short: the detected range, its export, and turning it off', async ({ page }) => {
   // The Edited document stops after the second paragraph and changes a word in the first.

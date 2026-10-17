@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ProgressStage } from './engine/types';
+import type { ChangeItem } from './model/changes';
 import {
   INITIAL_DECISIONS,
   decisionTotals,
@@ -25,9 +26,11 @@ import {
   type RangeClass,
   type RangeState,
 } from './model/range';
+import { resolvedItemDecisions } from './model/resolved';
 import { buildReviewList, navigationOrder, nextUndecided, step } from './model/reviewList';
 import { savedFilesMatch, type ReviewState, type SavedReview } from './storage/reviewStore';
 import { ChangesList } from './ui/ChangesList';
+import { ColumnsToggle } from './ui/ColumnsToggle';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
@@ -46,6 +49,7 @@ import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
 import { useCompareSettings } from './ui/useCompareSettings';
 import { useTheme } from './ui/theme';
+import { useNarrowWindow } from './ui/useNarrowWindow';
 import { useViewSettings } from './ui/useViewSettings';
 import { useEngine } from './ui/useEngine';
 import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
@@ -53,6 +57,8 @@ import { revealBlock, revealItem } from './ui/reveal';
 import { useScrollSync } from './ui/scrollSync';
 import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShortcuts';
 import { registerServiceWorker } from './serviceWorker';
+
+const NO_ITEMS: readonly ChangeItem[] = [];
 
 export function App() {
   const { state: engineState, retry } = useEngine();
@@ -80,6 +86,9 @@ export function App() {
   const [settings, setSettings] = useCompareSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [view, setView] = useViewSettings();
+  const narrow = useNarrowWindow();
+  // A narrow window shows two columns; the setting is kept for when it is wider again (FR-25c).
+  const threeColumns = view.threeColumns && !narrow;
   const [theme, toggleTheme] = useTheme();
   const ignored = useMemo(
     () => (comparison ? ignoredItems(comparison.analysis.items, comparison.itemTexts, settings) : new Set<string>()),
@@ -88,8 +97,17 @@ export function App() {
 
   const [scrollLock, setScrollLock] = useState(true);
   const leftRef = useRef<HTMLDivElement>(null);
+  const middleRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
-  const scrollController = useScrollSync(leftRef, rightRef, scrollLock, comparison);
+  /** The panels shown, in order; a new array when the view changes. */
+  const panelRefs = useMemo(() => (threeColumns ? [leftRef, middleRef, rightRef] : [leftRef, rightRef]), [threeColumns]);
+  const scrollController = useScrollSync(panelRefs, scrollLock, comparison);
+  const scrollers = useCallback(() => panelRefs.flatMap((panel) => (panel.current ? [panel.current] : [])), [panelRefs]);
+  // The Resolved column, shown again, starts aligned with the Original's panel (also with the
+  // scroll lock off).
+  useEffect(() => {
+    if (threeColumns && leftRef.current && middleRef.current) scrollController.align(leftRef.current, middleRef.current);
+  }, [threeColumns, comparison, scrollController]);
 
   const [review, dispatch] = useReducer(decisionsReducer, INITIAL_DECISIONS);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
@@ -221,6 +239,11 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [picking]);
   const reviewable = useMemo(() => reviewableItems(items ?? [], range, ignored), [items, range, ignored]);
+  const resolvedSides = useMemo(() => resolvedItemDecisions(items ?? [], review, range, ignored), [items, review, range, ignored]);
+  const resolved = useMemo(
+    () => ({ sides: resolvedSides, positions, endPoint: rangeState.endPoint }),
+    [resolvedSides, positions, rangeState.endPoint],
+  );
   const formatting = useMemo(() => formattingItems(items ?? [], range), [items, range]);
   const entries = useMemo(() => buildReviewList(reviewable, formatting, formattingExpanded), [reviewable, formatting, formattingExpanded]);
   const order = useMemo(() => navigationOrder(entries), [entries]);
@@ -238,27 +261,20 @@ export function App() {
     [reviewable, formatting, ignored, range, review.decisions],
   );
 
-  /** Makes an item the current one; `reveal` scrolls both panels to it (not for a click in a panel). */
+  /** Makes an item the current one; `reveal` scrolls the panels to it (not for a click in a panel). */
   const select = useCallback(
     (itemId: string | null, reveal: boolean) => {
       setCurrentItemId(itemId);
       setCardClosed(false);
       const item = itemId === null ? undefined : itemById.get(itemId);
-      if (reveal && item && leftRef.current && rightRef.current) {
-        revealItem(leftRef.current, rightRef.current, item.id, item.anchors, scrollController);
-      }
+      if (reveal && item) revealItem(scrollers(), item.id, item.anchors, scrollController);
     },
-    [itemById, scrollController],
+    [itemById, scrollers, scrollController],
   );
   const selectFromList = useCallback((itemId: string) => select(itemId, true), [select]);
 
   const outline = useMemo(() => (comparison ? buildOutline(comparison.document.body, comparison.result.headings) : []), [comparison]);
-  const selectHeading = useCallback(
-    (unid: string) => {
-      if (leftRef.current && rightRef.current) revealBlock(leftRef.current, rightRef.current, unid, scrollController);
-    },
-    [scrollController],
-  );
+  const selectHeading = useCallback((unid: string) => revealBlock(scrollers(), unid, scrollController), [scrollers, scrollController]);
 
   const decide = useCallback((itemId: string, decision: Decision | null) => {
     dispatch(decision === null ? { type: 'reset', itemId } : { type: 'set', itemId, decision });
@@ -396,6 +412,9 @@ export function App() {
           ⚙ Compare settings
         </button>
         <EngineStatus state={engineState} onRetry={retry} />
+        {comparison && (
+          <ColumnsToggle threeColumns={view.threeColumns} disabled={narrow} onToggle={() => setView({ threeColumns: !view.threeColumns })} />
+        )}
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </header>
 
@@ -433,23 +452,26 @@ export function App() {
               </button>
             </div>
           )}
-          <div className="panels">
-            {(['left', 'right'] as const).map((side) => (
+          <div className={`panels${threeColumns ? ' panels--three' : ''}`}>
+            {(threeColumns ? (['left', 'resolved', 'right'] as const) : (['left', 'right'] as const)).map((side) => (
               <DocumentPanel
                 key={side}
-                ref={side === 'left' ? leftRef : rightRef}
+                ref={side === 'left' ? leftRef : side === 'right' ? rightRef : middleRef}
                 side={side}
                 theme={theme}
-                title={side === 'left' ? comparison.originalName : comparison.editedName}
+                title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
+                titleTooltip={side === 'resolved' ? 'Shows the resolved text; formatting as in the Edited document' : undefined}
                 document={comparison.document}
                 ignored={ignored}
                 settings={settings}
                 decisions={review.decisions}
                 currentItemId={currentItemId}
                 onChangeClick={onChangeClick}
-                overviewItems={reviewable}
+                overviewItems={side === 'resolved' ? NO_ITEMS : reviewable}
                 outOfRangeItems={outOfRange}
-                outOfRangeBlocks={side === 'left' ? outsideBlocks : undefined}
+                outOfRangeBlocks={side === 'right' ? undefined : outsideBlocks}
+                resolved={side === 'resolved' ? resolved : undefined}
+                scrollQuietly={scrollController.scrollQuietly}
                 onPickParagraph={side === 'left' && picking ? pickParagraph : undefined}
                 card={
                   side === 'right' && showCard ? (

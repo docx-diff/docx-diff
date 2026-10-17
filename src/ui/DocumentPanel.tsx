@@ -6,16 +6,23 @@ import type { CompareSettings } from '../model/equivalence';
 import { darkColors } from './darkColors';
 import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
+import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
+import { applyRangeOrder, applyResolution, prepareResolvedPanel, type ResolvedPanel } from './resolvedView';
 
-export type PanelSide = 'left' | 'right';
+/** The Original, the Edited, or the Resolved column between them (the document as the export resolves it). */
+export type PanelSide = 'left' | 'right' | 'resolved';
+
+const SIDE_NAMES: Record<PanelSide, string> = { left: 'Original', right: 'Edited', resolved: 'Resolved' };
 
 interface Props {
   side: PanelSide;
   /** In dark mode the document's own colours are made dark too (darkColors.ts). */
   theme: Theme;
   title: string;
+  /** The title's tooltip, when not the title itself. */
+  titleTooltip?: string;
   document: RenderedDocument;
   /** Changes the compare settings ignore: shown as plain text. */
   ignored: ReadonlySet<string>;
@@ -25,12 +32,20 @@ interface Props {
   currentItemId: string | null;
   /** A click on the panel's text: the ids of the changes around the clicked point, innermost first. */
   onChangeClick: (itemIds: string[]) => void;
-  /** The changes the overview bar shows. */
+  /** The changes the overview bar shows (none in the Resolved column, which has no bar). */
   overviewItems: readonly ChangeItem[];
   /** Changes outside the comparison range: plain text, greyed in the Edited's panel. */
   outOfRangeItems: ReadonlySet<string>;
-  /** Blocks outside the comparison range (the Original's panel): greyed, after a divider. */
+  /** Blocks outside the comparison range (the Original's and the Resolved panel): greyed, after a divider. */
   outOfRangeBlocks?: ReadonlySet<string>;
+  /**
+   * The Resolved column only: each item's resolved side (`resolvedItemDecisions`), and what the
+   * order around the region outside the range needs (`applyRangeOrder`): the blocks' positions and
+   * the end point.
+   */
+  resolved?: { sides: ReadonlyMap<string, ResolvedSide>; positions: ReadonlyMap<string, number>; endPoint: number | null };
+  /** Scrolls a panel without the scroll sync following (keeps the Resolved column's text in place). */
+  scrollQuietly?: (scroller: HTMLElement, top: number) => void;
   /**
    * Set while the reviewer picks a paragraph: a click on the text gives the `data-anchor` unids
    * around the clicked point, innermost first, instead of selecting a change.
@@ -41,6 +56,8 @@ interface Props {
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
+const NO_SIDES: ReadonlyMap<string, ResolvedSide> = new Map();
+const NO_POSITIONS: ReadonlyMap<string, number> = new Map();
 const NOTE = 'li[id^="fn-"], li[id^="en-"]';
 
 /** Elements of each change in one panel, by item id. */
@@ -61,7 +78,7 @@ function elementMap(root: ParentNode): ElementMap {
  * Shows an item's decision on its elements (FR-25): `change-accepted` / `change-rejected`, and
  * `change-decided-end` on its last insertion or deletion this panel shows, which carries the ✓ / ✗.
  */
-function applyDecision(elements: readonly HTMLElement[], decision: Decision | undefined, side: PanelSide): void {
+function applyDecision(elements: readonly HTMLElement[], decision: Decision | undefined, side: 'left' | 'right'): void {
   for (const element of elements) {
     element.classList.toggle('change-accepted', decision === 'accepted');
     element.classList.toggle('change-rejected', decision === 'rejected');
@@ -76,6 +93,17 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
   }
 }
 
+/** The first block shown at the top of the panel, and its offset from the panel's top. */
+function topBlock(scroller: HTMLElement, wrapper: Element): { block: Element; offset: number } | null {
+  const top = scroller.getBoundingClientRect().top;
+  for (const block of wrapper.querySelectorAll('[data-anchor]')) {
+    const box = block.getBoundingClientRect();
+    if (box.height === 0 && box.width === 0) continue;
+    if (box.bottom > top) return { block, offset: box.top - top };
+  }
+  return null;
+}
+
 /**
  * One document panel. The rendered HTML goes into a shadow root, so the converter's stylesheet
  * (which styles `p`, `span`, `table`, … globally) stays inside the panel. The forwarded ref is the
@@ -84,6 +112,11 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
 export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function DocumentPanel(props, ref) {
   const { side, theme, title, document, ignored, settings, decisions, currentItemId, onChangeClick, overviewItems, outOfRangeItems, onPickParagraph } = props;
   const outOfRangeBlocks = props.outOfRangeBlocks ?? NO_BLOCKS;
+  const resolvedSides = props.resolved?.sides ?? NO_SIDES;
+  const positions = props.resolved?.positions ?? NO_POSITIONS;
+  const endPoint = props.resolved?.endPoint ?? null;
+  const scrollQuietly = useRef(props.scrollQuietly);
+  scrollQuietly.current = props.scrollQuietly;
   const scrollerRef = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => scrollerRef.current!, []);
   const elementsRef = useRef<ElementMap>(new Map());
@@ -93,6 +126,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const styledRef = useRef<[HTMLElement, string][]>([]);
   const appliedDecisions = useRef<Readonly<Record<string, Decision>>>({});
   const appliedCurrent = useRef<string | null>(null);
+  /** The Resolved column's state, and the resolved sides last applied (null: none yet). */
+  const resolvedRef = useRef<ResolvedPanel | null>(null);
+  const appliedSides = useRef<ReadonlyMap<string, ResolvedSide> | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
 
   useLayoutEffect(() => {
@@ -106,7 +142,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     wrapper.className = 'doc';
     wrapper.dataset.side = side;
     wrapper.append(...Array.from(document.body.childNodes, (node) => owner.importNode(node, true)));
-    mergeJoinedParagraphs(wrapper, side);
+    if (side === 'resolved') resolvedRef.current = prepareResolvedPanel(wrapper);
+    else mergeJoinedParagraphs(wrapper, side);
     const cardSlot = owner.createElement('slot');
     cardSlot.name = CARD_SLOT;
     root.replaceChildren(documentStyle, panelStyle, wrapper, cardSlot);
@@ -117,6 +154,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     styledRef.current = Array.from(wrapper.querySelectorAll<HTMLElement>('[style]'), (element) => [element, element.getAttribute('style')!]);
     appliedDecisions.current = {};
     appliedCurrent.current = null;
+    appliedSides.current = null;
     setContentVersion((version) => version + 1);
   }, [document, side]);
 
@@ -141,6 +179,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     if (!root || !wrapper) return;
     markItems(root, outOfRangeItems, 'change-out-of-range');
     wrapper.querySelector('.range-divider')?.remove();
+    // In the Resolved column, in-range blocks the engine placed after the region outside the range
+    // move before it, as the export places them.
+    if (resolvedRef.current) applyRangeOrder(resolvedRef.current, positions, endPoint, outOfRangeItems);
     let first: HTMLElement | null = null;
     for (const block of blocksRef.current) {
       const out = outOfRangeBlocks.has(block.dataset.anchor!);
@@ -158,14 +199,41 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       divider.textContent = 'End of the comparison · the rest is treated as unedited';
       first.before(divider);
     }
-  }, [document, outOfRangeItems, outOfRangeBlocks, contentVersion]);
+  }, [document, outOfRangeItems, outOfRangeBlocks, positions, endPoint, contentVersion]);
 
   useLayoutEffect(() => {
     scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle('doc--picking', onPickParagraph !== undefined);
   }, [onPickParagraph, contentVersion]);
 
+  // The Resolved column's content: only the items whose resolved side changed are touched. The
+  // text at the top of the panel stays where it is when text above it appears or disappears.
+  useLayoutEffect(() => {
+    const handle = resolvedRef.current;
+    const scroller = scrollerRef.current;
+    if (!handle || !scroller) return;
+    const previous = appliedSides.current;
+    let changed: string[] | undefined;
+    if (previous) {
+      changed = [...new Set([...previous.keys(), ...resolvedSides.keys()])].filter((id) => (previous.get(id) ?? 'accept') !== (resolvedSides.get(id) ?? 'accept'));
+      if (changed.length === 0) {
+        appliedSides.current = resolvedSides;
+        return;
+      }
+    }
+    const anchor = previous && scroller.scrollTop > 0 ? topBlock(scroller, handle.wrapper) : null;
+    applyResolution(handle, resolvedSides, changed);
+    appliedSides.current = resolvedSides;
+    if (anchor && anchor.block.getClientRects().length > 0) {
+      const offset = anchor.block.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      const top = scroller.scrollTop + offset - anchor.offset;
+      if (scrollQuietly.current) scrollQuietly.current(scroller, top);
+      else scroller.scrollTop = top;
+    }
+  }, [resolvedSides, contentVersion]);
+
   // Decisions: only the items whose decision changed are touched.
   useLayoutEffect(() => {
+    if (side === 'resolved') return;
     const previous = appliedDecisions.current;
     for (const id of new Set([...Object.keys(previous), ...Object.keys(decisions)])) {
       if (previous[id] !== decisions[id]) applyDecision(elementsRef.current.get(id) ?? [], decisions[id], side);
@@ -215,12 +283,13 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const [outsideFrom, setOutsideFrom] = useState<number | null>(null);
   const measure = useCallback(() => {
     const scroller = scrollerRef.current;
-    if (!scroller) return;
+    if (!scroller || side === 'resolved') return;
     setMarks(measureMarks(scroller, overviewItems, elementsRef.current, side));
     setOutsideFrom(measureOffset(scroller, scroller.shadowRoot?.querySelector('.range-divider') ?? null));
     // `outOfRangeBlocks`: the divider moves with the range.
   }, [overviewItems, side, outOfRangeBlocks]);
   useEffect(() => {
+    if (side === 'resolved') return;
     measure();
     const content = scrollerRef.current?.shadowRoot?.querySelector('.doc');
     if (!content || typeof ResizeObserver === 'undefined') return;
@@ -236,25 +305,27 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [measure, contentVersion]);
+  }, [measure, side, contentVersion]);
 
   return (
-    <section className={`document-panel document-panel--${side}`} aria-label={`${side === 'left' ? 'Original' : 'Edited'}: ${title}`}>
-      <h2 className="document-panel__title" title={title}>
+    <section className={`document-panel document-panel--${side}`} aria-label={side === 'resolved' ? title : `${SIDE_NAMES[side]}: ${title}`}>
+      <h2 className="document-panel__title" title={props.titleTooltip ?? title}>
         {title}
       </h2>
       <div className="document-panel__body">
         <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0}>
           {props.card}
         </div>
-        <OverviewBar
-          scrollerRef={scrollerRef}
-          marks={marks}
-          outsideFrom={outsideFrom}
-          decisions={decisions}
-          currentItemId={currentItemId}
-          side={side}
-        />
+        {side !== 'resolved' && (
+          <OverviewBar
+            scrollerRef={scrollerRef}
+            marks={marks}
+            outsideFrom={outsideFrom}
+            decisions={decisions}
+            currentItemId={currentItemId}
+            side={side}
+          />
+        )}
       </div>
     </section>
   );

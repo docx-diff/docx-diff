@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { bigPair } from '../test/big-pair';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { downloadReviewed } from './download';
+import { TWO_COLUMNS, pinView } from './viewSettings';
 
 // Time budgets of the success metrics (docs/requirements.md): compare + display under 10 s (~60
 // pages) and 60 s (~300 pages) once the engine has loaded, export under 10 s, and no frozen page.
@@ -11,6 +12,9 @@ import { downloadReviewed } from './download';
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 // A main-thread task this long would make the page feel frozen.
 const FROZEN_MS = 1000;
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test.skip(!process.env.PERF, 'set PERF=1 to run the timing checks');
 

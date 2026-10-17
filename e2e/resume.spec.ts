@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
+import { TWO_COLUMNS, pinView } from './viewSettings';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -63,6 +64,9 @@ async function reviewSomeChanges(page: Page) {
 }
 
 const prompt = (page: Page) => page.getByRole('dialog', { name: 'Resume review of original.docx → edited.docx?' });
+
+// The view these tests were written for (the three-column view has its own tests in resolved.spec.ts).
+test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
 
 test('a review is saved and resumed after a reload with the same decisions and range', async ({ page }) => {
   await openAndCompare(page);
