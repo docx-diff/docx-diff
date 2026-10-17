@@ -120,6 +120,12 @@ to ~300 pages; no backend.
 22. The panels scroll **in sync** (the matching paragraph stays aligned).
 23. A "Scroll lock" toggle turns sync off.
 24. Each panel has a narrow overview bar showing where the changes are; clicking scrolls there.
+    24a. A collapsible **outline** sidebar on the left lists the headings, indented by level, like a
+    table of contents: the Edited's, or the Original's when the Edited has none (only one of them may
+    use heading styles). Headings only one version has are struck through (Original only) or
+    underlined (Edited only), and those outside the comparison range greyed. Clicking one
+    scrolls **both** panels to it (whatever the scroll lock). Collapsed, it is a strip that opens it
+    again; remembered in the browser, not part of a saved review.
 25. Accepted/rejected changes are distinguishable from undecided ones in both panels (dimmed, ✓ / ✗).
     25a. Light and dark colours: the app follows the browser's preference, and an icon button at the
     end of the top bar switches between them (remembered in this browser; switching back to the

@@ -6,9 +6,11 @@ export interface ViewSettings {
   inlineCard: boolean;
   /** The changes list is shown (FR-26b). */
   changesList: boolean;
+  /** The outline sidebar is shown (FR-24a). */
+  outline: boolean;
 }
 
-export const DEFAULT_VIEW_SETTINGS: ViewSettings = { inlineCard: true, changesList: true };
+export const DEFAULT_VIEW_SETTINGS: ViewSettings = { inlineCard: true, changesList: true, outline: true };
 
 const STORAGE_KEY = 'docx-diff:view-settings';
 

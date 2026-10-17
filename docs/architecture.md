@@ -29,10 +29,11 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/types.ts` — `ComparisonEngine`, worker message types, `RevisionListEntry` (our copy of the engine's shape), `CompareResult`, `ExportRequest`.
 - `src/engine/settings.ts` — the one `docxDiffCompare` settings object.
 - `src/engine/docxodus.ts` — thin wrapper over `docxodus/core`: initialize from `<base>wasm/`, warm-up, version, compare, list, render, `acceptAll` (`docxDiffAcceptRevisions`); `engineVersion()` from `__DOCXODUS_VERSION__`.
-- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → compare → list → tag → render, with stage timings.
+- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → read each input's headings → compare → list → tag → render, with stage timings.
 - `src/engine/engine.worker.ts` / `src/engine/client.ts` — the worker and its main-thread client.
 - `src/engine/ooxml.ts` — zip/XML helpers, `parseConstituentKey`, `ElementIndex` (element name + `w:id` lookup).
 - `src/engine/normalizeText.ts` — text runs to NFC before comparing (FR-13a).
+- `src/engine/headings.ts` — each input's headings, for the outline (FR-24a).
 - `src/engine/tagRedline.ts` — `w:author` → `rev:<id>` before rendering; `unlinkHyperlinksWithChanges`.
 - `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `notes.ts`, `comments.ts` — its steps.
 
@@ -45,11 +46,12 @@ Model (pure TypeScript, main thread)
 - `src/model/decisions.ts` — decision state (decisions, formatting choice, comments) and reducer; `finalRevisionDecisions` for export.
 - `src/model/comments.ts` — the text of the exported comments (FR-27b).
 - `src/model/reviewList.ts` — list entries, navigation order, Previous/Next, next undecided.
+- `src/model/outline.ts` — the headings for the outline sidebar (FR-24a).
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
 - `renderedDocument.ts` — prepares the HTML once for both panels; `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts`, `reveal.ts`, `OverviewBar.tsx`.
-- `ChangesList.tsx`, `ChangeCard.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
+- `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
 
 Storage: `src/storage/reviewStore.ts`. Service worker registration: `src/serviceWorker.ts`.
 
@@ -83,7 +85,8 @@ Storage: `src/storage/reviewStore.ts`. Service worker registration: `src/service
    ```
    Never `compareDocuments`: it exposes only `authorName`/`caseInsensitive` and always compares
    headers/footers. Before comparing, `getRevisions` on each input sets `inputsHadRevisions` (FR-13),
-   and the inputs' text is normalized to NFC (the engine matches exact code points).
+   and the inputs' text is normalized to NFC (the engine matches exact code points). Each input's
+   headings are read from its own XML (`headings.ts`, for the outline).
 2. **List revisions:** `getRevisions(redline)` → `RevisionListEntry[]` (`id`, `type`, `family`,
    `constituentIds`, `constituentKeys`, `text`, `scope`, `anchorId`, `affectedAnchors`,
    `resolutionStatus`).
@@ -177,7 +180,18 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
 - **Scroll sync** (`scrollSync.ts`): both panels have the same `data-anchor`s. The top-most visible
   anchor of the scrolled panel is aligned in the other, interpolating between blocks both panels show;
   the sync's own scroll events are ignored. `reveal.ts` centres a change's first shown element in each
-  panel (or aligns a panel that shows none of it with the other).
+  panel (or aligns a panel that shows none of it with the other); `revealBlock` does the same for an
+  outline heading, placing it near the top.
+- **Outline** (FR-24a): the Edited's headings, or the Original's when the Edited has none. They are
+  read from the inputs in the worker (`src/engine/headings.ts`: body paragraphs with an outline level,
+  direct or through the style's `w:basedOn` chain; text in the accepted view), **not** from the
+  redline's `h1`–`h6`: the engine can drop the Edited's paragraph style from the redline. On the
+  sample the Edited's six `Heading3`/`Heading2` paragraphs come out with no `w:pStyle`, their
+  `w:pPrChange` holding the Original's `Cmsor3`, so the HTML shows only 2 of its 8 headings as `h*`.
+  `buildOutline` (`src/model/outline.ts`) places each heading, in order, on the next body paragraph
+  of the decorated HTML whose text in that version equals it (or starts it, for a paragraph joined
+  into the next); one it cannot place is left out. The HTML converter makes `h<n>` only from a
+  *style's* `w:outlineLvl`, so `minimalDocx` adds a styles part when given headings.
 - **Card in the Edited's panel** (FR-28a, `InlineChangeCard.tsx`): React renders it as a light-DOM
   child of the right panel's scroller (the shadow host), shown through a `<slot name="change-card">`
   at the end of the shadow root. So it gets the page's styles, and, the scroller (`contain: strict`)

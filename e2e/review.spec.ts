@@ -301,3 +301,46 @@ test('on the sample pair, rejecting every undecided change gives the Original te
 
   expect(docxText(await download(page, 'reject'))).toEqual(docxText(original));
 });
+
+test('the outline lists the headings and scrolls both panels to one', async ({ page }) => {
+  const filler = (n: number, prefix: string) => Array.from({ length: n }, (_, i) => `${prefix} paragraph ${i + 1}.`);
+  const original = minimalDocx([{ heading: 1, text: 'Introduction' }, ...filler(60, 'Intro'), { heading: 2, text: 'Details' }, ...filler(60, 'Detail')]);
+  const edited = minimalDocx([
+    { heading: 1, text: 'Introduction' },
+    ...filler(60, 'Intro'),
+    { heading: 2, text: 'Added section' },
+    'A new paragraph.',
+    { heading: 2, text: 'Details' },
+    ...filler(60, 'Detail'),
+  ]);
+  await openAndCompare(page, original, edited);
+
+  const outline = page.getByTestId('outline');
+  await expect(outline.getByRole('button')).toHaveText(['Introduction', 'Added section', 'Details']);
+  await expect(outline.getByRole('button', { name: 'Added section' })).toHaveClass(/outline__entry--inserted/);
+
+  // Each panel puts the heading near its top, whatever the scroll lock.
+  await page.getByRole('button', { name: 'Scroll lock' }).click();
+  await outline.getByRole('button', { name: 'Details' }).click();
+  for (const side of ['left', 'right']) {
+    const panel = page.getByTestId(`panel-${side}`);
+    const heading = panel.locator('h2', { hasText: 'Details' });
+    const offset = (await heading.boundingBox())!.y - (await panel.boundingBox())!.y;
+    expect(offset).toBeGreaterThan(0);
+    expect(offset).toBeLessThan(40);
+  }
+
+  // A heading only the Edited has: the Original's panel is aligned with the Edited's.
+  await outline.getByRole('button', { name: 'Introduction' }).click();
+  await outline.getByRole('button', { name: 'Added section' }).click();
+  const right = page.getByTestId('panel-right');
+  const added = right.locator('h2', { hasText: 'Added section' });
+  expect((await added.boundingBox())!.y - (await right.boundingBox())!.y).toBeLessThan(40);
+  await expect.poll(() => page.getByTestId('panel-left').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  // Collapsible.
+  await page.getByRole('button', { name: 'Hide the outline' }).click();
+  await expect(outline).toHaveCount(0);
+  await page.getByRole('button', { name: /Outline/ }).click();
+  await expect(outline).toBeVisible();
+});

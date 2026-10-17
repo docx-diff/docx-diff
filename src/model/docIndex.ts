@@ -75,7 +75,7 @@ const NOT_ORIGINAL = { content: 'ins, .rev-move-to', paragraphMark: 'rev-para-in
 /** Content that is not in the Edited document (hidden in the right panel), and the class of a deleted paragraph mark. */
 const NOT_EDITED = { content: 'del, .rev-move-from', paragraphMark: 'rev-para-del' };
 /** Rendering aids and list labels (numbering, not text). */
-const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, [data-list-marker]';
+export const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, [data-list-marker]';
 /** `NodeFilter.SHOW_TEXT`; `NodeFilter` is not a global when the document comes from jsdom in Node tests. */
 const SHOW_TEXT = 0x4;
 

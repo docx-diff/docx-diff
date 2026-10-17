@@ -46,6 +46,29 @@ export function revealItem(
   if (rightElement && !leftElement) controller.align(right, left);
 }
 
+/** Space left above a block scrolled to the top of a panel. */
+const TOP_MARGIN = 16;
+
+/**
+ * Scrolling both panels to a block, e.g. an outline heading (FR-24a): each panel that shows it puts
+ * it near the top; a panel that doesn't (a deleted heading in the Edited's panel) is aligned with
+ * the other one.
+ */
+export function revealBlock(left: HTMLElement, right: HTMLElement, unid: string, controller: ScrollController): void {
+  const shown = (scroller: HTMLElement) => {
+    const block = root(scroller).querySelector<HTMLElement>(`[data-anchor="${CSS.escape(unid)}"]`);
+    return block && isShown(block) ? block : null;
+  };
+  const leftBlock = shown(left);
+  const rightBlock = shown(right);
+  const top = (scroller: HTMLElement, block: HTMLElement) =>
+    block.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - TOP_MARGIN;
+  if (leftBlock) controller.scrollQuietly(left, top(left, leftBlock));
+  if (rightBlock) controller.scrollQuietly(right, top(right, rightBlock));
+  if (leftBlock && !rightBlock) controller.align(left, right);
+  if (rightBlock && !leftBlock) controller.align(right, left);
+}
+
 /** A box in the scroller's content coordinates (unchanged by scrolling). */
 export interface ContentBox {
   top: number;

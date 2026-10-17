@@ -13,6 +13,7 @@ import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
 import { exportComments } from '../src/model/comments';
 import { INITIAL_DECISIONS } from '../src/model/decisions';
+import { buildOutline } from '../src/model/outline';
 import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
@@ -191,6 +192,18 @@ describeWithSamples('sample pair', () => {
       const formatting = analysis.items.filter((item) => item.kind === 'formatting');
       expect(formatting.filter((item) => !withElement.has(item.id))).toEqual([]);
       expect(document.querySelectorAll('.rev-format-marker')).toHaveLength(23);
+    });
+  });
+
+  describe('outline', () => {
+    it("lists the Edited's 8 headings, though the redline renders only 2 of them as headings", () => {
+      expect(result.headings.original).toHaveLength(34);
+      expect(result.headings.edited.map((heading) => heading.level)).toEqual([1, 2, 3, 3, 3, 3, 3, 3]);
+      const { document } = prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), (html) => new JSDOM(html).window.document);
+      const outline = buildOutline(document.body, result.headings);
+      expect(outline.map((entry) => entry.text)).toEqual(result.headings.edited.map((heading) => heading.text));
+      expect(new Set(outline.map((entry) => entry.unid)).size).toBe(8);
+      expect(outline.filter((entry) => !entry.inOriginal).map((entry) => entry.text)).toEqual(['KELLÉKEK KÉRELME']);
     });
   });
 

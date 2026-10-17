@@ -1,7 +1,8 @@
-// The compare pipeline the worker runs: normalize and check the inputs, compare, list revisions,
-// tag and render.
+// The compare pipeline the worker runs: normalize and check the inputs, read their headings,
+// compare, list revisions, tag and render.
 // Kept apart from the worker so that Node tests run exactly the same steps.
 import { compare, listRevisions, render } from './docxodus';
+import { documentHeadings } from './headings';
 import { normalizeDocxText } from './normalizeText';
 import { tagRedline } from './tagRedline';
 import type { CompareResult, ProgressStage, RevisionListEntry } from './types';
@@ -15,7 +16,7 @@ export async function runCompare(
   edited: Uint8Array,
   onStage: (stage: ProgressStage) => void = () => {},
 ): Promise<ComparePipelineResult> {
-  const timings = { normalize: 0, checkInputs: 0, compare: 0, list: 0, tag: 0, render: 0 };
+  const timings = { normalize: 0, checkInputs: 0, headings: 0, compare: 0, list: 0, tag: 0, render: 0 };
   const timed = async <T>(name: keyof typeof timings, step: () => T | Promise<T>): Promise<T> => {
     const start = performance.now();
     try {
@@ -31,6 +32,7 @@ export async function runCompare(
     const [originalRevisions, editedRevisions] = [await listRevisions(original), await listRevisions(edited)];
     return originalRevisions.length > 0 || editedRevisions.length > 0;
   });
+  const headings = await timed('headings', () => ({ original: documentHeadings(original), edited: documentHeadings(edited) }));
   const redline = await timed('compare', () => compare(original, edited));
 
   onStage('listing');
@@ -43,5 +45,5 @@ export async function runCompare(
   }
   const html = await timed('render', () => render(tagged.bytes));
 
-  return { redline, revisions, html, inputsHadRevisions, timings };
+  return { redline, revisions, html, inputsHadRevisions, headings, timings };
 }

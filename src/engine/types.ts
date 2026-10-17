@@ -117,8 +117,18 @@ export interface CompareResult {
   html: string;
   /** Either input already contained tracked changes; the engine compared their accepted view (FR-13). */
   inputsHadRevisions: boolean;
+  /** Each input's headings, for the outline (FR-24a). */
+  headings: { original: DocumentHeading[]; edited: DocumentHeading[] };
   /** Milliseconds per stage. */
-  timings: { normalize: number; checkInputs: number; compare: number; list: number; tag: number; render: number };
+  timings: { normalize: number; checkInputs: number; headings: number; compare: number; list: number; tag: number; render: number };
+}
+
+/** A heading of an input document: a body paragraph with an outline level. */
+export interface DocumentHeading {
+  /** 1–9 (Word's outline level + 1). */
+  level: number;
+  /** Its text, whitespace collapsed. */
+  text: string;
 }
 
 /** The comparison engine as the UI sees it; implemented by `client.ts` over the worker. */

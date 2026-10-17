@@ -14,6 +14,7 @@ import {
 } from './model/decisions';
 import { exportComments } from './model/comments';
 import { ignoredItems } from './model/equivalence';
+import { buildOutline } from './model/outline';
 import {
   blockPositions,
   classify,
@@ -35,6 +36,7 @@ import { ExportDialog, exportFailure, type ExportStatus } from './ui/ExportDialo
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
 import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
+import { Outline } from './ui/Outline';
 import { Progress } from './ui/Progress';
 import { RangeControl } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
@@ -47,7 +49,7 @@ import { useTheme } from './ui/theme';
 import { useViewSettings } from './ui/useViewSettings';
 import { useEngine } from './ui/useEngine';
 import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
-import { revealItem } from './ui/reveal';
+import { revealBlock, revealItem } from './ui/reveal';
 import { useScrollSync } from './ui/scrollSync';
 import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShortcuts';
 import { registerServiceWorker } from './serviceWorker';
@@ -250,6 +252,14 @@ export function App() {
   );
   const selectFromList = useCallback((itemId: string) => select(itemId, true), [select]);
 
+  const outline = useMemo(() => (comparison ? buildOutline(comparison.document.body, comparison.result.headings) : []), [comparison]);
+  const selectHeading = useCallback(
+    (unid: string) => {
+      if (leftRef.current && rightRef.current) revealBlock(leftRef.current, rightRef.current, unid, scrollController);
+    },
+    [scrollController],
+  );
+
   const decide = useCallback((itemId: string, decision: Decision | null) => {
     dispatch(decision === null ? { type: 'reset', itemId } : { type: 'set', itemId, decision });
   }, []);
@@ -414,6 +424,15 @@ export function App() {
 
       {comparison ? (
         <div className={`workspace${view.changesList ? '' : ' workspace--list-hidden'}`}>
+          {view.outline ? (
+            <Outline entries={outline} outOfRangeBlocks={outsideBlocks} onSelect={selectHeading} onHide={() => setView({ outline: false })} />
+          ) : (
+            <div className="outline-rail">
+              <button type="button" className="outline-rail__show" title="Show the outline" onClick={() => setView({ outline: true })}>
+                Outline <span aria-hidden="true">»</span>
+              </button>
+            </div>
+          )}
           <div className="panels">
             {(['left', 'right'] as const).map((side) => (
               <DocumentPanel
