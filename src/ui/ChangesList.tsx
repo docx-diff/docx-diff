@@ -30,6 +30,8 @@ interface Props {
   formattingExpanded: boolean;
   onFormattingExpanded: (expanded: boolean) => void;
   totals: ListTotals;
+  /** Collapses the list (FR-26b). */
+  onHide: () => void;
 }
 
 /**
@@ -68,6 +70,9 @@ export function ChangesList(props: Props) {
         </button>
         <button type="button" className="button button--reject" disabled={undecided === 0} onClick={() => setConfirm('rejected')}>
           Reject all
+        </button>
+        <button type="button" className="button button--plain changes__hide" aria-label="Hide the changes list" title="Hide the changes list" onClick={props.onHide}>
+          »
         </button>
       </div>
       <div ref={scrollerRef} className="changes__scroller" data-testid="changes-list">

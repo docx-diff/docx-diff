@@ -49,7 +49,8 @@ interface Props {
   /** Undefined: undecided. Formatting items have none (they follow the formatting choice). */
   decision: Decision | undefined;
   current: boolean;
-  onSelect: (itemId: string) => void;
+  /** Undefined: the card can't be selected (the card shown in the Edited's panel is for the current item). */
+  onSelect?: (itemId: string) => void;
   /** `null` resets to undecided. */
   onDecide: (itemId: string, decision: Decision | null) => void;
   /** Decides every undecided item up to and including this one (FR-27a). */
@@ -58,13 +59,17 @@ interface Props {
   comment: string | undefined;
   /** `null` removes the comment. */
   onComment: (itemId: string, text: string | null) => void;
+  /** Shows a close button in the corner (the card in the Edited's panel, FR-28a). */
+  onClose?: () => void;
+  testId?: string;
 }
 
 /**
- * One change in the changes list (FR-26, FR-27), with its comment under it (FR-27b). Formatting
- * items have no Accept/Reject (FR-30).
+ * One change in the changes list (FR-26, FR-27), with its comment under it (FR-27b), or the current
+ * change in the Edited's panel (FR-28a). Formatting items have no Accept/Reject (FR-30).
  */
-export const ChangeCard = memo(function ChangeCard({ item, label, decision, current, onSelect, onDecide, onDecideUntil, comment, onComment }: Props) {
+export const ChangeCard = memo(function ChangeCard(props: Props) {
+  const { item, label, decision, current, onSelect, onDecide, onDecideUntil, comment, onComment, onClose } = props;
   const formatting = item.kind === 'formatting';
   const commentRef = useRef<HTMLTextAreaElement>(null);
   // Bumped by "… with comment": focuses the comment once it is there.
@@ -75,18 +80,18 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
   const delta = wordDeltaLabel(item.wordDelta);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (!onSelect || event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
     event.preventDefault();
     onSelect(item.id);
   };
   return (
     <div
       className={`change-card change-card--${state}${current ? ' change-card--current' : ''}`}
-      data-testid="change-card"
+      data-testid={props.testId ?? 'change-card'}
       data-item-id={item.id}
       aria-current={current ? 'true' : undefined}
-      tabIndex={0}
-      onClick={() => onSelect(item.id)}
+      tabIndex={onSelect ? 0 : undefined}
+      onClick={onSelect && (() => onSelect(item.id))}
       onKeyDown={onKeyDown}
     >
       <div className="change-card__header">
@@ -95,6 +100,11 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
         <span className="change-card__location">{locationLabel(item)}</span>
         {delta && <span className="change-card__delta">{delta}</span>}
         {!formatting && <span className="change-card__state">{decision === 'accepted' ? '✓ Accepted' : decision === 'rejected' ? '✗ Rejected' : 'Undecided'}</span>}
+        {onClose && (
+          <button type="button" className="change-card__close" aria-label="Hide this card" title="Hide this card (Esc)" onClick={onClose}>
+            ×
+          </button>
+        )}
       </div>
       <div className="change-card__text">
         {item.moveEdit ? (

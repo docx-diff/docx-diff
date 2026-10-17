@@ -1,8 +1,9 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import panelCss from './panel.css?inline';
 import type { ChangeItem } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import type { CompareSettings } from '../model/equivalence';
+import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
 
@@ -31,6 +32,8 @@ interface Props {
    * around the clicked point, innermost first, instead of selecting a change.
    */
   onPickParagraph?: (unids: string[]) => void;
+  /** Shown over the text, scrolling with it (the current change's card, FR-28a). */
+  card?: ReactNode;
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
@@ -98,7 +101,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     wrapper.dataset.side = side;
     wrapper.append(...Array.from(document.body.childNodes, (node) => owner.importNode(node, true)));
     mergeJoinedParagraphs(wrapper, side);
-    root.replaceChildren(documentStyle, panelStyle, wrapper);
+    const cardSlot = owner.createElement('slot');
+    cardSlot.name = CARD_SLOT;
+    root.replaceChildren(documentStyle, panelStyle, wrapper, cardSlot);
     host.scrollTop = 0;
     elementsRef.current = elementMap(wrapper);
     blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
@@ -225,7 +230,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
         {title}
       </h2>
       <div className="document-panel__body">
-        <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0} />
+        <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0}>
+          {props.card}
+        </div>
         <OverviewBar
           scrollerRef={scrollerRef}
           marks={marks}

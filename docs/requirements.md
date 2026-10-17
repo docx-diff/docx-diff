@@ -127,6 +127,9 @@ to ~300 pages; no backend.
 26. All changes in document order. Each item: number, type, removed and/or added text (truncated),
     location (body / footnote N / table), word count change ("−1 +1"). Formatting items describe
     what changed ("Bold removed, Font changed"). A move that carries edits shows both wordings.
+
+    26b. The list can be **collapsed** (» in its header) to a narrow strip showing the number of
+    undecided changes, which opens it again; remembered in the browser.
 27. **Accept** / **Reject** per item, the current decision shown; a decision can be changed or reset.
 
     27a. Each button has a joined arrow opening a menu: **Accept/Reject this** (the button's own
@@ -152,6 +155,14 @@ to ~300 pages; no backend.
     A change in a footnote or endnote is commented on the note's reference; a move on the side the
     export keeps.
 28. Clicking an item scrolls **both** panels to it and marks it as current.
+
+    28a. The current change's **card** (as in the list: text, Accept/Reject with their menus,
+    comment) also appears in the Edited's panel, below the change with a gap so the next line stays
+    readable, whichever way it was selected (panel, list, keyboard). It scrolls with the text; for a
+    deletion it sits under the place the deleted text was. An × in its corner (or Escape) hides it
+    until the next selection. A **Display** option in Compare settings turns it off (on by default;
+    remembered in the browser, not part of a saved review). With it, changes can be reviewed with
+    the list collapsed (FR-26b).
 29. Clicking a change in either panel selects its item.
 30. **Formatting group:** all formatting changes in one collapsible group, **collapsed by default**,
     with their count. Formatting is decided **once for the whole document**: **Keep the Original's

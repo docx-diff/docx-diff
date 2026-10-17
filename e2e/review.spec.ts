@@ -130,7 +130,9 @@ test('keyboard shortcuts and clicks in the panels select and decide changes', as
   await page.keyboard.press('u');
   await expect(cards.nth(1)).toContainText('Undecided');
 
-  // A click on a change in the right panel selects it.
+  // A click on a change in the right panel selects it (once the current change's card, which can
+  // cover the next line, is closed).
+  await page.getByTestId('panel-right').getByRole('button', { name: 'Hide this card' }).click();
   await page.getByTestId('panel-right').locator('ins', { hasText: '8' }).click();
   await expect(cards.nth(2)).toHaveAttribute('aria-current', 'true');
 
@@ -144,6 +146,55 @@ test('keyboard shortcuts and clicks in the panels select and decide changes', as
 
   // Undecided changes are accepted on download.
   expect(docxText(await download(page))).toEqual(['One two three.', 'Four five 6.', 'Seven 8 nine.']);
+});
+
+test('the current change has its card under it in the Edited panel, and the changes list can be hidden', async ({ page }) => {
+  const original = minimalDocx(['One two three.', 'Four five six.', 'Seven eight nine.']);
+  const edited = minimalDocx(['One 2 three.', 'Four five 6.', 'Seven 8 nine.']);
+  await openAndCompare(page, original, edited);
+  const right = page.getByTestId('panel-right');
+  const card = right.getByTestId('inline-change-card');
+  const cards = page.getByTestId('change-card');
+  await expect(card).toHaveCount(0);
+
+  // A click on a change in the text shows its card below it, with space for reading between.
+  const six = right.locator('ins.rev-ins', { hasText: '6' });
+  await six.click();
+  await expect(card).toContainText('six');
+  const changeBox = (await six.boundingBox())!;
+  const cardBox = (await card.boundingBox())!;
+  expect(cardBox.y - (changeBox.y + changeBox.height)).toBeGreaterThan(16);
+  await card.getByRole('button', { name: 'Reject', exact: true }).click();
+  await expect(card).toContainText('Rejected');
+  await expect(cards.nth(1)).toContainText('Rejected');
+
+  // × hides it until the next selection; so does Escape.
+  await card.getByRole('button', { name: 'Hide this card' }).click();
+  await expect(card).toHaveCount(0);
+  await page.keyboard.press('j');
+  await expect(card).toContainText('eight');
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+
+  // Selecting in the list shows it too.
+  await cards.nth(0).click();
+  await expect(card).toContainText('two');
+
+  // With the list hidden, the card still decides.
+  await page.getByRole('button', { name: 'Hide the changes list' }).click();
+  await expect(page.getByTestId('changes-list')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Accept', exact: true }).click();
+  await page.getByRole('button', { name: /Changes · 1 undecided/ }).click();
+  await expect(page.getByTestId('changes-list')).toBeVisible();
+  await expect(cards.nth(0)).toContainText('Accepted');
+
+  // Turned off in the settings, no card is shown.
+  await page.getByRole('button', { name: /Compare settings/ }).click();
+  await page.getByLabel(/Show the change card/).uncheck();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('j');
+  await expect(cards.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(card).toHaveCount(0);
 });
 
 test('formatting changes are one group decided for the whole document', async ({ page }) => {

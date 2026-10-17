@@ -28,8 +28,8 @@ const TYPING_FIELDS =
 function isTypingTarget(target: EventTarget | null, key: string): boolean {
   if (!(target instanceof Element)) return false;
   if (target.closest(TYPING_FIELDS)) return true;
-  // Arrow keys scroll a focused document panel.
-  return key.startsWith('Arrow') && target.closest('.document-panel__scroller') !== null;
+  // Arrow keys scroll a focused document panel (not from the change card shown in it).
+  return key.startsWith('Arrow') && target.closest('.document-panel__scroller') !== null && target.closest('.inline-card') === null;
 }
 
 /**

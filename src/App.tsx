@@ -33,6 +33,7 @@ import { DocumentPanel } from './ui/DocumentPanel';
 import { EngineStatus } from './ui/EngineStatus';
 import { ExportDialog, exportFailure, type ExportStatus } from './ui/ExportDialog';
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
+import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
 import { Progress } from './ui/Progress';
 import { RangeControl } from './ui/RangeControl';
@@ -41,6 +42,7 @@ import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
 import { useCompareSettings } from './ui/useCompareSettings';
+import { useViewSettings } from './ui/useViewSettings';
 import { useEngine } from './ui/useEngine';
 import { useAutoSave, useReviewStorage } from './ui/useReviewStorage';
 import { revealItem } from './ui/reveal';
@@ -73,6 +75,7 @@ export function App() {
 
   const [settings, setSettings] = useCompareSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [view, setView] = useViewSettings();
   const ignored = useMemo(
     () => (comparison ? ignoredItems(comparison.analysis.items, comparison.itemTexts, settings) : new Set<string>()),
     [comparison, settings],
@@ -85,6 +88,8 @@ export function App() {
 
   const [review, dispatch] = useReducer(decisionsReducer, INITIAL_DECISIONS);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
+  /** The current change's card in the Edited's panel was closed; it comes back with the next selection (FR-28a). */
+  const [cardClosed, setCardClosed] = useState(false);
   const [formattingExpanded, setFormattingExpanded] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
@@ -215,6 +220,10 @@ export function App() {
   const entries = useMemo(() => buildReviewList(reviewable, formatting, formattingExpanded), [reviewable, formatting, formattingExpanded]);
   const order = useMemo(() => navigationOrder(entries), [entries]);
   const itemById = useMemo(() => new Map((items ?? []).map((item) => [item.id, item])), [items]);
+  const labelById = useMemo(
+    () => new Map(entries.flatMap((entry) => (entry.type === 'item' ? [[entry.item.id, entry.label] as const] : []))),
+    [entries],
+  );
   const totals = useMemo(
     () => ({
       text: decisionTotals(reviewable, review.decisions),
@@ -228,6 +237,7 @@ export function App() {
   const select = useCallback(
     (itemId: string | null, reveal: boolean) => {
       setCurrentItemId(itemId);
+      setCardClosed(false);
       const item = itemId === null ? undefined : itemById.get(itemId);
       if (reveal && item && leftRef.current && rightRef.current) {
         revealItem(leftRef.current, rightRef.current, item.id, item.anchors, scrollController);
@@ -285,6 +295,22 @@ export function App() {
     if (next !== null) select(next, true);
   };
   useKeyboardShortcuts(onShortcut, comparison !== null && !settingsOpen);
+
+  // The current change's card in the Edited's panel (FR-28a): for a change the list shows, not while
+  // picking the end point.
+  const cardItem = currentItemId === null ? undefined : itemById.get(currentItemId);
+  const cardLabel = cardItem && labelById.get(cardItem.id);
+  const showCard = view.inlineCard && !cardClosed && !picking && cardItem !== undefined && cardLabel !== undefined;
+  useEffect(() => {
+    if (!showCard) return;
+    const onKey = (event: KeyboardEvent) => {
+      // Escape in a menu, a dialog or the help popover closes that instead.
+      if (event.key !== 'Escape' || event.defaultPrevented || helpOpen || document.querySelector('[aria-modal="true"]')) return;
+      setCardClosed(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showCard, helpOpen]);
 
   const [exportOpen, setExportOpen] = useState(false);
   const [exportState, setExportState] = useState<ExportStatus>({ status: 'idle' });
@@ -383,7 +409,7 @@ export function App() {
       )}
 
       {comparison ? (
-        <div className="workspace">
+        <div className={`workspace${view.changesList ? '' : ' workspace--list-hidden'}`}>
           <div className="panels">
             {(['left', 'right'] as const).map((side) => (
               <DocumentPanel
@@ -401,27 +427,55 @@ export function App() {
                 outOfRangeItems={outOfRange}
                 outOfRangeBlocks={side === 'left' ? outsideBlocks : undefined}
                 onPickParagraph={side === 'left' && picking ? pickParagraph : undefined}
+                card={
+                  side === 'right' && showCard ? (
+                    <InlineChangeCard
+                      item={cardItem}
+                      label={cardLabel}
+                      decision={review.decisions[cardItem.id]}
+                      onDecide={decide}
+                      onDecideUntil={decideUntil}
+                      comment={review.comments[cardItem.id]}
+                      onComment={setComment}
+                      onClose={() => setCardClosed(true)}
+                    />
+                  ) : undefined
+                }
               />
             ))}
           </div>
-          <ChangesList
-            entries={entries}
-            decisions={review.decisions}
-            currentItemId={currentItemId}
-            onSelect={selectFromList}
-            onDecide={decide}
-            onDecideUntil={decideUntil}
-            comments={review.comments}
-            onComment={setComment}
-            onDecideAllUndecided={(decision) =>
-              dispatch({ type: decision === 'accepted' ? 'acceptAllUndecided' : 'rejectAllUndecided', itemIds: reviewable.map((item) => item.id) })
-            }
-            formattingChoice={review.formattingChoice}
-            onFormattingChoice={(choice) => dispatch({ type: 'setFormattingChoice', choice })}
-            formattingExpanded={formattingExpanded}
-            onFormattingExpanded={setFormattingExpanded}
-            totals={totals}
-          />
+          {view.changesList ? (
+            <ChangesList
+              entries={entries}
+              decisions={review.decisions}
+              currentItemId={currentItemId}
+              onSelect={selectFromList}
+              onDecide={decide}
+              onDecideUntil={decideUntil}
+              comments={review.comments}
+              onComment={setComment}
+              onDecideAllUndecided={(decision) =>
+                dispatch({ type: decision === 'accepted' ? 'acceptAllUndecided' : 'rejectAllUndecided', itemIds: reviewable.map((item) => item.id) })
+              }
+              formattingChoice={review.formattingChoice}
+              onFormattingChoice={(choice) => dispatch({ type: 'setFormattingChoice', choice })}
+              formattingExpanded={formattingExpanded}
+              onFormattingExpanded={setFormattingExpanded}
+              totals={totals}
+              onHide={() => setView({ changesList: false })}
+            />
+          ) : (
+            <div className="changes-rail">
+              <button
+                type="button"
+                className="changes-rail__show"
+                title="Show the changes list"
+                onClick={() => setView({ changesList: true })}
+              >
+                <span aria-hidden="true">«</span> Changes · {totals.text.undecided} undecided
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <FileDropZones
@@ -466,7 +520,13 @@ export function App() {
         </ConfirmDialog>
       )}
       {settingsOpen && (
-        <CompareSettingsDialog settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />
+        <CompareSettingsDialog
+          settings={settings}
+          onChange={setSettings}
+          view={view}
+          onViewChange={setView}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
     </main>
   );

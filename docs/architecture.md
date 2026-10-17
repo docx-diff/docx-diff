@@ -178,6 +178,15 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   anchor of the scrolled panel is aligned in the other, interpolating between blocks both panels show;
   the sync's own scroll events are ignored. `reveal.ts` centres a change's first shown element in each
   panel (or aligns a panel that shows none of it with the other).
+- **Card in the Edited's panel** (FR-28a, `InlineChangeCard.tsx`): React renders it as a light-DOM
+  child of the right panel's scroller (the shadow host), shown through a `<slot name="change-card">`
+  at the end of the shadow root. So it gets the page's styles, and, the scroller (`contain: strict`)
+  being its containing block, it scrolls with the text without scroll listeners. `changeBox`
+  (`reveal.ts`) places it: the box around the item's shown elements; for one with none shown (a
+  deletion), the character before its first element; else its first shown paragraph. Re-placed on
+  resize of the scroller or the content. Locators on `panel-right` now also match the card's
+  `ins`/`del`: use `ins.rev-ins` etc. View settings (`useViewSettings.ts`: this card, the list
+  collapsed) are kept apart from the compare settings, which belong to the saved review.
 - The panel and list scrollers have `contain: strict`: without it, every list change laid out the long
   panel documents again.
 

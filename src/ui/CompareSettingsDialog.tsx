@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CompareSettings } from '../model/equivalence';
+import type { ViewSettings } from './useViewSettings';
 
 const OPTIONS: { key: keyof CompareSettings; label: string; hint: string }[] = [
   {
@@ -22,14 +23,17 @@ const OPTIONS: { key: keyof CompareSettings; label: string; hint: string }[] = [
 interface Props {
   settings: CompareSettings;
   onChange: (settings: CompareSettings) => void;
+  view: ViewSettings;
+  onViewChange: (change: Partial<ViewSettings>) => void;
   onClose: () => void;
 }
 
 /**
  * Modal dialog with the compare settings. Changes apply at once and don't re-run the comparison:
  * ignored changes are not highlighted or listed, and the export takes the Edited version of them.
+ * Below them, how the review is shown (FR-28a).
  */
-export function CompareSettingsDialog({ settings, onChange, onClose }: Props) {
+export function CompareSettingsDialog({ settings, onChange, view, onViewChange, onClose }: Props) {
   const firstInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     firstInput.current?.focus();
@@ -62,6 +66,14 @@ export function CompareSettingsDialog({ settings, onChange, onClose }: Props) {
             </span>
           </label>
         ))}
+        <h3 className="modal__section">Display</h3>
+        <label className="modal__option">
+          <input type="checkbox" checked={view.inlineCard} onChange={(event) => onViewChange({ inlineCard: event.target.checked })} />
+          <span>
+            Show the change card in the Edited document
+            <small>The selected change's card, with Accept and Reject, appears under the change in the right panel.</small>
+          </span>
+        </label>
         <div className="modal__actions">
           <button type="button" className="button" onClick={onClose}>
             Close

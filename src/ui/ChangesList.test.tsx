@@ -42,6 +42,7 @@ function renderList(expanded: boolean, overrides: Partial<Parameters<typeof Chan
     formattingExpanded: expanded,
     onFormattingExpanded: vi.fn(),
     totals,
+    onHide: vi.fn(),
     ...overrides,
   };
   render(<ChangesList {...props} />);
@@ -196,6 +197,12 @@ describe('ChangesList', () => {
     expect(next.onSelect).not.toHaveBeenCalled();
     fireEvent.click(within(card()).getByRole('button', { name: 'Remove comment' }));
     expect(next.onComment).toHaveBeenCalledWith('a', null);
+  });
+
+  it('hides itself with the » button', () => {
+    const props = renderList(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the changes list' }));
+    expect(props.onHide).toHaveBeenCalledOnce();
   });
 
   it('disables the bulk actions when nothing is undecided', () => {
