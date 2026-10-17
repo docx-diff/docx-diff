@@ -25,6 +25,7 @@ import {
 import { buildReviewList, navigationOrder, nextUndecided, step } from './model/reviewList';
 import { savedFilesMatch, type ReviewState, type SavedReview } from './storage/reviewStore';
 import { ChangesList } from './ui/ChangesList';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
 import { EngineStatus } from './ui/EngineStatus';
@@ -85,8 +86,11 @@ export function App() {
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
+  /** Changes with each comparison: resets the local state of the controls that belong to one review. */
+  const [reviewKey, setReviewKey] = useState(0);
   if (comparison !== reviewedComparison) {
     setReviewedComparison(comparison);
+    setReviewKey((key) => key + 1);
     const resumed = comparison && resuming?.original === comparison.original && resuming.edited === comparison.edited;
     if (resumed) setResuming(null);
     const saved = resumed ? resuming.review : null;
@@ -117,13 +121,14 @@ export function App() {
     }),
     [rangeState, review, settings, formattingExpanded],
   );
-  useAutoSave(store, comparison, engineVersion, reviewState, markUnavailable);
+  const discardSavedReview = useAutoSave(store, comparison, engineVersion, reviewState, markUnavailable);
 
   /** Compares the saved files again; their decisions and range are applied only if the files and engine version match (FR-49). */
   const resume = async (saved: SavedReview) => {
     if (engineVersion === null) return;
     setCheckingSaved(true);
-    const match = await savedFilesMatch(saved, engineVersion);
+    // Hashing fails without `crypto.subtle` (outside a secure context): then nothing is restored.
+    const match = await savedFilesMatch(saved, engineVersion).catch(() => 'unchecked' as const);
     const original = new File([saved.original.bytes], saved.original.name, { type: DOCX_TYPE });
     const edited = new File([saved.edited.bytes], saved.edited.name, { type: DOCX_TYPE });
     setSettings(saved.compareSettings);
@@ -133,21 +138,34 @@ export function App() {
         ? null
         : match === 'engine'
           ? `The saved decisions could not be restored: they were made with version ${saved.engineVersion} of the comparison engine, and this is version ${engineVersion}. The documents were compared again; please review them anew.`
-          : 'The saved decisions could not be restored: the saved documents are damaged. They were compared again; please review them anew.',
+          : match === 'files'
+            ? 'The saved decisions could not be restored: the saved documents are damaged. They were compared again; please review them anew.'
+            : 'The saved decisions could not be restored: this page cannot check the saved documents (it is not served over HTTPS). They were compared again; please review them anew.',
     );
     setFiles({ original, edited });
     setCheckingSaved(false);
     setPromptDone(true);
   };
   const discardSaved = () => {
-    void store?.discard();
+    discardSavedReview();
     setPromptDone(true);
+  };
+  const [closeOpen, setCloseOpen] = useState(false);
+  const closeReview = () => {
+    discardSavedReview();
+    setFiles({ original: null, edited: null });
+    setResuming(null);
+    setResumeNotice(null);
+    setCloseOpen(false);
   };
   const startNew = useCallback(() => setPromptDone(true), []);
 
   const items = comparison?.analysis.items;
   // The comparison range only reclassifies the changes (FR-19); their decisions are kept.
-  const positions = useMemo(() => (comparison ? blockPositions(comparison.analysis.index) : new Map<string, number>()), [comparison]);
+  const positions = useMemo(
+    () => (comparison ? blockPositions(comparison.analysis.index, comparison.analysis.suggestedEndPoint) : new Map<string, number>()),
+    [comparison],
+  );
   const range = useMemo(
     () =>
       comparison ? classify(comparison.analysis.items, comparison.analysis.index, rangeState.endPoint, positions) : new Map<string, RangeClass>(),
@@ -163,12 +181,15 @@ export function App() {
     [comparison, rangeState, positions],
   );
   const paragraphIndex = useMemo(() => new Map((comparison?.analysis.index.bodyParagraphs ?? []).map((unid, i) => [unid, i])), [comparison]);
-  /** A click on a paragraph of the Original while picking: it becomes the last paragraph in range. */
+  /**
+   * A click on a paragraph of the Original while picking: it becomes the last paragraph in range.
+   * The last paragraph of all leaves nothing outside: the full documents are compared.
+   */
   const pickParagraph = useCallback(
     (unids: string[]) => {
       const at = unids.map((unid) => paragraphIndex.get(unid)).find((i) => i !== undefined);
-      if (at === undefined || at + 1 >= paragraphIndex.size) return;
-      setRangeState({ mode: 'manual', endPoint: at + 1 });
+      if (at === undefined) return;
+      setRangeState(at + 1 >= paragraphIndex.size ? { mode: 'off', endPoint: null } : { mode: 'manual', endPoint: at + 1 });
       setPicking(false);
     },
     [paragraphIndex],
@@ -251,12 +272,12 @@ export function App() {
   }, []);
   const closeExport = useCallback(() => setExportOpen(false), []);
   const exportCounts = useMemo(() => {
-    const inRangeIgnored = [...ignored].filter((id) => range.get(id) !== 'outOfRange');
+    const decided = [...ignored].filter((id) => range.get(id) !== 'outOfRange' && id in review.decisions).length;
     return {
-      ignored: { count: inRangeIgnored.length, decided: inRangeIgnored.filter((id) => id in review.decisions).length },
+      ignored: { count: totals.ignored, decided },
       outOfRange: (items ?? []).filter((item) => item.kind !== 'formatting' && outOfRange.has(item.id)).length,
     };
-  }, [ignored, range, review.decisions, items, outOfRange]);
+  }, [ignored, range, review.decisions, items, outOfRange, totals.ignored]);
 
   const setFile = useCallback((role: DocumentRole, file: File) => {
     setFiles((current) => ({ ...current, [role]: file }));
@@ -300,6 +321,7 @@ export function App() {
             onScrollLockChange={setScrollLock}
             onDownload={openExport}
             downloading={exportState.status === 'running'}
+            onClose={() => setCloseOpen(true)}
             onPrevious={() => onShortcut('previous')}
             onNext={() => onShortcut('next')}
             navigationDisabled={order.length === 0}
@@ -325,6 +347,7 @@ export function App() {
 
       {comparison && (
         <RangeControl
+          key={reviewKey}
           range={rangeState}
           paragraphCount={comparison.analysis.index.bodyParagraphs.length}
           suggestedEndPoint={comparison.analysis.suggestedEndPoint}
@@ -408,6 +431,12 @@ export function App() {
           onStartNew={startNew}
           onDiscard={discardSaved}
         />
+      )}
+      {closeOpen && (
+        <ConfirmDialog title="Close this review?" confirmLabel="Close review" onConfirm={closeReview} onCancel={() => setCloseOpen(false)}>
+          Your decisions and the copy of both documents kept in this browser are deleted. Download the reviewed
+          document first if you need it.
+        </ConfirmDialog>
       )}
       {settingsOpen && (
         <CompareSettingsDialog settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />

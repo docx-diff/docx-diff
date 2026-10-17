@@ -169,11 +169,11 @@ test('on the sample pair, rejecting every undecided change gives the Original te
   const { original, edited } = readSamples();
   await openAndCompare(page, original, edited);
 
-  // Ignored changes take the Edited text whatever the choice; the dialog says so (53 in range,
-  // 54 in the full documents).
+  // Ignored changes take the Edited text whatever the choice; the dialog says so (54, all in range:
+  // the bare paragraph mark after the deleted tail is in range and ignored by the whitespace setting).
   await page.getByRole('toolbar').getByRole('button', { name: 'Download…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Download the reviewed document' });
-  await expect(dialog.getByTestId('export-ignored')).toHaveText(/^53 changes are ignored by the compare settings and take the Edited text\.$/);
+  await expect(dialog.getByTestId('export-ignored')).toHaveText(/^54 changes are ignored by the compare settings and take the Edited text\.$/);
   await expect(dialog.getByTestId('export-out-of-range')).toContainText('outside the comparison range');
   // The typed list numbers that became automatic numbering are formatting changes: the Original's
   // formatting keeps them as text. The choice made here is the one in the changes list.

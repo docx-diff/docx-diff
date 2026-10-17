@@ -86,6 +86,21 @@ test('a review is saved and resumed after a reload with the same decisions and r
   await expect(prompt(page)).toHaveCount(0);
 });
 
+test('Close review deletes the saved review and goes back to choosing files', async ({ page }) => {
+  await openAndCompare(page);
+  await reviewSomeChanges(page);
+  await page.getByRole('toolbar').getByRole('button', { name: /Close review/ }).click();
+  const confirm = page.getByRole('dialog', { name: 'Close this review?' });
+  await confirm.getByRole('button', { name: 'Close review' }).click();
+  await expect(page.getByLabel('Original document')).toBeAttached();
+  await expect(page.getByTestId('change-card')).toHaveCount(0);
+  await expect.poll(() => savedReview(page)).toBeNull();
+
+  await page.reload();
+  await expect(page.getByRole('status')).toHaveText(/Engine ready/, { timeout: 60_000 });
+  await expect(prompt(page)).toHaveCount(0);
+});
+
 test('decisions saved with another engine version are not restored', async ({ page }) => {
   await openAndCompare(page);
   await reviewSomeChanges(page);

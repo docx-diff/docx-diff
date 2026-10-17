@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { createStore, type UseStore } from 'idb-keyval';
+import { createStore, get, set, type UseStore } from 'idb-keyval';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_COMPARE_SETTINGS } from '../model/equivalence';
 import { openReviewStore, ReviewStore, savedFilesMatch, sha256, type ReviewState, type SavedReview } from './reviewStore';
@@ -74,6 +74,50 @@ describe('ReviewStore', () => {
 
     await store.saveState(STATE, { original: saved.edited.sha256, edited: saved.original.sha256 });
     expect(await store.load()).toMatchObject(next);
+  });
+
+  it('keeps the files apart from the reviewing state, which is saved without them', async () => {
+    const store = (await openReviewStore(useStore))!;
+    const saved = await review();
+    await store.save(saved);
+    const record = await get('current-review', useStore);
+    expect(record.original).toEqual({ name: 'a.docx', sha256: saved.original.sha256 });
+    await store.saveState({ ...STATE, decisions: {} }, { original: saved.original.sha256, edited: saved.edited.sha256 });
+    expect((await get('current-review', useStore)).original.bytes).toBeUndefined();
+    expect(new TextDecoder().decode((await store.load())!.edited.bytes)).toBe('edited');
+  });
+
+  it('replaces malformed parts of a stored record by their defaults', async () => {
+    const store = (await openReviewStore(useStore))!;
+    await store.save(await review());
+    const record = await get('current-review', useStore);
+    await set(
+      'current-review',
+      {
+        ...record,
+        decisions: { a: 'accepted', b: 'maybe', c: 3 },
+        compareSettings: { ignoreQuotes: false, ignoreDashes: 'yes' },
+        range: { mode: 'manual', endPoint: 'ten' },
+        formattingChoice: 'both',
+        formattingGroupExpanded: 1,
+      },
+      useStore,
+    );
+    expect(await store.load()).toMatchObject({
+      decisions: { a: 'accepted' },
+      compareSettings: { ...DEFAULT_COMPARE_SETTINGS, ignoreQuotes: false },
+      range: { mode: 'off', endPoint: null },
+      formattingChoice: 'edited',
+      formattingGroupExpanded: false,
+    });
+    expect(Object.keys((await store.load())!.decisions)).toEqual(['a']);
+  });
+
+  it('has no review when the files are missing', async () => {
+    const store = (await openReviewStore(useStore))!;
+    await store.save(await review());
+    await set('current-review-files', undefined, useStore);
+    expect(await store.load()).toBeNull();
   });
 
   it('ignores a record with another schema', async () => {

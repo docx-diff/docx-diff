@@ -1,6 +1,7 @@
 # False moves at the edit boundary when the Original has a long deleted tail
 
-Investigation of 2026-10-17. Status: **understood, not fixed**. A redesign that cuts the Original's tail
+Investigation of 2026-10-17. Status: **understood, not fixed**; tracked as PRD open question 6 and
+task 10.0 (decide whether to do the redesign). A redesign that cuts the Original's tail
 before comparing was assessed but not started. The closing note that gets dropped is a separate issue:
 [closing-note-out-of-range.md](closing-note-out-of-range.md).
 

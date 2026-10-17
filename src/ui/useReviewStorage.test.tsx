@@ -66,6 +66,22 @@ describe('useAutoSave', () => {
   });
 });
 
+describe('useAutoSave after a write that throws', () => {
+  afterEach(cleanup);
+
+  it('reports it and keeps saving', async () => {
+    const store = newStore();
+    const onFailure = vi.fn();
+    const broken = comparison();
+    // As when the file cannot be read again, or hashing is unavailable.
+    broken.original.arrayBuffer = () => Promise.reject(new Error('unreadable'));
+    const view = render(<AutoSave store={store} comparison={broken} state={STATE} onFailure={onFailure} />);
+    await waitFor(() => expect(onFailure).toHaveBeenCalled());
+    view.rerender(<AutoSave store={store} comparison={comparison('other')} state={STATE} onFailure={onFailure} />);
+    await waitFor(async () => expect(await store.load()).not.toBeNull());
+  });
+});
+
 function Storage({ open }: { open: () => Promise<ReviewStore | null> }) {
   const { storage } = useReviewStorage(open);
   return <p data-testid="storage">{storage.status === 'ready' ? `ready ${storage.saved?.original.name ?? 'none'}` : storage.status}</p>;

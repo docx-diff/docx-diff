@@ -39,7 +39,9 @@ export function useReviewStorage(open: () => Promise<ReviewStore | null> = openR
 /**
  * Saves the review: both files and the reviewing state once a comparison is done, then the
  * reviewing state whenever it changes, `SAVE_DELAY_MS` after the last change (and at once when the
- * page is hidden). Writes run one after another. A failed write calls `onFailure`.
+ * page is hidden). Writes run one after another. A failed write calls `onFailure`, and so does one
+ * that throws before reaching the store (e.g. `crypto.subtle` is missing outside a secure context).
+ * Returns `discard`, which deletes the saved review after the writes already queued.
  */
 export function useAutoSave(
   store: ReviewStore | null,
@@ -47,7 +49,7 @@ export function useAutoSave(
   engineVersion: string | null,
   state: ReviewState,
   onFailure: () => void,
-): void {
+): () => void {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const latest = useRef({ state, onFailure });
   latest.current = { state, onFailure };
@@ -55,9 +57,12 @@ export function useAutoSave(
   const saved = useRef<{ comparison: Comparison; hashes: Promise<{ original: string; edited: string }> } | null>(null);
 
   const enqueue = useCallback((write: () => Promise<boolean>) => {
-    queue.current = queue.current.then(write).then((ok) => {
-      if (!ok) latest.current.onFailure();
-    });
+    queue.current = queue.current
+      .then(write)
+      .catch(() => false)
+      .then((ok) => {
+        if (!ok) latest.current.onFailure();
+      });
   }, []);
 
   useEffect(() => {
@@ -102,4 +107,8 @@ export function useAutoSave(
       window.removeEventListener('pagehide', flush);
     };
   }, [store, comparison, state, enqueue]);
+
+  return useCallback(() => {
+    if (store) enqueue(() => store.discard());
+  }, [store, enqueue]);
 }

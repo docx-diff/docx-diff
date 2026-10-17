@@ -267,7 +267,7 @@ describeWithSamples('sample pair', () => {
       expect(classes.get(tailItem.id)).toBe('outOfRange');
     });
 
-    it('puts the tail (with the deletions of its notes 6–20) and the items placed after it out of range', () => {
+    it('puts the tail (with the deletions of its notes 6–20) out of range, and nothing else', () => {
       const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
       const out = analysis.items.filter((item) => classes.get(item.id) === 'outOfRange');
       const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
@@ -276,24 +276,24 @@ describeWithSamples('sample pair', () => {
       expect([...new Set(noteBlocks.map((block) => Number(block.noteId)))]).toEqual(Array.from({ length: 15 }, (_, i) => i + 6));
       expect(tailItem.revisionIds).toHaveLength(16);
       expect(out.filter((item) => item.location.scope === 'footnote')).toEqual([]);
-      // The last two items are the Edited document's closing paragraphs, which the engine placed after the deleted tail.
-      expect(countBy(out, (item) => `${item.kind}/${item.location.scope}`)).toEqual({
-        'deleted/body': 1,
-        'paragraph/body': 1,
-        'inserted/body': 1,
-      });
+      // The Edited's closing paragraphs, which the engine placed after the deleted tail, are in range.
+      expect(countBy(out, (item) => `${item.kind}/${item.location.scope}`)).toEqual({ 'deleted/body': 1 });
+      const closing = analysis.items.find((item) => item.addedText.includes('Átnézve eddig'))!;
+      expect(classes.get(closing.id)).toBe('inRange');
     });
 
     it('keeps the two moves in range: they carry the last paragraphs before the end point to after the tail', () => {
       const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
-      const positions = blockPositions(analysis.index);
+      const positions = blockPositions(analysis.index, analysis.suggestedEndPoint);
+      const blockOrder = new Map(analysis.index.blocks.map((block, i) => [block.unid, i]));
+      const lastOriginal = blockOrder.get(analysis.index.bodyParagraphs.at(-1)!)!;
       const moves = analysis.items.filter((item) => item.kind === 'moved');
       expect(moves).toHaveLength(2);
       for (const item of moves) {
         expect(classes.get(item.id)).toBe('inRange');
-        const placed = item.anchors.map((unid) => positions.get(unid)!);
-        expect(placed.some((p) => p < analysis.suggestedEndPoint!)).toBe(true);
-        expect(placed.some((p) => p >= analysis.suggestedEndPoint!)).toBe(true);
+        // The destination comes after the deleted tail in the redline, and is placed before the end point.
+        expect(item.anchors.some((unid) => blockOrder.get(unid)! > lastOriginal)).toBe(true);
+        expect(item.anchors.every((unid) => positions.get(unid)! < analysis.suggestedEndPoint!)).toBe(true);
       }
       expect(spanningItems(analysis.items, analysis.index, analysis.suggestedEndPoint, classes)).toEqual([]);
     });
@@ -397,7 +397,7 @@ describeWithSamples('sample pair', () => {
       const [editedBody, originalBody] = [body(edited), body(original)];
 
       // The Edited body ends with its "reviewed up to here" note, which the engine placed after the
-      // deleted tail: it is out of range, so the export drops it.
+      // deleted tail: it is in range, and the export puts it back before the kept tail.
       expect(editedBody.at(-1)).toBe('(Átnézve eddig, Stillness Flowing p.257)');
       const tail = result.revisions.reduce((a, b) => (b.text.length > a.text.length ? b : a));
       const firstTailParagraph = tail.text.split('¶').find((paragraph) => paragraph.trim())!;
@@ -407,7 +407,7 @@ describeWithSamples('sample pair', () => {
       // The two moves (in range, accepted) bring the last two paragraphs before the tail, with the
       // editor's changes; the export puts them back before the kept tail.
       expect(editedBody.slice(-3, -1).map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet úgy alakították ki,']);
-      expect(body(exported)).toEqual([...editedBody.slice(0, -1), ...originalBody.slice(tailStart)]);
+      expect(body(exported)).toEqual([...editedBody, ...originalBody.slice(tailStart)]);
       // The notes: the Edited's (1–4; the editor deleted note 5), then the tail's notes 6–20.
       const notes = (bytes: Uint8Array) => docxText(bytes, ['word/footnotes.xml']);
       const tailNotes = notes(original).slice(notes(original).length - (notes(exported).length - notes(edited).length));
@@ -429,7 +429,7 @@ describeWithSamples('sample pair', () => {
       const moved = originalBody.slice(tailStart - 2, tailStart);
       expect(moved.map((line) => line.slice(0, 40))).toEqual(['Luang Porra mély benyomást tett a Hanyat', 'A szigorú napirendet azért alakították k']);
       // The moves' sources sit between the deleted and the inserted versions of the list items 7.–/DN 16/.
-      expect(body(exported)).toEqual([...editedBody.slice(0, -6), ...moved, ...editedBody.slice(-6, -3), ...originalBody.slice(tailStart)]);
+      expect(body(exported)).toEqual([...editedBody.slice(0, -6), ...moved, ...editedBody.slice(-6, -3), editedBody.at(-1), ...originalBody.slice(tailStart)]);
       await expectDeliverable(exported, original);
     });
   });

@@ -81,6 +81,25 @@ describe('detectTrailingRegion', () => {
   });
 });
 
+// The same tail with a closing paragraph the Edited adds, which the engine writes after the deleted tail.
+const CLOSING_HTML = TAIL_HTML.replace(
+  '</body>',
+  '<p data-anchor="z" data-source-anchor-id="p:body:z" class="rev-para-ins" data-author="rev:i2"><ins class="rev-ins" data-author="rev:i2">Closing note</ins></p>\n</body>',
+);
+
+describe('blockPositions after a wholly deleted end', () => {
+  it('places the blocks the engine wrote after the deleted tail just before it', () => {
+    const closing = buildDocIndex(CLOSING_HTML);
+    const items = [item('d1', 'deleted', ['p1', 'p2', 'p3']), item('i2', 'inserted', ['z'])];
+    expect(detectTrailingRegion(items, closing)).toBe(2);
+    expect(blockPositions(closing, 2).get('z')).toBe(1.5);
+    expect(blockPositions(closing).get('z')).toBe(3.5);
+    expect(classify(items, closing, 2).get('i2')).toBe('inRange');
+    // An earlier end point leaves it outside: the reviewer said the comparison ends before it.
+    expect(classify(items, closing, 1).get('i2')).toBe('outOfRange');
+  });
+});
+
 describe('classify', () => {
   const items = [
     item('a', 'replaced', ['a']),

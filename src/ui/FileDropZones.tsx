@@ -114,7 +114,8 @@ export function FileDropZones({ original, edited, onFile, onSwap, disabled }: Zo
     <div className="drop-zones">
       <p className="drop-zones__intro">
         Choose the <strong>Original</strong> and the <strong>Edited</strong> Word document to compare. Your files stay on
-        this computer: they are compared in the browser and never uploaded.
+        this computer: they are compared in the browser and never uploaded. The review, with both files, is kept in this
+        browser so that you can resume it, until you close it or start another one.
       </p>
       <div className="drop-zones__row">
         <FileDropZone role="original" file={original} onFile={onFile} disabled={disabled} />

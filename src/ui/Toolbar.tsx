@@ -11,6 +11,8 @@ interface Props {
   onScrollLockChange: (locked: boolean) => void;
   onDownload: () => void;
   downloading: boolean;
+  /** Ends the review: back to choosing files, and the saved review is deleted. */
+  onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
   /** No changes to step through. */
@@ -47,6 +49,9 @@ export function Toolbar(props: Props) {
       </button>
       <button type="button" className="button button--primary" onClick={onDownload} disabled={downloading}>
         Download…
+      </button>
+      <button type="button" className="button" onClick={props.onClose} disabled={downloading} title="Close the documents and delete the saved review">
+        ✕ Close review
       </button>
       <span className="toolbar__separator" />
       <Legend />

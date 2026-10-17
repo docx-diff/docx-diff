@@ -1,6 +1,10 @@
 # The Edited's closing paragraph is dropped as out of range
 
-Investigation of 2026-10-17. Status: **understood, not fixed**; a small fix is outlined below. Related:
+Investigation of 2026-10-17. Status: **fixed 2026-10-17** (review after task 8), as outlined under "Small
+fix" below, with one correction: the position uses the detected end point (`blockPositions(index,
+suggestedEndPoint)`), not the start of the run of Original paragraphs the Edited lacks, which on the
+sample begins at 159 (the deleted wording of list items 7.– and the move sources), well before 168. The
+bare paragraph mark comes into range too and is ignored by the whitespace setting. Related:
 [false-moves-at-trailing-tail.md](false-moves-at-trailing-tail.md), which has the same root cause (the
 engine places the Edited's last paragraphs after the deleted tail).
 

@@ -32,8 +32,14 @@ export function restoredRange(saved: RangeState, paragraphCount: number, suggest
  * Position of every block on the Original's paragraph axis. An Original body paragraph sits at its
  * index in `bodyParagraphs`; a block not in the Original sits half a step after the Original
  * paragraph before it; a note paragraph sits where its note is referenced.
+ *
+ * Except after a trailing unedited region (`trailingStart`, from `detectTrailingRegion`): the
+ * engine writes the region's deletion before the Edited's last paragraphs, so the blocks not in the
+ * Original that come after the last Original paragraph belong to the end of the edited part. They
+ * sit half a step before the region, inside the detected range (on the sample: the move
+ * destinations and the Edited's closing note "(Átnézve eddig, …)").
  */
-export function blockPositions(index: DocIndex): Map<string, number> {
+export function blockPositions(index: DocIndex, trailingStart: number | null = null): Map<string, number> {
   const positions = new Map<string, number>();
   let last = -1;
   for (const block of index.blocks) {
@@ -42,7 +48,8 @@ export function blockPositions(index: DocIndex): Map<string, number> {
       last += 1;
       positions.set(block.unid, last);
     } else {
-      positions.set(block.unid, last + 0.5);
+      const afterEnd = trailingStart !== null && last === index.bodyParagraphs.length - 1;
+      positions.set(block.unid, afterEnd ? trailingStart - 0.5 : last + 0.5);
     }
   }
   for (const block of index.blocks) {
@@ -96,7 +103,7 @@ export function classify(
   items: readonly ChangeItem[],
   index: DocIndex,
   endPoint: number | null,
-  positions: Map<string, number> = blockPositions(index),
+  positions: Map<string, number> = blockPositions(index, detectTrailingRegion(items, index)),
 ): Map<string, RangeClass> {
   const result = new Map<string, RangeClass>();
   for (const item of items) {
@@ -127,7 +134,7 @@ export function spanningItems(
   index: DocIndex,
   endPoint: number | null,
   classes: ReadonlyMap<string, RangeClass>,
-  positions: Map<string, number> = blockPositions(index),
+  positions: Map<string, number> = blockPositions(index, detectTrailingRegion(items, index)),
 ): ChangeItem[] {
   if (endPoint === null) return [];
   return items.filter(
