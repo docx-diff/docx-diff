@@ -22,6 +22,26 @@ if [ -n "$(git -C "$pages" status --porcelain)" ]; then
   echo "$pages has uncommitted changes" >&2
   exit 1
 fi
+# The clone must be on the branch GitHub Pages serves (the remote's default branch) and have every
+# commit made there, e.g. a CNAME that GitHub adds for a custom domain: otherwise the push is
+# rejected, or the copy below deletes the file. Files the site needs belong in public/.
+git -C "$pages" fetch -q origin
+pages_branch=$(git -C "$pages" ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')
+if [ "$(git -C "$pages" rev-parse --abbrev-ref HEAD)" != "$pages_branch" ]; then
+  echo "$pages is not on origin's default branch ($pages_branch)" >&2
+  exit 1
+fi
+if ! git -C "$pages" merge-base --is-ancestor "origin/$pages_branch" HEAD; then
+  echo "$pages is behind origin/$pages_branch; pull first (git -C $pages pull --ff-only)" >&2
+  exit 1
+fi
+# The build takes the engine from node_modules, which a clean working tree doesn't vouch for.
+pinned=$(node -p 'require("./package.json").dependencies.docxodus')
+installed=$(node -p 'require("./node_modules/docxodus/package.json").version')
+if [ "$installed" != "$pinned" ]; then
+  echo "node_modules has docxodus $installed, package.json pins $pinned; run npm install" >&2
+  exit 1
+fi
 
 if [ "${SKIP_TESTS:-}" != 1 ]; then
   npm run typecheck

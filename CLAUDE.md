@@ -36,7 +36,7 @@ Why 24: Node 20 is end-of-life, and the current Vite 8, Vitest 5, jsdom 30 and `
 ## Commands
 
 - `npm run dev` / `npm run build` / `npm run preview` — Vite; `BASE_PATH=/<subpath>/` sets the base path (default `/`, which is what is published).
-- `scripts/publish.sh` — the deployment (no CI): checks, `BASE_PATH=/` build, copy of `dist/` into the local clone of `docx-diff/docx-diff.github.io` (`PAGES_DIR`, default `../docx-diff.github.io`), commit there. Pushing is the user's call. The build must contain `.nojekyll` (`public/.nojekyll`): Jekyll would drop `wasm/_framework/`.
+- `scripts/publish.sh` — the deployment (no CI): checks, `BASE_PATH=/` build, copy of `dist/` into the local clone of `docx-diff/docx-diff.github.io` (`PAGES_DIR`, default `../docx-diff.github.io`), commit there. Pushing is the user's call. The build must contain `.nojekyll` (`public/.nojekyll`): Jekyll would drop `wasm/_framework/`. The copy replaces everything in the clone, so files the site needs besides the app (e.g. `CNAME`) go in `public/`. The service worker falls back to `index.html` only for the app's own page (`navigateFallbackAllowlist`): its scope is the whole origin, which also serves the org's other Pages sites.
 - `npm test` — Vitest: project `unit` (jsdom, `src/**/*.test.ts(x)`) and project `engine` (Node, `src/engine/**/*.test.ts` and `test/**/*.test.ts`, real WASM). One file: `npx vitest run src/engine/client.test.ts`. The sample-pair checks share one compare in `test/sample-pair.test.ts`; the ~300-page timing check runs only with `BIG_PAIR=1`.
 - `npm run test:e2e` — Playwright (Chromium) against a build served by `vite preview` at `/`. `PERF=1` adds the timing checks in `e2e/perf.spec.ts`.
 - `npm run typecheck` — `tsc --noEmit`.

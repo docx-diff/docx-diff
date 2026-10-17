@@ -25,7 +25,9 @@ export function EngineStatus({ state, onRetry }: { state: EngineState; onRetry: 
           <span>The comparison engine could not be loaded: {state.message}</span>{' '}
           <button type="button" onClick={onRetry}>
             Retry
-          </button>
+          </button>{' '}
+          {/* Retry reuses this page's files; after a new version is published they are gone from the site. */}
+          <span>If that fails too, reload the page.</span>
         </>
       )}
     </div>

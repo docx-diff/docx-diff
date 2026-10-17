@@ -41,6 +41,11 @@ test('a repeat visit loads the app and the engine from the service worker and wo
   // The service worker is registered once the engine has loaded, so its precache doesn't compete with it.
   expect(pageRequestsBeforeServiceWorker).toBe(engineRequests.page);
 
+  // Other pages on the origin (the org's other Pages sites, 404s) are left to the server.
+  const elsewhere = await page.goto('other-site/');
+  expect(elsewhere?.fromServiceWorker()).toBe(false);
+  await page.goto('');
+
   await context.setOffline(true);
   const notFromServiceWorker: string[] = [];
   page.on('response', (response) => {

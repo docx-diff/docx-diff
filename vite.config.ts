@@ -44,6 +44,9 @@ export default defineConfig({
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{html,js,css,wasm}'],
+        // The scope is the whole origin at the root, which also serves the org's other GitHub Pages
+        // sites (/<repo>/) and 404s: only the app's own page falls back to index.html.
+        navigateFallbackAllowlist: [new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(index\\.html)?$`)],
         // dotnet.native.wasm is ~10 MB.
         maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
         // A new version takes over at once; open pages keep what they loaded (nothing is loaded lazily).
