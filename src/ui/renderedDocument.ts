@@ -122,21 +122,45 @@ export function markItems(root: ParentNode, itemIds: ReadonlySet<string>, classN
 export function mergeJoinedParagraphs(root: ParentNode, side: 'left' | 'right'): void {
   const missingMark = side === 'left' ? 'rev-para-ins' : 'rev-para-del';
   const missingBlock = side === 'left' ? 'not-in-original' : 'not-in-edited';
-  const blocks = [...root.querySelectorAll<HTMLElement>(`[data-anchor].${missingMark}:not(.${missingBlock})`)];
+  joinParagraphs([...root.querySelectorAll<HTMLElement>(`[data-anchor].${missingMark}`)], {
+    losesMark: () => true,
+    skipped: (element) => element.matches(`[data-anchor].${missingBlock}`),
+  });
+}
+
+export interface JoinRules {
+  /** Whether the block's version lacks its paragraph mark. */
+  losesMark: (block: HTMLElement) => boolean;
+  /** Elements the panel doesn't show: never joined, and passed over when looking for the next paragraph. */
+  skipped: (element: Element) => boolean;
+}
+
+/**
+ * The join of `mergeJoinedParagraphs` for any rule of which blocks lose their mark: each of the
+ * blocks (in document order) that loses it moves its content to the start of the next paragraph
+ * sibling, passing over skipped elements and blocks already merged.
+ */
+export function joinParagraphs(blocks: readonly HTMLElement[], rules: JoinRules): void {
+  // Where each block merged here went: a chain of joined paragraphs is not walked again for each.
+  const targets = new Map<Element, Element>();
   // Last first, so that a chain of joined paragraphs ends up in document order in the last one.
-  for (const block of blocks.reverse()) {
+  for (const block of [...blocks].reverse()) {
+    if (rules.skipped(block) || !rules.losesMark(block)) continue;
     let next = block.nextElementSibling;
-    while (next?.matches(`[data-anchor]:is(.${missingBlock}, .merged-into-next)`)) next = next.nextElementSibling;
+    while (next && ((next.hasAttribute('data-anchor') && next.classList.contains('merged-into-next')) || rules.skipped(next))) {
+      next = targets.get(next) ?? next.nextElementSibling;
+    }
     if (!next?.matches(PARAGRAPH_BLOCK)) continue;
     let insertBefore = next.firstChild;
     while (insertBefore?.nodeType === ELEMENT_NODE && isListLabel(insertBefore as Element)) insertBefore = insertBefore.nextSibling;
     next.insertBefore(moveChildren(block), insertBefore);
     block.classList.add('merged-into-next');
+    targets.set(block, next);
   }
 }
 
 /** The converter renders a paragraph as `p`, or `h1`–`h6` when its style has an outline level. */
-const PARAGRAPH_BLOCK = ':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]';
+export const PARAGRAPH_BLOCK = ':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]';
 
 /** `Node.ELEMENT_NODE` (`Node` is not a global with jsdom in Node). */
 const ELEMENT_NODE = 1;

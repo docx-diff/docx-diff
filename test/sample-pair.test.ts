@@ -12,15 +12,18 @@ import type { RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
 import { exportComments } from '../src/model/comments';
-import { INITIAL_DECISIONS } from '../src/model/decisions';
+import { INITIAL_DECISIONS, finalRevisionDecisions, reviewableItems } from '../src/model/decisions';
 import { buildOutline } from '../src/model/outline';
+import { resolvedItemDecisions } from '../src/model/resolved';
 import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
+import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
 import { expectDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
 import { documentLook, lookDifference } from './look';
 import { initNodeEngine } from './node-engine';
+import { parityStates } from './parity';
 import { describeWithSamples, readSamples } from './samples';
 import { docxText } from './text';
 
@@ -474,6 +477,54 @@ describeWithSamples('sample pair', () => {
       // The moves' sources sit between the deleted and the inserted versions of the list items 7.–/DN 16/.
       expect(body(exported)).toEqual([...editedBody.slice(0, -6), ...moved, ...editedBody.slice(-6, -3), editedBody.at(-1), ...originalBody.slice(tailStart)]);
       await expectDeliverable(exported, original);
+    });
+  });
+
+  describe('Resolved column', () => {
+    it('shows the text the export gives, with the detected range and without one', async () => {
+      const { analysis: prepared, document, itemTexts } = prepareRenderedDocument(
+        result.html,
+        (parsed) => analyzeComparison(result, () => parsed),
+        (html) => new JSDOM(html).window.document,
+      );
+      const { items, index, suggestedEndPoint } = prepared;
+      const ignored = ignoredItems(items, itemTexts, DEFAULT_COMPARE_SETTINGS);
+      const wrapper = document.body.ownerDocument.createElement('div');
+      wrapper.append(...[...document.body.childNodes].map((node) => node.cloneNode(true)));
+      const panel = prepareResolvedPanel(wrapper);
+      const positions = blockPositions(index, suggestedEndPoint);
+      let applied: ReadonlyMap<string, 'accept' | 'reject'> | null = null;
+      const timings: Record<string, number> = {};
+      for (const endPoint of [suggestedEndPoint, null]) {
+        const range = classify(items, index, endPoint, positions);
+        const outOfRange = new Set(items.filter((item) => range.get(item.id) === 'outOfRange').map((item) => item.id));
+        applyRangeOrder(panel, positions, endPoint, outOfRange);
+        for (const [label, state] of parityStates(reviewableItems(items, range, ignored))) {
+          const sides = resolvedItemDecisions(items, state, range, ignored);
+          const start = performance.now();
+          applyResolution(panel, sides, applied ? items.map((item) => item.id).filter((id) => applied!.get(id) !== sides.get(id)) : undefined);
+          timings[`${applied ? 'to' : 'first,'} ${label}, end point ${endPoint}`] = Math.round(performance.now() - start);
+          applied = sides;
+          const final = finalRevisionDecisions(items, state, range, 'accept', ignored);
+          const exported = await exportDocx(result.redline, result.revisions, final, {
+            formattingChoice: 'edited',
+            outOfRange: new Set(items.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds)),
+          });
+          expect(resolvedText(wrapper), `${label}, end point ${endPoint}`).toEqual(docxText(exported));
+        }
+      }
+
+      // One decision flipped, and back.
+      const item = reviewableItems(items, new Map(), ignored).find((x) => x.kind === 'deleted')!;
+      const flipped = new Map(applied).set(item.id, applied!.get(item.id) === 'accept' ? 'reject' : 'accept');
+      let start = performance.now();
+      applyResolution(panel, flipped, [item.id]);
+      const flipMs = performance.now() - start;
+      start = performance.now();
+      applyResolution(panel, applied!, [item.id]);
+      timings['one decision'] = Math.round(flipMs);
+      timings['and back'] = Math.round(performance.now() - start);
+      console.log('sample pair Resolved column, applyResolution (ms, jsdom):', timings);
     });
   });
 

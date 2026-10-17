@@ -7,6 +7,7 @@ import {
   decorateDocument,
   documentCss,
   isolateCommonAffixes,
+  joinParagraphs,
   markCommon,
   markItems,
   mergeJoinedParagraphs,
@@ -162,6 +163,21 @@ describe('mergeJoinedParagraphs', () => {
       .firstElementChild!;
     mergeJoinedParagraphs(root, 'right');
     expect(block(root, 'h').textContent).toBe('A Heading');
+  });
+
+  it('joins by any rule with joinParagraphs, passing over skipped elements', () => {
+    const root = new DOMParser().parseFromString(
+      '<div><p data-anchor="a" class="go">A </p><p data-anchor="b">B </p><hr class="skip"><p data-anchor="c" class="go">C </p><p data-anchor="x" class="skip go">X</p><p data-anchor="d">D</p></div>',
+      'text/html',
+    ).body.firstElementChild!;
+    joinParagraphs([...root.querySelectorAll<HTMLElement>('[data-anchor]')], {
+      losesMark: (element) => element.classList.contains('go'),
+      skipped: (element) => element.classList.contains('skip'),
+    });
+    expect(block(root, 'b').textContent).toBe('A B ');
+    expect(block(root, 'd').textContent).toBe('C D');
+    expect(block(root, 'x').textContent).toBe('X');
+    expect([...root.querySelectorAll('.merged-into-next')].map((element) => element.getAttribute('data-anchor'))).toEqual(['a', 'c']);
   });
 });
 

@@ -113,16 +113,26 @@ export function finalRevisionDecisions(
 ): Map<string, 'accept' | 'reject'> {
   const result = new Map<string, 'accept' | 'reject'>();
   for (const item of items) {
-    const decision = state.decisions[item.id];
-    let final: 'accept' | 'reject';
-    if (range.get(item.id) === 'outOfRange') final = 'reject';
-    else if (item.kind === 'formatting') final = state.formattingChoice === 'edited' ? 'accept' : 'reject';
-    else if (decision) final = decision === 'accepted' ? 'accept' : 'reject';
-    else if (ignored.has(item.id)) final = 'accept';
-    else final = undecided;
+    const final = finalItemDecision(item, state, range, undecided, ignored);
     for (const revisionId of item.revisionIds) result.set(revisionId, final);
   }
   return result;
+}
+
+/** The final decision of one item, applied to all its revisions (see `finalRevisionDecisions`). */
+export function finalItemDecision(
+  item: ChangeItem,
+  state: DecisionState,
+  range: ReadonlyMap<string, RangeClass>,
+  undecided: UndecidedChoice,
+  ignored: ReadonlySet<string>,
+): 'accept' | 'reject' {
+  const decision = state.decisions[item.id];
+  if (range.get(item.id) === 'outOfRange') return 'reject';
+  if (item.kind === 'formatting') return state.formattingChoice === 'edited' ? 'accept' : 'reject';
+  if (decision) return decision === 'accepted' ? 'accept' : 'reject';
+  if (ignored.has(item.id)) return 'accept';
+  return undecided;
 }
 
 /** Counts of the reviewable items by decision. */
