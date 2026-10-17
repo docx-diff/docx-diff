@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-In-browser DOCX compare/review/export tool (React + TypeScript + Vite, deployed to GitHub Pages). The comparison engine is the `docxodus` npm package (.NET compiled to WASM), pinned to exactly `13.0.0`.
+In-browser DOCX compare/review/export tool (React + TypeScript + Vite, published to GitHub Pages at https://docx-diff.github.io/ from a local build). The comparison engine is the `docxodus` npm package (.NET compiled to WASM), pinned to exactly `13.0.0`.
 
 ## Where things are
 
@@ -27,7 +27,7 @@ How it applies:
 - Don't bypass a version error with `--engine-strict=false` or `ASDF_NODEJS_VERSION`; fix the asdf setup instead.
 
 To bump the version:
-1. Edit `.tool-versions`, `engines` in `package.json` (and later `.github/workflows/pages.yml`, which reads `.tool-versions` through `actions/setup-node`'s `node-version-file`).
+1. Edit `.tool-versions`, `engines` in `package.json` (there is no CI: the site is built and published locally, see task 9 in the task list).
 2. `asdf install` in the repo. If it says `node-build: definition not found`, the plugin's version list is stale: run `asdf plugin update nodejs`, then `git -C ~/.asdf/plugins/nodejs/.node-build pull --ff-only`, and retry.
 3. `rm -rf node_modules && npm install`, then run typecheck, `npm test` and `npm run test:e2e`.
 

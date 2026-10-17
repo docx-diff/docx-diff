@@ -6,7 +6,7 @@ Compare two Word documents (`.docx`) side by side in the browser, accept or reje
 - Two panels (original / edited) with changes highlighted, and a list of changes to review one by one or in bulk.
 - Detects insertions, deletions, replacements, moved paragraphs and formatting changes, in the body, footnotes/endnotes and tables.
 - Handles a partially edited document: the unedited remainder of the original is kept as it is.
-- Deployed as a static site on GitHub Pages.
+- Served as a static site at <https://docx-diff.github.io/> (GitHub Pages); works offline after the first visit.
 
 The comparison engine is [Docxodus](https://github.com/JSv4/Docxodus) (MIT), a .NET OOXML engine compiled to WebAssembly, used through its npm package `docxodus`.
 
@@ -25,7 +25,7 @@ npm install                       # once
 npx playwright install chromium   # once, for the e2e tests
 
 npm run dev          # dev server at http://localhost:5173/
-npm run build        # production build into dist/ (set BASE_PATH=/<repo>/ for GitHub Pages)
+npm run build        # production build into dist/ (BASE_PATH sets the base path, default /)
 npm run preview      # serve dist/
 npm test             # unit + engine tests (Vitest; engine tests run the real WASM under Node)
 npm run test:e2e     # Playwright: builds with BASE_PATH=/docx-diff/ and tests in Chromium
@@ -57,4 +57,4 @@ git clone --depth 1 https://github.com/davidar/pandiff refs/pandiff
 
 ## License
 
-Not yet chosen.
+MIT, see [`LICENSE`](LICENSE). Docxodus and the .NET runtime it ships are MIT-licensed as well.
