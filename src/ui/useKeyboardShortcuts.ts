@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export type ShortcutAction = 'next' | 'previous' | 'accept' | 'reject' | 'reset' | 'help';
+export type ShortcutAction = 'next' | 'previous' | 'accept' | 'reject' | 'acceptUntil' | 'rejectUntil' | 'reset' | 'help';
 
 /** The shortcuts (FR-34), as listed in the help popover. */
 export const SHORTCUTS: { keys: string[]; action: ShortcutAction; label: string }[] = [
@@ -8,6 +8,8 @@ export const SHORTCUTS: { keys: string[]; action: ShortcutAction; label: string 
   { keys: ['k', 'ArrowUp'], action: 'previous', label: 'Previous change' },
   { keys: ['a'], action: 'accept', label: 'Accept the current change and go to the next undecided one' },
   { keys: ['r'], action: 'reject', label: 'Reject the current change and go to the next undecided one' },
+  { keys: ['A'], action: 'acceptUntil', label: 'Accept all undecided changes up to and including the current one' },
+  { keys: ['R'], action: 'rejectUntil', label: 'Reject all undecided changes up to and including the current one' },
   { keys: ['u'], action: 'reset', label: 'Reset the current change to undecided' },
   { keys: ['?'], action: 'help', label: 'Show or hide this help' },
 ];

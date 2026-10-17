@@ -34,7 +34,7 @@ test('rejecting the first change and accepting the rest keeps the Original text 
   const cards = page.getByTestId('change-card');
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0)).toContainText('Replaced');
-  await cards.nth(0).getByRole('button', { name: 'Reject' }).click();
+  await cards.nth(0).getByRole('button', { name: 'Reject', exact: true }).click();
   await expect(cards.nth(0)).toContainText('Rejected');
   await expect(page.getByTestId('changes-totals')).toContainText('2 text changes: 0 accepted, 1 rejected, 1 undecided');
 
@@ -45,6 +45,36 @@ test('rejecting the first change and accepting the rest keeps the Original text 
   await expect(page.getByTestId('panel-right').locator('ins.change-accepted').first()).toBeVisible();
 
   expect(docxText(await download(page))).toEqual(['The quick brown fox.', 'Second paragraph.', 'A new ending.']);
+});
+
+test('the arrow menu and A/R decide every undecided change up to here', async ({ page }) => {
+  const original = minimalDocx(['One two three.', 'Four five six.', 'Seven eight nine.', 'Ten eleven twelve.']);
+  const edited = minimalDocx(['One 2 three.', 'Four five 6.', 'Seven 8 nine.', 'Ten 11 twelve.']);
+  await openAndCompare(page, original, edited);
+  const cards = page.getByTestId('change-card');
+  await expect(cards).toHaveCount(4);
+
+  await cards.nth(0).getByRole('button', { name: 'Accept', exact: true }).click();
+  await cards.nth(2).getByRole('button', { name: 'More Reject options' }).click();
+  await page.getByRole('menuitem', { name: /Reject all undecided until here/ }).click();
+  await expect(page.getByRole('menu')).toBeHidden();
+  // The first change keeps its decision; the second and third are rejected.
+  await expect(page.getByTestId('changes-totals')).toContainText('4 text changes: 1 accepted, 2 rejected, 1 undecided');
+  await expect(cards.nth(1)).toContainText('Rejected');
+
+  await page.keyboard.press('j');
+  await page.keyboard.press('j');
+  await expect(cards.nth(1)).toHaveAttribute('aria-current', 'true');
+  await page.keyboard.press('u');
+  await page.keyboard.press('j');
+  await page.keyboard.press('j');
+  await expect(cards.nth(3)).toHaveAttribute('aria-current', 'true');
+  await page.keyboard.press('Shift+A');
+  await expect(page.getByTestId('changes-totals')).toContainText('3 accepted, 1 rejected, 0 undecided');
+  await expect(cards.nth(0)).toContainText('Accepted');
+  await expect(cards.nth(1)).toContainText('Accepted');
+
+  expect(docxText(await download(page))).toEqual(['One 2 three.', 'Four five 6.', 'Seven eight nine.', 'Ten 11 twelve.']);
 });
 
 test('keyboard shortcuts and clicks in the panels select and decide changes', async ({ page }) => {
@@ -105,7 +135,7 @@ test('formatting changes are one group decided for the whole document', async ({
   await expect(cards).toHaveCount(2);
   const formattingCard = cards.filter({ hasText: 'Formatting' }).filter({ hasNotText: 'Replaced' });
   await expect(formattingCard).toContainText(/Bold/);
-  await expect(formattingCard.getByRole('button', { name: 'Accept' })).toHaveCount(0);
+  await expect(formattingCard.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0);
 
   await page.getByRole('radio', { name: "Keep the Original's formatting" }).check();
   const bytes = await download(page);

@@ -1,6 +1,7 @@
 import { memo, type KeyboardEvent } from 'react';
 import type { ChangeItem, ChangeKind } from '../model/changes';
 import type { Decision } from '../model/decisions';
+import { DecisionButton } from './DecisionButton';
 
 export const KIND_LABELS: Record<ChangeKind, string> = {
   inserted: 'Inserted',
@@ -51,10 +52,12 @@ interface Props {
   onSelect: (itemId: string) => void;
   /** `null` resets to undecided. */
   onDecide: (itemId: string, decision: Decision | null) => void;
+  /** Decides every undecided item up to and including this one (FR-27a). */
+  onDecideUntil: (itemId: string, decision: Decision) => void;
 }
 
 /** One change in the changes list (FR-26, FR-27). Formatting items have no Accept/Reject (FR-30). */
-export const ChangeCard = memo(function ChangeCard({ item, label, decision, current, onSelect, onDecide }: Props) {
+export const ChangeCard = memo(function ChangeCard({ item, label, decision, current, onSelect, onDecide, onDecideUntil }: Props) {
   const formatting = item.kind === 'formatting';
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
   const delta = wordDeltaLabel(item.wordDelta);
@@ -100,28 +103,15 @@ export const ChangeCard = memo(function ChangeCard({ item, label, decision, curr
       {formatting && <div className="change-card__description">{item.description ?? 'Formatting changed'}</div>}
       {!formatting && (
         <div className="change-card__actions">
-          <button
-            type="button"
-            className="button button--small button--accept"
-            aria-pressed={decision === 'accepted'}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDecide(item.id, 'accepted');
-            }}
-          >
-            Accept
-          </button>
-          <button
-            type="button"
-            className="button button--small button--reject"
-            aria-pressed={decision === 'rejected'}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDecide(item.id, 'rejected');
-            }}
-          >
-            Reject
-          </button>
+          {(['accepted', 'rejected'] as const).map((value) => (
+            <DecisionButton
+              key={value}
+              decision={value}
+              pressed={decision === value}
+              onThis={() => onDecide(item.id, value)}
+              onUntilHere={() => onDecideUntil(item.id, value)}
+            />
+          ))}
           {decision && (
             <button
               type="button"

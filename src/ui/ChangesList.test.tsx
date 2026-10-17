@@ -33,6 +33,7 @@ function renderList(expanded: boolean, overrides: Partial<Parameters<typeof Chan
     currentItemId: 'a',
     onSelect: vi.fn(),
     onDecide: vi.fn(),
+    onDecideUntil: vi.fn(),
     onDecideAllUndecided: vi.fn(),
     formattingChoice: 'edited' as const,
     onFormattingChoice: vi.fn(),
@@ -131,6 +132,41 @@ describe('ChangesList', () => {
     // Enter on the card's own buttons is theirs.
     fireEvent.keyDown(within(plain!).getByRole('button', { name: 'Accept' }), { key: 'Enter' });
     expect(props.onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a menu from the arrow joined to Accept/Reject: this, or all undecided until here', () => {
+    const props = renderList(false);
+    const [first, second] = screen.getAllByTestId('change-card');
+    fireEvent.click(within(second!).getByRole('button', { name: 'More Accept options' }));
+    const menu = screen.getByRole('menu', { name: 'Accept options' });
+    const [thisItem, untilItem] = within(menu).getAllByRole('menuitem');
+    expect(thisItem!.textContent).toBe('Accept this a');
+    expect(untilItem!.textContent).toBe('Accept all undecided until here A');
+    expect(document.activeElement).toBe(thisItem);
+    fireEvent.click(untilItem!);
+    expect(props.onDecideUntil).toHaveBeenCalledWith('b', 'accepted');
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    // Keys: ↓ moves within the menu (not to the next change), the shortcut letters pick, Escape closes.
+    const arrow = within(first!).getByRole('button', { name: 'More Reject options' });
+    fireEvent.click(arrow);
+    const reject = screen.getByRole('menu', { name: 'Reject options' });
+    fireEvent.keyDown(reject, { key: 'ArrowDown' });
+    expect(document.activeElement!.textContent).toContain('until here');
+    fireEvent.keyDown(reject, { key: 'r' });
+    expect(props.onDecide).toHaveBeenCalledWith('a', 'rejected');
+    expect(document.activeElement).toBe(arrow);
+    fireEvent.click(arrow);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'R' });
+    expect(props.onDecideUntil).toHaveBeenCalledWith('a', 'rejected');
+    fireEvent.click(arrow);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(arrow);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(props.onDecide).toHaveBeenCalledTimes(1);
   });
 
   it('disables the bulk actions when nothing is undecided', () => {

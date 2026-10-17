@@ -128,6 +128,11 @@ to ~300 pages; no backend.
     location (body / footnote N / table), word count change ("−1 +1"). Formatting items describe
     what changed ("Bold removed, Font changed"). A move that carries edits shows both wordings.
 27. **Accept** / **Reject** per item, the current decision shown; a decision can be changed or reset.
+
+    27a. Each button has a joined arrow opening a menu: **Accept/Reject this** (the button's own
+    action, `a`/`r`) and **Accept/Reject all undecided until here** (`A`/`R`), which decides the
+    undecided items from the start of the list up to and including this one. Decided items keep
+    their decision; no confirmation is asked.
 28. Clicking an item scrolls **both** panels to it and marks it as current.
 29. Clicking a change in either panel selects its item.
 30. **Formatting group:** all formatting changes in one collapsible group, **collapsed by default**,
@@ -137,8 +142,9 @@ to ~300 pages; no backend.
 31. Previous/Next skip formatting items while the group is collapsed and include them when expanded.
 32. **Accept all** / **Reject all**, with confirmation, applying only to undecided changes.
 33. **Previous change** / **Next change** buttons.
-34. Keyboard shortcuts: `j`/`↓` next, `k`/`↑` previous, `a` accept, `r` reject, `u` reset, `?` help.
-    After `a`/`r` the selection moves to the next undecided change. Listed in a help popover.
+34. Keyboard shortcuts: `j`/`↓` next, `k`/`↑` previous, `a` accept, `r` reject, `A`/`R` accept/reject
+    all undecided until the current change (FR-27a), `u` reset, `?` help. After `a`/`r`/`A`/`R` the
+    selection moves to the next undecided change. Listed in a help popover.
 35. Totals in the list footer: changes, accepted, rejected, undecided (text and formatting counted
     separately).
 36. Responsive with thousands of items (virtualized list).

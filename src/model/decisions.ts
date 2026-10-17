@@ -74,6 +74,12 @@ export function reviewableItems(
   return items.filter((item) => item.kind !== 'formatting' && range.get(item.id) !== 'outOfRange' && !ignored.has(item.id));
 }
 
+/** The ids of `reviewable` from the first up to and including `itemId` (none if it is not among them). */
+export function idsUntil(reviewable: readonly ChangeItem[], itemId: string): string[] {
+  const at = reviewable.findIndex((item) => item.id === itemId);
+  return reviewable.slice(0, at + 1).map((item) => item.id);
+}
+
 /** Formatting items inside the comparison range, in document order. */
 export function formattingItems(items: readonly ChangeItem[], range: ReadonlyMap<string, RangeClass>): ChangeItem[] {
   return items.filter((item) => item.kind === 'formatting' && range.get(item.id) !== 'outOfRange');

@@ -17,6 +17,8 @@ interface Props {
   currentItemId: string | null;
   onSelect: (itemId: string) => void;
   onDecide: (itemId: string, decision: Decision | null) => void;
+  /** Decides every undecided text item from the start of the list up to and including `itemId`. */
+  onDecideUntil: (itemId: string, decision: Decision) => void;
   /** Decides every undecided text item in the list. */
   onDecideAllUndecided: (decision: Decision) => void;
   formattingChoice: FormattingChoice;
@@ -86,6 +88,7 @@ export function ChangesList(props: Props) {
                     current={entry.item.id === currentItemId}
                     onSelect={onSelect}
                     onDecide={onDecide}
+                    onDecideUntil={props.onDecideUntil}
                   />
                 ) : (
                   <FormattingGroupHeader

@@ -48,8 +48,8 @@ async function reviewSomeChanges(page: Page) {
   await control.getByRole('button', { name: 'Apply' }).click();
   const cards = page.getByTestId('change-card');
   await expect(cards).toHaveCount(2);
-  await cards.nth(0).getByRole('button', { name: 'Reject' }).click();
-  await cards.nth(1).getByRole('button', { name: 'Accept' }).click();
+  await cards.nth(0).getByRole('button', { name: 'Reject', exact: true }).click();
+  await cards.nth(1).getByRole('button', { name: 'Accept', exact: true }).click();
   // Wait for the debounced save.
   await expect
     .poll(async () => Object.keys(((await savedReview(page))?.decisions as object | undefined) ?? {}).length)

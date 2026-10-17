@@ -6,6 +6,7 @@ import {
   decisionsReducer,
   finalRevisionDecisions,
   formattingItems,
+  idsUntil,
   reviewableItems,
   type DecisionState,
 } from './decisions';
@@ -82,6 +83,15 @@ describe('reviewableItems and formattingItems', () => {
   it('leave out formatting, out-of-range and ignored items', () => {
     expect(reviewable).toEqual(['a', 'c']);
     expect(formattingItems(items, range).map((x) => x.id)).toEqual(['f']);
+  });
+});
+
+describe('idsUntil', () => {
+  it('gives the reviewable items up to and including the given one', () => {
+    const list = reviewableItems(items, range, ignored);
+    expect(idsUntil(list, 'a')).toEqual(['a']);
+    expect(idsUntil(list, 'c')).toEqual(['a', 'c']);
+    expect(idsUntil(list, 'b')).toEqual([]);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   decisionsReducer,
   finalRevisionDecisions,
   formattingItems,
+  idsUntil,
   reviewableItems,
   type Decision,
   type DecisionState,
@@ -237,6 +238,16 @@ export function App() {
     dispatch(decision === null ? { type: 'reset', itemId } : { type: 'set', itemId, decision });
   }, []);
 
+  /** Decides the undecided reviewable items up to and including `itemId`; returns their ids. */
+  const decideUntil = useCallback(
+    (itemId: string, decision: Decision) => {
+      const itemIds = idsUntil(reviewable, itemId).filter((id) => !(id in review.decisions));
+      dispatch({ type: decision === 'accepted' ? 'acceptAllUndecided' : 'rejectAllUndecided', itemIds });
+      return itemIds;
+    },
+    [reviewable, review.decisions],
+  );
+
   const onChangeClick = useCallback(
     (itemIds: string[]) => {
       const selectable = itemIds.find((id) => order.some((item) => item.id === id));
@@ -261,9 +272,11 @@ export function App() {
       decide(current.id, null);
       return;
     }
-    const decision: Decision = action === 'accept' ? 'accepted' : 'rejected';
-    decide(current.id, decision);
-    const next = nextUndecided(order, current.id, { ...review.decisions, [current.id]: decision });
+    const decision: Decision = action === 'accept' || action === 'acceptUntil' ? 'accepted' : 'rejected';
+    let decided = [current.id];
+    if (action === 'acceptUntil' || action === 'rejectUntil') decided = decideUntil(current.id, decision);
+    else decide(current.id, decision);
+    const next = nextUndecided(order, current.id, { ...review.decisions, ...Object.fromEntries(decided.map((id) => [id, decision])) });
     if (next !== null) select(next, true);
   };
   useKeyboardShortcuts(onShortcut, comparison !== null && !settingsOpen);
@@ -390,6 +403,7 @@ export function App() {
             currentItemId={currentItemId}
             onSelect={selectFromList}
             onDecide={decide}
+            onDecideUntil={decideUntil}
             onDecideAllUndecided={(decision) =>
               dispatch({ type: decision === 'accepted' ? 'acceptAllUndecided' : 'rejectAllUndecided', itemIds: reviewable.map((item) => item.id) })
             }

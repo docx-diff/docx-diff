@@ -19,8 +19,8 @@ describe('useKeyboardShortcuts', () => {
   it('maps the keys to actions', () => {
     const onAction = vi.fn();
     render(<Harness onAction={onAction} />);
-    for (const key of ['j', 'ArrowDown', 'k', 'ArrowUp', 'a', 'r', 'u', '?']) fireEvent.keyDown(document.body, { key });
-    expect(onAction.mock.calls.map(([action]) => action)).toEqual(['next', 'next', 'previous', 'previous', 'accept', 'reject', 'reset', 'help']);
+    for (const key of ['j', 'ArrowDown', 'k', 'ArrowUp', 'a', 'r', 'A', 'R', 'u', '?']) fireEvent.keyDown(document.body, { key });
+    expect(onAction.mock.calls.map(([action]) => action)).toEqual(['next', 'next', 'previous', 'previous', 'accept', 'reject', 'acceptUntil', 'rejectUntil', 'reset', 'help']);
   });
 
   it('leaves alone typing, modified keys, arrows in a panel, open modals and the disabled state', () => {
