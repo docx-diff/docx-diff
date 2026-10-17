@@ -222,7 +222,6 @@ export function App() {
             onScrollLockChange={setScrollLock}
             onDownload={openExport}
             downloading={exportState.status === 'running'}
-            summary={{ text: totals.text.total, formatting: totals.formatting, ignored: totals.ignored }}
             onPrevious={() => onShortcut('previous')}
             onNext={() => onShortcut('next')}
             navigationDisabled={order.length === 0}

@@ -757,11 +757,6 @@ kbd {
   box-shadow: inset 0 -2px 0 var(--change-move-line);
 }
 
-.toolbar__summary {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
 /* Modal dialog */
 
 .modal-backdrop {

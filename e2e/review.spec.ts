@@ -185,7 +185,7 @@ test('on the sample pair, rejecting every undecided change gives the Original te
   await page.getByRole('button', { name: /Compare settings/ }).click();
   for (const setting of [/Ignore quote style/, /Ignore dash changes/, /Ignore whitespace changes/]) await page.getByLabel(setting).uncheck();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('change-summary')).toHaveText(/· 0 ignored/);
+  await expect(page.getByTestId('changes-totals')).not.toContainText('ignored');
 
   expect(docxText(await download(page, 'reject'))).toEqual(docxText(original));
 });

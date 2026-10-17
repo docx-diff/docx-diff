@@ -101,7 +101,7 @@ test('compares the sample pair, keeps the panels in sync and, without the range,
   expect(docxText(file.bytes)).toEqual(docxText(edited));
 
   // Compare settings: quote changes are ignored by default; turning that off shows them again.
-  const summary = page.getByTestId('change-summary');
+  const summary = page.getByTestId('changes-totals');
   await expect(summary).toHaveText(/· 54 ignored/);
   // The deleted „szentelt" is four elements: „ / szent / elt / ".
   const szentelt = left.locator('del', { hasText: /^szent$/ });

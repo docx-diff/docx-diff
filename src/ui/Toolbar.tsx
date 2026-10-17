@@ -11,7 +11,6 @@ interface Props {
   onScrollLockChange: (locked: boolean) => void;
   onDownload: () => void;
   downloading: boolean;
-  summary: { text: number; formatting: number; ignored: number };
   onPrevious: () => void;
   onNext: () => void;
   /** No changes to step through. */
@@ -22,7 +21,7 @@ interface Props {
 
 /** The toolbar above the panels once a comparison is shown. */
 export function Toolbar(props: Props) {
-  const { original, edited, onFile, onSwap, scrollLock, onScrollLockChange, onDownload, downloading, summary } = props;
+  const { original, edited, onFile, onSwap, scrollLock, onScrollLockChange, onDownload, downloading } = props;
   return (
     <div className="toolbar" role="toolbar" aria-label="Comparison">
       <FileDropZone role="original" file={original} onFile={onFile} compact />
@@ -50,9 +49,6 @@ export function Toolbar(props: Props) {
         Download…
       </button>
       <span className="toolbar__separator" />
-      <span className="toolbar__summary" data-testid="change-summary">
-        {summary.text} changes · {summary.formatting} formatting · {summary.ignored} ignored
-      </span>
       <Legend />
       <HelpPopover open={props.helpOpen} onOpenChange={props.onHelpOpenChange} />
     </div>

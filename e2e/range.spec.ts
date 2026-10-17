@@ -97,7 +97,7 @@ test('on the sample pair, the tail is outside the range and the export is the Ed
   // The Edited document's closing "reviewed up to here" note is outside the range and dropped.
   expect(exported).toEqual([...editedBody.slice(0, -1), ...originalBody.slice(tailStart)]);
 
-  const summary = page.getByTestId('change-summary');
+  const summary = page.getByTestId('changes-totals');
   await expect(summary).toHaveText(/· 53 ignored/);
 
   // Without the range, the tail deletion and the two items after it are back: the closing note is
