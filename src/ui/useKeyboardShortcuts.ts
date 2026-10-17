@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 export type ShortcutAction = 'next' | 'previous' | 'accept' | 'reject' | 'reset' | 'help';
 
-/** The shortcuts (FR-34, PRD open question 3), as listed in the help popover. */
+/** The shortcuts (FR-34), as listed in the help popover. */
 export const SHORTCUTS: { keys: string[]; action: ShortcutAction; label: string }[] = [
   { keys: ['j', 'ArrowDown'], action: 'next', label: 'Next change' },
   { keys: ['k', 'ArrowUp'], action: 'previous', label: 'Previous change' },

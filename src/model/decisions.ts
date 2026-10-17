@@ -1,6 +1,6 @@
 // The reviewer's decisions (FR-27, FR-30, FR-32) and the final decision of every engine revision
-// for the export (PRD §7.3 step 1). Text items are decided one by one; formatting is decided once
-// for the whole document (`formattingChoice`).
+// for the export (docs/architecture.md, "Export"). Text items are decided one by one; formatting is
+// decided once for the whole document (`formattingChoice`).
 import type { FormattingChoice } from '../engine/types';
 import type { ChangeItem } from './changes';
 import type { RangeClass } from './range';

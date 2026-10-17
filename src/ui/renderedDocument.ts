@@ -42,9 +42,10 @@ export function parseRenderedHtml(html: string, parse = (text: string) => new DO
 }
 
 /**
- * The converter's CSS from the document's `<style>` elements, with `html`/`body` selectors moved
- * to the panel's `.doc` wrapper (the panels live in shadow roots) and any per-author rules
- * (`[data-author="…"]`) removed: every revision is its own "author" after tagging (PRD §7.4).
+ * The converter's CSS from the document's `<style>` elements, with `html`/`body` selectors moved to
+ * the panel's `.doc` wrapper (the panels live in shadow roots) and any per-author rules
+ * (`[data-author="…"]`) removed: every revision is its own "author" after tagging
+ * (docs/architecture.md).
  */
 export function documentCss(document: Document): string {
   const css = [...document.querySelectorAll('style')].map((style) => style.textContent ?? '').join('\n');

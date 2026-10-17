@@ -4,11 +4,13 @@ In-browser DOCX compare/review/export tool (React + TypeScript + Vite, published
 
 ## Where things are
 
-- `tasks/*-prd---docx-diff.md` — requirements. §7 holds the technical design and the engine facts measured during planning. Read it before changing the engine, export or range logic.
-- `tasks/*-tasks-docx-diff.md` — the task list. Check off sub-tasks as they are completed.
-- `tasks/reference/reject-all-prototype.py` — Python prototype of the export rewrite (reference only).
+- `docs/requirements.md` — requirements, numbered `FR-<n>` (code comments cite them; keep the numbers stable, add `13e`-style sub-items instead of renumbering), non-goals, success metrics, open questions.
+- `docs/architecture.md` — the technical design and the reasoning behind the engine facts below. Read it before changing the engine, export or range logic, and update it with the code.
+- `docs/measurements.md` — sample-pair counts (most pinned by `test/sample-pair.test.ts`), timings, first-load size, success-metric outcomes. Update it when a change moves these numbers.
+- `docs/false-moves-at-trailing-tail.md` (open question 4), `docs/closing-note-out-of-range.md` (fixed) — investigation notes.
+- `docs/reference/reject-all-prototype.py` — Python prototype of the export rewrite (reference only).
 - `refs/` (git-ignored) — reference sources: `refs/Docxodus` (engine C# source, `npm/src` wrapper, `docs/architecture/ir_diff_engine.md`), `refs/Python-Redlines`, `refs/pandiff`. See README for re-cloning.
-- `docs/` — the sample document pair (committed). Tests reach it through `test/samples.ts` (`SAMPLES_DIR`, default `docs/`) and skip when it is absent. The Draftable reference screenshot is not in the repo.
+- `docs/*.docx` — the sample document pair (committed). Tests reach it through `test/samples.ts` (`SAMPLES_DIR`, default `docs/`) and skip when it is absent. The Draftable reference screenshot is not in the repo.
 
 ## Node version (check before running anything)
 
@@ -27,7 +29,7 @@ How it applies:
 - Don't bypass a version error with `--engine-strict=false` or `ASDF_NODEJS_VERSION`; fix the asdf setup instead.
 
 To bump the version:
-1. Edit `.tool-versions`, `engines` in `package.json` (there is no CI: the site is built and published locally, see task 9 in the task list).
+1. Edit `.tool-versions`, `engines` in `package.json` (there is no CI: the site is built and published locally, see `scripts/publish.sh`).
 2. `asdf install` in the repo. If it says `node-build: definition not found`, the plugin's version list is stale: run `asdf plugin update nodejs`, then `git -C ~/.asdf/plugins/nodejs/.node-build pull --ff-only`, and retry.
 3. `rm -rf node_modules && npm install`, then run typecheck, `npm test` and `npm run test:e2e`.
 
@@ -46,7 +48,7 @@ Why 24: Node 20 is end-of-life, and the current Vite 8, Vitest 5, jsdom 30 and `
 
 ## Engine facts that are easy to get wrong
 
-Verified during planning (PRD §7); don't re-derive them, and don't regress them.
+Verified during planning and the build (details in `docs/architecture.md`); don't re-derive them, and don't regress them.
 
 - **Compare with `docxDiffCompare`**, never `compareDocuments`, with exactly `{ preAcceptInputRevisions: true, compareHeadersFooters: false, trackNumberingChanges: false, detectMoves: true }` (`src/engine/settings.ts`).
 - **Never apply decisions through `DocxSession`** (`acceptRevision`/`rejectRevision`/`acceptAllRevisions`): ~100 ms per revision, ~70 s for accept-all on the sample, and ids get invalidated mid-way. Export = rewrite rejected revisions in the XML so that accepting gives the original version, then one stateless `docxDiffAcceptRevisions` (~1 s).

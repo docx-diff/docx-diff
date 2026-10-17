@@ -1,4 +1,4 @@
-// Rendering checks on every synthetic fixture pair (PRD §7.8 item 3): every content, move and
+// Rendering checks on every synthetic fixture pair (docs/architecture.md): every content, move and
 // paragraph-mark revision is in the HTML with its id, and every item has an element in the
 // panels; and item-level export checks on the notes. Export round trips per revision are in
 // src/engine/exportDocx.test.ts.

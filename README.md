@@ -23,10 +23,15 @@ The review (files, decisions, range) is saved in the browser and offered again w
 
 ## Status
 
-All planned features are done (task list below). Open: whether to remove two misleading "Moved" items at the end of the edited part on long cut-short documents (`docs/false-moves-at-trailing-tail.md`).
+All planned features are done, and the success metrics are met. Open: whether to remove two misleading "Moved" items at the end of the edited part on long cut-short documents (`docs/false-moves-at-trailing-tail.md`).
 
-- Requirements: [`tasks/2026-10-15-203451-prd---docx-diff.md`](tasks/2026-10-15-203451-prd---docx-diff.md)
-- Task list: [`tasks/2026-10-15-203451-tasks-docx-diff.md`](tasks/2026-10-15-203451-tasks-docx-diff.md)
+## Documentation
+
+- [`docs/requirements.md`](docs/requirements.md) — what the tool does: the numbered requirements (`FR-<n>`, cited in code comments), non-goals, success metrics, open questions.
+- [`docs/architecture.md`](docs/architecture.md) — how it works: stack, module map, worker, data flow, change items, rendering, comparison range, export algorithm, saved review, service worker, testing.
+- [`docs/measurements.md`](docs/measurements.md) — what the sample pair produces, timings, first-load size, success-metric outcomes.
+- Investigations: [`docs/false-moves-at-trailing-tail.md`](docs/false-moves-at-trailing-tail.md) (open), [`docs/closing-note-out-of-range.md`](docs/closing-note-out-of-range.md) (fixed).
+- [`CLAUDE.md`](CLAUDE.md) — working notes for Claude Code, including the engine facts that are easy to get wrong.
 
 ## Development
 
@@ -40,7 +45,7 @@ npm run build        # production build into dist/ (BASE_PATH sets the base path
 npm run preview      # serve dist/
 npm test             # unit + engine tests (Vitest; engine tests run the real WASM under Node)
 npm run test:e2e     # Playwright: builds and tests in Chromium (also offline, through the service worker)
-PERF=1 npx playwright test e2e/perf.spec.ts      # opt-in timing checks against the budgets in the PRD
+PERF=1 npx playwright test e2e/perf.spec.ts      # opt-in timing checks against the success-metric budgets
 npm run typecheck    # tsc --noEmit
 BIG_PAIR=1 npx vitest run test/big-pair.test.ts   # opt-in timing check on a synthetic ~300-page pair
 node test/fixtures/make-fixtures.ts               # regenerate the synthetic fixture pairs (commit the .docx files)

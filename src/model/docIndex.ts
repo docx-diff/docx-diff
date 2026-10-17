@@ -1,5 +1,5 @@
 // Index of the rendered redline HTML: block order, which blocks belong to the Original, note
-// references and which revisions the HTML shows (PRD §7.2 step 5, §7.5). The redline XML has no
+// references and which revisions the HTML shows (docs/architecture.md). The redline XML has no
 // anchor ids, so positions come from here. Runs on the main thread with the native DOMParser.
 import { revisionIdFromAuthor } from '../engine/tagRedline';
 

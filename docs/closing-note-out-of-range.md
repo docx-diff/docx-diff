@@ -1,6 +1,6 @@
 # The Edited's closing paragraph is dropped as out of range
 
-Investigation of 2026-10-17. Status: **fixed 2026-10-17** (review after task 8), as outlined under "Small
+Investigation of 2026-10-17. Status: **fixed 2026-10-17**, as outlined under "Small
 fix" below, with one correction: the position uses the detected end point (`blockPositions(index,
 suggestedEndPoint)`), not the start of the run of Original paragraphs the Edited lacks, which on the
 sample begins at 159 (the deleted wording of list items 7.– and the move sources), well before 168. The
@@ -19,7 +19,8 @@ change and the export always **rejects** it: the exported document does not cont
 paragraph added in the Edited version, inside the part that was edited, and must be listed and decided
 like any other insertion.
 
-It is not a code bug but a **deliberate rule** of the PRD (§7.5), now judged wrong:
+It is not a code bug but a **deliberate rule** of the original PRD (its §7.5, since replaced by
+[architecture.md](architecture.md#comparison-range)), now judged wrong:
 
 > Out of range with it: the tail deletion … and the 2 items the engine placed after the deleted tail — a
 > bare paragraph-mark insertion and the Edited document's closing marker paragraph "(Átnézve eddig,
@@ -62,7 +63,7 @@ axis. End point = 168; a block is out of range when its position is ≥ 168.
 3. `classify` puts every item with an anchor at or after the end point out of range. Out-of-range items
    are hidden from the list and rejected on export (FR-17).
 
-Moves had the same problem and were special-cased (task 6.8: a move counts by its source). Insertions were
+Moves had the same problem and were special-cased (a move counts by its source). Insertions were
 not, by design (the PRD quote above).
 
 ## Small fix (about half a day)
@@ -95,7 +96,7 @@ Changes:
 | `src/model/range.ts` | position rule above; update the doc comments of `blockPositions` and `classify` |
 | `src/model/range.test.ts` | a case with an insertion after a wholly deleted tail |
 | `test/sample-pair.test.ts` | "puts the tail … out of range": out-of-range counts change (only the tail deletion, plus the paragraph mark if not folded); the export test expects `body(exported)` = the whole `editedBody` followed by the Original's tail; the moves-rejected test likewise ends with "(Átnézve…)" before the tail |
-| `tasks/…-prd---docx-diff.md` | §7.5: remove "Rejecting the latter on export drops that marker…" and state the new rule; the "Positions" bullet |
+| PRD (now `architecture.md`, "Comparison range") | §7.5: remove "Rejecting the latter on export drops that marker…" and state the new rule; the "Positions" bullet |
 | `e2e/` | check whether a range test counts listed or out-of-range changes |
 
 This fix does not touch the false moves. Cutting the Original's tail before comparing would fix both:
@@ -118,5 +119,5 @@ redesign in [false-moves-at-trailing-tail.md](false-moves-at-trailing-tail.md#re
 - `src/engine/rangeOrder.ts`: export order for in-range content placed after the out-of-range region.
 - `src/engine/exportDocx.ts`: out-of-range revisions are rejected.
 - `test/sample-pair.test.ts`, describe "comparison range".
-- PRD `tasks/2026-10-15-203451-prd---docx-diff.md`: FR-17 (§4.3), §7.5 ("Out of range with it…", "Moves",
-  "Export order", "Positions").
+- [requirements.md](requirements.md): FR-17; [architecture.md](architecture.md): "Comparison range"
+  ("Positions", "Classification"), "Range order".

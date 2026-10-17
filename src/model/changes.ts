@@ -1,4 +1,5 @@
-// Builds the reviewable change items from the engine's revision list (PRD §7.2 step 3, FR-8, FR-9).
+// Builds the reviewable change items from the engine's revision list (FR-8, FR-9). Rules:
+// docs/architecture.md.
 import type { RevisionListEntry } from '../engine/types';
 import { adjacencyKey, noteKey, type DocIndex, type IndexBlock } from './docIndex';
 

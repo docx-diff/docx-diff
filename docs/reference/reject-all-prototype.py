@@ -1,5 +1,5 @@
 # Reference prototype from the PRD review (2026-10-15), not production code.
-# Applies the reject-rewrite rules of PRD section 7.3 to EVERY revision of a redline .docx.
+# Applies the reject-rewrite rules (now in docs/architecture.md, "Reject rewrite") to EVERY revision of a redline .docx.
 # Then docxDiffAcceptRevisions(output) gave the Original text exactly and passed verifyDeliverable.
 # Usage: python3 reject-all-prototype.py redline.docx rewritten.docx
 # Note: reject_all() also contains dead code (an empty loop over w:del) left from the experiment.

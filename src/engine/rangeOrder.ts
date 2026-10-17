@@ -1,9 +1,9 @@
-// The comparison range on export (PRD §7.5): the region outside the range keeps the Original's
-// text, and everything the reviewer decided comes before it. The engine can place in-range content
-// after a deleted tail: on the sample, the destinations of two moves from just before the tail
-// (with the editor's changes) sit after it. Left there, accepting the moves puts these paragraphs
-// after the kept tail. So the body elements after the start of the outside region that carry
-// in-range changes go back before it, and their paragraph marks come with them.
+// The comparison range on export (docs/architecture.md): the region outside the range keeps the
+// Original's text, and everything the reviewer decided comes before it. The engine can place
+// in-range content after a deleted tail: on the sample, the destinations of two moves from just
+// before the tail (with the editor's changes) sit after it. Left there, accepting the moves puts
+// these paragraphs after the kept tail. So the body elements after the start of the outside region
+// that carry in-range changes go back before it, and their paragraph marks come with them.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import { ElementIndex, W_NS, parseConstituentKey } from './ooxml';
 import type { RevisionListEntry } from './types';

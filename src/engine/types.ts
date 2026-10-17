@@ -87,7 +87,7 @@ export interface RevisionListEntry {
   type: 'insert' | 'delete' | 'move' | 'format' | 'structure';
   /** `content_insert`, `content_delete`, `move`, `paragraph_mark`, `properties_change`, table families, … */
   family: string;
-  /** Markup carrying the revision, e.g. `kind=Content:<ns>:del:12` (formats: PRD §7.3). */
+  /** Markup carrying the revision, e.g. `kind=Content:<ns>:del:12` (formats: architecture.md). */
   constituentKeys: string[];
   /** The affected text; `¶` stands for a paragraph mark. */
   text: string;

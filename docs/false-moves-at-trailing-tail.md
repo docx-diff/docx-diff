@@ -1,7 +1,7 @@
 # False moves at the edit boundary when the Original has a long deleted tail
 
-Investigation of 2026-10-17. Status: **understood, not fixed**; tracked as PRD open question 6 and
-task 10.0 (decide whether to do the redesign). A redesign that cuts the Original's tail
+Investigation of 2026-10-17. Status: **understood, not fixed**; tracked as open question 4 in
+[requirements.md](requirements.md#open-questions) (decide whether to do the redesign). A redesign that cuts the Original's tail
 before comparing was assessed but not started. The closing note that gets dropped is a separate issue:
 [closing-note-out-of-range.md](closing-note-out-of-range.md).
 
@@ -14,7 +14,7 @@ On the sample pair, two paragraphs that sit in the same place in both documents 
 
 Both were edited, and both are the last paragraphs before the Edited document ends. The Edited copy stops
 at p.257 ("edited until p257"); the Original goes on for another 579 paragraphs, which the engine reports
-as one large deletion (the trailing region, PRD §7.5).
+as one large deletion (the trailing region, [architecture.md](architecture.md#comparison-range)).
 
 Cause, in one sentence: an edited paragraph cannot anchor the alignment, so the two paragraphs end up in
 the **same unmatched region as the ~580-paragraph deleted tail**. A region that large makes the engine
@@ -132,10 +132,10 @@ Goal: the engine never sees the deleted tail, so the boundary paragraphs are edi
 - **The end point must be known before the compare**, but today it comes from the compare. A full compare
   is needed first, then a second one with the trimmed Original. Detect the tail from the first redline's
   XML: the trailing body paragraphs that are wholly deleted, mark included. The detection rules must stay
-  those of `detectTrailingRegion` (§7.5: a deletion that starts inside a paragraph the Edited keeps part
+  those of `detectTrailingRegion` (a deletion that starts inside a paragraph the Edited keeps part
   of → the next paragraph). With no list or render for the first pass, the extra cost is about one
   compare: ~2.5 s on the sample (7.6 → ~10 s to panels), ~4 s on the synthetic ~300-page pair
-  (PRD §7.6). Pairs without a tail need no second pass.
+  ([measurements.md](measurements.md)). Pairs without a tail need no second pass.
 - **Only right for the detected tail.** With a manual end point in the middle of edited text, trimming the
   Original would make the Edited's later text show as insertions. A manual end point earlier than the
   detected one can still be classified on the trimmed compare as today. A later end point, or the range
@@ -156,7 +156,7 @@ Goal: the engine never sees the deleted tail, so the boundary paragraphs are edi
 | 4 | Range model and UI: auto mode = trimmed compare; later end point / range off = full compare (re-run or render the first pass on demand), with decisions carried over or reset; left panel shows a "not compared" divider instead of the greyed tail (FR-18); revise FR-19 | ~2 days |
 | 5 | Saved review records the compare variant | ~0.5 day |
 | 6 | Tests: rewrite the sample range and export tests (no moves, closing note in range, new counts); fixture pairs whose tail holds notes, lists and a section break; e2e range flows | ~1–1.5 days |
-| 7 | Docs: PRD FR-14–19, §7.2, §7.5, §7.6; CLAUDE.md (the fact about the sample's moves) | ~0.5 day |
+| 7 | Docs: `requirements.md` FR-14–19; `architecture.md` "Data flow", "Comparison range"; `measurements.md`; CLAUDE.md (the fact about the sample's moves) | ~0.5 day |
 
 When it is worth doing: if false moves at the edit boundary show up in real use. On this sample they
 appear only because the deleted tail is longer than ~416 paragraphs. A short tail gives in-place edits
@@ -234,4 +234,5 @@ Note: this trim does not remove footnotes 6–20, which then show up as deleted 
   `src/engine/rangeOrder.ts`, `src/engine/pipeline.ts`, `src/engine/exportDocx.ts`.
 - Tests: `test/sample-pair.test.ts`, describe "comparison range": "keeps the two moves in range…" and the
   export tests after it.
-- PRD: `tasks/2026-10-15-203451-prd---docx-diff.md`: FR-14–19 (§4.3), §7.2, §7.5, §7.6.
+- [requirements.md](requirements.md): FR-14–19; [architecture.md](architecture.md): "Data flow",
+  "Comparison range"; [measurements.md](measurements.md).

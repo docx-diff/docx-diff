@@ -11,7 +11,7 @@
 //    a paragraph keeps its own list numbering. Runs holding note references, fields or drawings
 //    are left as they are.
 // Changes outside the comparison range are left alone: the unedited tail keeps the Original's look
-// (PRD open question 5, answered 2026-10-16).
+// (FR-39a, decided 2026-10-16).
 //
 // The plan is made on the redline before the reject rewrite (which discards the Edited properties
 // of rejected formatting changes) and applied after it; the run and paragraph elements survive the

@@ -3,10 +3,10 @@ import { bigPair } from '../test/big-pair';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { downloadReviewed } from './download';
 
-// Time budgets of the PRD success metrics: compare + display under 10 s (~60 pages) and 60 s
-// (~300 pages) once the engine has loaded, export under 10 s, and no frozen page. Opt-in with PERF=1:
-// the sample pair is close to its budget (the engine takes ~8 s of it), so it would make the default
-// run flaky on a busy machine.
+// Time budgets of the success metrics (docs/requirements.md): compare + display under 10 s (~60
+// pages) and 60 s (~300 pages) once the engine has loaded, export under 10 s, and no frozen page.
+// Opt-in with PERF=1: the sample pair is close to its budget (the engine takes ~8 s of it), so it
+// would make the default run flaky on a busy machine.
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 // A main-thread task this long would make the page feel frozen.

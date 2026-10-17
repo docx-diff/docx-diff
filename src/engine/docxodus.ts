@@ -48,7 +48,7 @@ export function render(redline: Uint8Array): Promise<string> {
   });
 }
 
-/** Accepts every tracked revision in one stateless pass (PRD §7.3). */
+/** Accepts every tracked revision in one stateless pass (docs/architecture.md). */
 export function acceptAll(redline: Uint8Array): Promise<Uint8Array> {
   return docxDiffAcceptRevisions(redline);
 }

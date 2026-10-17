@@ -1,9 +1,9 @@
 // Export: apply the final decision of every revision to the redline and return a clean `.docx`
-// (PRD §7.3). Rejected revisions are first rewritten so that accepting them gives the Original
-// version, and text from the version the formatting choice did not pick takes the chosen look
-// (`consistentLook.ts`); then one stateless accept pass resolves everything, and the notes are
-// matched up with their references again (`notes.ts`). In-range content the engine placed after
-// the region outside the comparison range goes back before it (`rangeOrder.ts`).
+// (docs/architecture.md). Rejected revisions are first rewritten so that accepting them gives the
+// Original version, and text from the version the formatting choice did not pick takes the chosen
+// look (`consistentLook.ts`); then one stateless accept pass resolves everything, and the notes are
+// matched up with their references again (`notes.ts`). In-range content the engine placed after the
+// region outside the comparison range goes back before it (`rangeOrder.ts`).
 import { planConsistentLook, type FormattingChoice } from './consistentLook';
 import { acceptAll, listRevisions } from './docxodus';
 import { reconcileNotes } from './notes';

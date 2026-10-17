@@ -1,4 +1,4 @@
-// The one set of comparison settings the app uses. Rationale per setting: PRD §7.2.
+// The one set of comparison settings the app uses. Rationale: docs/architecture.md.
 export const COMPARE_SETTINGS = {
   /** Compare the accepted view of inputs that already contain tracked changes (FR-13). */
   preAcceptInputRevisions: true,

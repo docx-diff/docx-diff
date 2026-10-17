@@ -1,6 +1,6 @@
-// The export's reject rewrite (PRD §7.3): each rejected revision's markup is rewritten so that
-// *accepting* it gives the Original version. One stateless accept pass then resolves the whole
-// document. Works on @xmldom/xmldom documents, since it runs in the worker.
+// The export's reject rewrite (docs/architecture.md): each rejected revision's markup is rewritten
+// so that *accepting* it gives the Original version. One stateless accept pass then resolves the
+// whole document. Works on @xmldom/xmldom documents, since it runs in the worker.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import { ElementIndex, W_NS, parseConstituentKey, readPart, unzipDocx, writePart, zipDocx } from './ooxml';
 import type { RevisionListEntry } from './types';

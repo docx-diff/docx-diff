@@ -1,4 +1,4 @@
-// Engine and model checks on the sample pair (PRD §7.2, expected numbers in the task list).
+// Engine and model checks on the sample pair (expected numbers: docs/measurements.md).
 // One compare result is shared by the whole file, since a compare takes several seconds.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -382,7 +382,7 @@ describeWithSamples('sample pair', () => {
       const { exported } = await exportWith(decisions, 'range-edited-look', { formattingChoice: 'edited', outOfRange });
       const { exported: withoutLook } = await exportWith(decisions, 'range', { outOfRange });
       expect(docxText(exported)).toEqual(docxText(withoutLook));
-      // The tail keeps the Original's Palatino (PRD open question 5).
+      // The tail keeps the Original's Palatino (FR-39a).
       expect([...documentLook(exported).runs].some((run) => run.includes('Palatino'))).toBe(true);
       await expectDeliverable(exported, readSamples().original);
     });

@@ -1,6 +1,6 @@
 // The HTML converter emits no revision ids, only `data-author`. Before rendering, each revision's
-// markup gets the author `rev:<revisionId>`, so the HTML says which revision an element belongs
-// to (PRD §7.4). The tagged copy is only rendered; export works on the untagged redline.
+// markup gets the author `rev:<revisionId>`, so the HTML says which revision an element belongs to
+// (docs/architecture.md). The tagged copy is only rendered; export works on the untagged redline.
 import type { Document, Element } from '@xmldom/xmldom';
 import { ElementIndex, W_NS, parseConstituentKey, readPart, unzipDocx, writePart, zipDocx } from './ooxml';
 import type { RevisionListEntry } from './types';

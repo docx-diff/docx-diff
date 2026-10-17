@@ -1,4 +1,4 @@
-// The comparison range for partially edited documents (FR-14 – FR-19, PRD §7.5).
+// The comparison range for partially edited documents (FR-14 – FR-19, docs/architecture.md).
 // The end point is an index into `DocIndex.bodyParagraphs`: Original body paragraphs at or after
 // it are outside the range. Changing it only reclassifies items; nothing is compared again.
 import { deletedLastParagraph, type ChangeItem } from './changes';
@@ -127,7 +127,7 @@ function rangeAnchors(item: ChangeItem, index: DocIndex): readonly string[] {
 /**
  * The items outside the range that also have content before the end point (a deletion that starts
  * before it and continues after it): they are outside as a whole, so the reviewer should be told
- * (PRD §7.5). Moves are placed by their source alone and never span.
+ * (FR-17). Moves are placed by their source alone and never span.
  */
 export function spanningItems(
   items: readonly ChangeItem[],

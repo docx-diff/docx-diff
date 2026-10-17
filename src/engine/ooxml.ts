@@ -1,5 +1,5 @@
-// Zip and XML helpers for the redline package. XML goes through @xmldom/xmldom because
-// `DOMParser` does not exist in Web Workers (PRD §7.1); the same code runs in Node tests.
+// Zip and XML helpers for the redline package. XML goes through @xmldom/xmldom because `DOMParser`
+// does not exist in Web Workers (docs/architecture.md); the same code runs in Node tests.
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 
@@ -50,7 +50,7 @@ export function writePart(files: DocxFiles, partUri: string, document: Document)
 
 /**
  * One entry of a revision's `constituentKeys`: the markup element (namespace + local name + `w:id`)
- * that carries part of the revision. Formats (PRD §7.3):
+ * that carries part of the revision. Formats (docs/architecture.md):
  * `kind=Content:<ns>:ins:<id>`, `kind=ParaMark:<ns>:del:<id>`, `kind=PropsChange:<ns>:rPrChange:<id>`,
  * `kind=Content:<ns>:moveFrom:<id>:name=<move>`, and range markers without `kind=`, e.g.
  * `<ns>:moveFromRangeStart:<id>:name=<move>` or `<ns>:moveToRangeEnd:<id>`.
@@ -93,7 +93,7 @@ export function parseConstituentKey(key: string): ConstituentKey {
 
 /**
  * Finds elements by namespace + local name + `w:id`, after one walk over the part.
- * `(element name, w:id)` is unique within a part on the sample (PRD §7.3), but nothing guarantees
+ * `(element name, w:id)` is unique within a part on the sample, but nothing guarantees
  * it: a content `w:ins`, a paragraph-mark `w:ins` and a table-row `w:ins` share the name. A key
  * that names more than one element finds nothing and is reported by `isAmbiguous`, so that a
  * rewrite never picks the wrong one.

@@ -1,8 +1,8 @@
-// Anchor-based scroll synchronization between the two panels (FR-22, PRD §7.4). Both panels show
-// the same HTML, so a block has the same `data-anchor` in both. Blocks visible in both panels are
-// paired by their offsets; a scroll position between two paired blocks maps proportionally to the
-// same place between them in the other panel, so regions shown on one side only (an inserted
-// passage, a deleted tail) don't make the other panel jump.
+// Anchor-based scroll synchronization between the two panels (FR-22, docs/architecture.md). Both
+// panels show the same HTML, so a block has the same `data-anchor` in both. Blocks visible in both
+// panels are paired by their offsets; a scroll position between two paired blocks maps
+// proportionally to the same place between them in the other panel, so regions shown on one side
+// only (an inserted passage, a deleted tail) don't make the other panel jump.
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 
 export interface BlockOffset {
