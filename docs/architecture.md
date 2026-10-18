@@ -36,6 +36,7 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/headings.ts` — each input's headings, for the outline (FR-24a).
 - `src/engine/author.ts` — the Edited's author, to pre-fill the export's (FR-38c).
 - `src/engine/tagRedline.ts` — `w:author` → `rev:<id>` before rendering; `unlinkHyperlinksWithChanges`.
+- `src/engine/blockKey.ts` — `paragraphUnids`: the redline `w:p` behind each rendered block, by its `data-anchor` ([Block mapping](#rendering-and-linking-html-to-revisions)).
 - `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `trackedRevisions.ts`, `notes.ts`, `comments.ts` — its steps.
 
 Model (pure TypeScript, main thread)
@@ -175,6 +176,18 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   plain text. **Never restructure the XML before rendering:** `data-anchor` unids hash each element's
   text and descendant element names (`UnidHelper.ContentSignature`; attributes don't count), so moving
   runs in or out of a link would break the match with `affectedAnchors`.
+- **Block mapping** (`src/engine/blockKey.ts`): a block's `data-anchor` is the engine's Unid of its
+  `w:p`, derived by the converter from the XML it is given (`UnidHelper` in Docxodus, assigned before
+  any of the converter's own rewrites, which keep it). The redline carries no Unids, so
+  `paragraphUnids` derives them the same way: `sha256(parentUnid:tag:signature:dupIndex)`, first 32
+  hex digits, seeded with the part root's local name (`document`, `footnotes`, `endnotes`); the
+  signature is the hash (16 hex digits) of the tag name for an element holding a `w:p`/`w:tbl`, else
+  of `<w:t text>|<pStyle>|<numId>|<names of all other descendants>,`; `dupIndex` counts preceding
+  siblings with the same tag and signature. Checked on every fixture, the sample (775 blocks) and the
+  ~300-page pair (3,036 blocks, 174 ms for its body part in Node); a mapping by paragraph order
+  matched too, but would count paragraphs the HTML shows once or not at all (text boxes are written
+  twice, in `mc:Choice` and `mc:Fallback`). `table`, `tr` and `td` carry anchors as well; only
+  paragraph blocks (`p`, `h1`–`h6`; anchor kinds `p:`, `h:`, `li:`) map to a `w:p`.
 - **Joined and split paragraphs:** the HTML shows the redline's paragraphs as they are, so a paragraph
   whose mark is deleted still ends where it did; in Word, accepting merges it into the next one. Each
   panel moves the content of a paragraph whose mark its version lacks (right: deleted, left: inserted)

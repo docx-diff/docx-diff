@@ -12,8 +12,9 @@ New:
 - `src/ui/blockSegments.test.ts` - Round trip block → segments → HTML on fixture-shaped HTML (`test/small-html.ts`); editability checks (PRD-12).
 - `src/engine/applyEdits.ts` - Worker side: patch each edited block's `w:p` in the redline from its segments and return the updated revision list (new `w:ins`/`w:del`, fresh `w:id`s, updated `constituentKeys`).
 - `src/engine/applyEdits.test.ts` - Unit tests on hand-written redline XML: plain runs, run split, inside an engine `w:ins`, part of an engine `w:del` typed back, hyperlink, bookmark, field, footnote reference kept.
-- `src/engine/blockKey.ts` - The block ↔ `w:p` mapping chosen in task 0 (unid hash or ordinal).
-- `src/engine/blockKey.test.ts` - The mapping checked on every fixture and the sample.
+- `src/engine/blockKey.ts` - `paragraphUnids`: the engine's Unid of every `w:p` of a part, i.e. the rendered blocks' `data-anchor` (task 0).
+- `src/engine/blockKey.test.ts` - The mapping checked on every fixture and on repeated/empty paragraphs, identical cells, headings and inline objects.
+- `test/block-mapping.ts` - `unmappedBlocks(redline, html)`: paragraph blocks whose `data-anchor` names no `w:p` (used by the blockKey, sample and big-pair tests).
 - `src/ui/useEdits.ts` - Edit state per review: edit records, derived items / item texts / index / headings, update and revert actions, the ids of the items an edit created (accepted by default).
 - `src/ui/useEdits.test.tsx` - Hook tests with a small comparison.
 - `src/ui/EditableToggle.tsx` - The Edited panel header's toggle and the Revert all edits button.
@@ -23,7 +24,8 @@ New:
 - `e2e/editing.spec.ts` - e2e: toggle, typing and updates, blocked actions, shortcuts while typing, dead key, undo/revert, range warning, Swap confirmation, reload/resume, export round trip.
 
 Changed:
-- `src/engine/types.ts` - `ExportRequest.edits`.
+- `src/engine/types.ts` - `ExportRequest.edits`; `CompareResult.uneditableBlocks`.
+- `src/engine/pipeline.ts` - Reports the paragraphs with fields, content controls and other objects the HTML doesn't mark (`uneditableBlocks`, task 3.2).
 - `src/engine/exportDocx.ts` - Runs `applyEdits` first and passes the updated revisions to every later step.
 - `src/engine/engine.worker.ts` - Passes `edits` through.
 - `src/model/changes.ts` - Items from edited blocks keep their ids; `order` renumbered; helpers to rebuild the items of one block.
@@ -43,9 +45,10 @@ Changed:
 - `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
 - `src/index.css` - Toggle, Revert all and toast styles (tokens, light and dark).
 - `test/fixtures/make-fixtures.ts` - A fixture with a hyperlink + bookmark + field in one edited paragraph, if task 0/2 needs it.
-- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`, `test/expectedText.ts` - Round trips and mixed decisions with scripted edits.
+- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`, `test/expectedText.ts` - Round trips and mixed decisions with scripted edits; the sample's block mapping (task 0).
+- `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8.
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0).
 
 ### Notes
 
@@ -94,12 +97,91 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** `refs/Docxodus` (unid hash), `src/engine/pipeline.ts` (`runCompare`), `test/fixtures/`, `test/samples.ts`, `test/big-pair.ts`, `src/model/docIndex.ts`.
 
 - [ ] 0.0 Spike
-  - [ ] 0.1 Read `UnidHelper.ContentSignature` and where the converter stamps `data-anchor` in `refs/Docxodus`; note what goes into the hash (text, descendant element names; attributes don't count) and whether the redline XML alone is enough to recompute it.
-  - [ ] 0.2 Try mapping (b) (ordinal + text check) in a scratch Vitest file over every fixture and the sample: for each rendered `[data-anchor]` paragraph block, find its `w:p` and compare texts. Log mismatches. Also check that **character offsets** agree between the block's HTML text and the `w:p`'s XML text with inline objects as one placeholder each (tabs, breaks, `w:sym`, no-break hyphens, note references, field results, list labels absent in XML); list the cases that differ.
-  - [ ] 0.3 If (b) has mismatches, try (a); if both work, prefer the simpler (b) unless (a) is needed for robustness. Write the chosen function to `src/engine/blockKey.ts` with `blockKey.test.ts` over fixtures + sample (+ big pair behind `BIG_PAIR=1`).
-  - [ ] 0.4 Selection check: a scratch page (`npm run dev`, a test route or a small HTML in the scratchpad served by Vite) with a shadow root, a `contenteditable` paragraph containing `ins`/hidden `del`/a `contenteditable=false` footnote ref. Ask the user to click and type by hand (never drive their display), or use a Playwright scratch spec. Record what `getComposedRanges` and the fallback return in Chromium and Firefox.
-  - [ ] 0.5 Timing check on the ~300-page pair: a scratch Playwright spec (or the browser console on `npm run preview`) replacing one block's HTML in all three panels and re-running the item memos; record the numbers.
-  - [ ] 0.6 Write the findings under this task (mapping chosen, key format, selection API and fallback, timings, anything that changes later tasks), adjust the later tasks if needed, delete scratch files, commit `blockKey.ts` and the findings.
+  - [x] 0.1 Read `UnidHelper.ContentSignature` and where the converter stamps `data-anchor` in `refs/Docxodus`; note what goes into the hash (text, descendant element names; attributes don't count) and whether the redline XML alone is enough to recompute it.
+  - [x] 0.2 Try mapping (b) (ordinal + text check) in a scratch Vitest file over every fixture and the sample: for each rendered `[data-anchor]` paragraph block, find its `w:p` and compare texts. Log mismatches. Also check that **character offsets** agree between the block's HTML text and the `w:p`'s XML text with inline objects as one placeholder each (tabs, breaks, `w:sym`, no-break hyphens, note references, field results, list labels absent in XML); list the cases that differ.
+  - [x] 0.3 If (b) has mismatches, try (a); if both work, prefer the simpler (b) unless (a) is needed for robustness. Write the chosen function to `src/engine/blockKey.ts` with `blockKey.test.ts` over fixtures + sample (+ big pair behind `BIG_PAIR=1`).
+  - [x] 0.4 Selection check: a scratch page (`npm run dev`, a test route or a small HTML in the scratchpad served by Vite) with a shadow root, a `contenteditable` paragraph containing `ins`/hidden `del`/a `contenteditable=false` footnote ref. Ask the user to click and type by hand (never drive their display), or use a Playwright scratch spec. Record what `getComposedRanges` and the fallback return in Chromium and Firefox.
+  - [x] 0.5 Timing check on the ~300-page pair: a scratch Playwright spec (or the browser console on `npm run preview`) replacing one block's HTML in all three panels and re-running the item memos; record the numbers.
+  - [x] 0.6 Write the findings under this task (mapping chosen, key format, selection API and fallback, timings, anything that changes later tasks), adjust the later tasks if needed, delete scratch files, commit `blockKey.ts` and the findings.
+
+**Findings** (2026-10-18; scratch tests deleted, numbers from Node 24 / Chromium 156 / Firefox 157)
+
+1. **Mapping: (a), the Unid hash** (`src/engine/blockKey.ts`, `paragraphUnids`; described in
+   `docs/architecture.md`, "Block mapping"). The converter assigns Unids on the tagged redline as
+   given (`HtmlConversionOps.AssignAnchorUnids` → `UnidHelper.AssignToAllElementsDeterministic`,
+   before revision handling and markup simplification, whose rewrites keep the attribute); the
+   redline has no Unids of its own, attributes don't count, so the untagged redline gives the same
+   values. (a) found every paragraph block's `w:p` on all 21 fixtures, a scratch pair with tabs /
+   breaks / `w:sym` / no-break and soft hyphens / bookmark / `w:fldSimple` / inline `w:sdt` / `w:cr` /
+   `w:ptab`, the sample (775 blocks) and the ~300-page pair (3,036 blocks). (b), the ordinal, matched
+   too, but (a) is exact by construction, needs no second key, and doesn't depend on which `w:p` the
+   converter renders (text boxes are written twice, `mc:Choice` + `mc:Fallback`; an ordinal would
+   count both). Cost: 174 ms for the ~300-page body part in Node (Web Crypto, hashed level by level in
+   parallel), in the worker. `table`/`tr`/`td` also carry `data-anchor`; only paragraph blocks
+   (`p`, `h1`–`h6`; anchor kinds `p:`/`h:`/`li:`) map to a `w:p`.
+   **Key format: the block's unid itself** (its `data-anchor`), plus its scope (`body`/`fn`/`en`)
+   to pick the part. So `BlockEdit.blockKey` and `unid` are the same value: tasks 1, 2, 6 use `unid`
+   (+ `scope` where the worker needs the part) instead of a separate `blockKey`.
+2. **Text offsets, HTML vs XML** (per version; objects one placeholder each). They agree once these
+   rendering rules are applied by the reader (task 2.6) and the XML walk (task 2.2):
+   - the converter renders some spaces as **NBSP** (e.g. the last space of a span) and the sample's
+     XML has real NBSPs: same length, so compare/diff with NBSP ≡ space; browsers also type NBSPs in
+     `contenteditable`;
+   - `w:tab` → empty `span[data-docx-tab]`; `w:br`/`w:cr` → `<br>` followed by a U+200E text mark
+     (skip it); `w:footnoteReference`/`w:endnoteReference` → `a.footnote-ref`/`a.endnote-ref` with the
+     number as text: each one placeholder;
+   - `w:sym` → one private-use character (U+E000–U+F8FF) in a plain span; `w:noBreakHyphen` → a
+     plain `-`; neither is marked in the HTML;
+   - `w:softHyphen`, `w:ptab`, `w:footnoteRef`/`w:endnoteRef` (inside the note), `w:instrText`,
+     `w:fldChar`, `w:bookmarkStart/End` (an empty `a#name`), `w:proofErr`, `w:lastRenderedPageBreak`:
+     no text on either side;
+   - field results (complex and `w:fldSimple`) and inline `w:sdt` content render as **plain text**
+     with nothing marking them;
+   - a block with a deleted paragraph mark ends with a `<span> </span>` before the `¶` glyph, and an
+     empty paragraph renders a space filler: not document text (such blocks aren't editable anyway,
+     but the reader must not count the filler of an empty paragraph).
+   Consequence for task 3.2: what the HTML doesn't mark (fields, inline `w:sdt`, `w:sym`,
+   `w:noBreakHyphen`, `w:ptab`, drawings/`w:pict`/`w:object`/`mc:AlternateContent`, nested
+   paragraphs; images not tested) can only be detected in the XML. The worker reports it per block
+   at compare time (`CompareResult.uneditableBlocks`, unid → reason, from `paragraphUnids`), and those
+   paragraphs are not editable (PRD-12, message "contains a field or object that can't be edited
+   here").
+3. **Selection in the shadow root:** `getSelection().getComposedRanges({ shadowRoots: [root] })`
+   gives the right text node and offset in **both** browsers: at a click, after typing, after the
+   block's markup is rewritten and the cursor restored, and for a range. `shadowRoot.getSelection()`
+   works in Chromium only (same values); Firefox lacks it. `document.getSelection()` must **not** be
+   used: Chromium reports `BODY:0` for a cursor placed by a click (Firefox reports the shadow nodes).
+   Restoring with `getSelection().setBaseAndExtent(node, offset, …)` on shadow text nodes works in
+   both. `getComposedRanges` returns start/end only; for a backward selection, keep the direction
+   from `Selection.direction` if it matters.
+   Events (both browsers): at `window`, `event.target` is the shadow host and `composedPath()[0]` the
+   editable paragraph (task 4.1 confirmed). Enter / Shift+Enter / Backspace / Ctrl+Z give cancelable
+   `beforeinput` (`insertParagraph`, `insertLineBreak`, `deleteContentBackward`, `historyUndo`), and
+   cancelling leaves the text as it was; **Ctrl+Shift+Z fires no `historyRedo`** (nothing to redo
+   natively), so redo must come from `keydown` (task 5.1). Typing right after an `ins` lands **inside**
+   the `ins` in both: derive ownership from the text diff (as PRD §7 says). For e2e (task 4.10):
+   Playwright's `keyboard.insertText` is a cancelable `insertText` in Chromium but a non-cancelable
+   `insertCompositionText` in Firefox; a composition in Chromium needs CDP `Input.imeSetComposition`.
+   (Playwright's Firefox was installed for the spike: `~/.cache/ms-playwright/firefox-1555`.)
+4. **Cost of one update.**
+   - Item memos (`ignored`, `classify`, `spanning`, `outOfRange`, `reviewable`, `resolvedSides`,
+     `formatting`, `entries`, `order`, `itemById`, `labelById`, `totals`) with one item added and
+     every item a new object (renumbered `order`), ~300-page pair (1,545 items), Node: **10 ms**
+     (median of 7), of which `ignoredItems` 9 ms (it normalizes every item's text; make it
+     incremental, or cache per item, if the update gets tight). Renumbering the items: 0.1 ms.
+   - DOM, one block replaced in the three panels (built app, Chromium, three columns): the swap
+     itself < 1 ms; forced style + layout 6–11 ms per panel. **Sample:** the update frame's rendering
+     work is 8.5 ms (Layout 3, Paint 1.5, PrePaint 1.1), the frame comes as fast as an idle one
+     (~30 ms); one decision takes 23 ms, Accept all 64 ms. **~300-page pair:** the update frame is
+     **65–80 ms** of rendering alone (trace: Paint 39, PrePaint 16.5, Layout 15; script ≈ 0), the same
+     as any frame whose layout changes there (scrolling a panel gives 55–70 ms tasks too); one
+     **decision already takes 149 ms** and Accept all 360 ms.
+   - So the 100 ms budget (PRD goal 3, success metric 5) holds with room on the sample. On the
+     ~300-page pair the browser's own paint/layout of the long documents takes most of it before any
+     of our code, and a decision is over it today: an update there will be about as slow as a
+     decision (~150 ms). Meeting 100 ms there needs rendering work outside this feature (e.g.
+     `content-visibility: auto` on blocks, which affects scroll sync's offsets). **Open: user to
+     decide** whether the ~300-page target becomes "no slower than a decision" (task 8.1).
 
 ### 1.0 Paragraph edit model (pure)
 
@@ -112,7 +194,7 @@ Update the file after completing each sub-task, not just after completing an ent
     | { kind: 'del'; text: string; itemId: string; revisionId: string; source: string }
     | { kind: 'ins'; text: string; itemId: string; revisionId: string; source: string }
     | { kind: 'object'; key: string };                                         // note ref, list label, image, field, tab, break
-  interface BlockEdit { blockKey: string; unid: string; original: Segment[]; current: Segment[] }
+  interface BlockEdit { unid: string; scope: BlockScope; original: Segment[]; current: Segment[] }  // unid = the block key (task 0)
   ```
   `source` is not stored as a run index (HTML spans and XML runs don't correspond): new text takes
   the formatting of its neighbouring character (PRD-18, PRD §7 "Formatting source"), so `source`
@@ -152,16 +234,17 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Specs**
 
-- `ExportRequest.edits?: { blockKey: string; segments: Segment[] }[]` (`src/engine/types.ts`), plus
+- `ExportRequest.edits?: { unid: string; scope: BlockScope; segments: Segment[] }[]` (`src/engine/types.ts`), plus
   the new revisions' `RevisionListEntry`s in `revisions` (from task 1.6, without `constituentKeys`).
 - `applyEdits(files, revisions, edits) → revisions'` in `src/engine/applyEdits.ts`, first step of
   `exportDocx` (`src/engine/exportDocx.ts`); every later step (`planConsistentLook`,
   `planRangeOrder`, `rejectRevisions`, `trackedRevisions`, `reconcileNotes`, comments) gets
   `revisions'`.
 - Patch rules (PRD §7 "Export"):
-  - find the `w:p` with `blockKey` (task 0);
+  - find the `w:p` by its unid with `paragraphUnids` on the scope's part (task 0);
   - walk its text runs in order (also inside `w:hyperlink`, `w:ins`, `w:del`, `w:smartTag`) and map
-    segment character offsets onto them (inline objects one placeholder each, as in the reader);
+    segment character offsets onto them (inline objects one placeholder each, as in the reader;
+    the per-element rules are in task 0's findings, item 2);
     split `w:r` at segment boundaries; new text copies the `w:rPr` of the run holding the
     neighbouring character (before, else after);
   - new `ins` → `w:ins` with a new integer `w:id` (above the part's max `w:id`), `w:author`/`w:date`
@@ -243,7 +326,8 @@ Update the file after completing each sub-task, not just after completing an ent
 
 - [ ] 3.0 Live review state with edits
   - [ ] 3.1 In `src/ui/blockSegments.ts` (reader from task 2.6), render segments back to block HTML in the converter's markup. Tests on `test/small-html.ts` shapes and every fixture's blocks: block → segments → HTML → segments is identity.
-  - [ ] 3.2 Editability check (PRD-12) in `blockSegments.ts`: in range, no move content, no paragraph-mark revision, not a join target in any panel, nothing task 0/2 found unsafe. Return a reason for the message (PRD-13). Tests.
+  - [ ] 3.2 Editability check (PRD-12) in `blockSegments.ts`: in range, no move content, no paragraph-mark revision, not a join target in any panel, not in `uneditableBlocks`. Return a reason for the message (PRD-13). Tests.
+    - Worker side first: `CompareResult.uneditableBlocks` (unid → reason) from `runCompare` (`src/engine/pipeline.ts`), via `paragraphUnids` on the redline: paragraphs containing a field (`w:fldChar`, `w:fldSimple`, `w:instrText`), an inline `w:sdt`, `w:sym`, `w:noBreakHyphen`, `w:ptab`, `w:drawing`/`w:pict`/`w:object`/`mc:AlternateContent`, or a nested `w:p` (task 0 findings, item 2: the HTML doesn't mark them). Engine test on the fixtures (`field-hyperlink`) and the sample (its time goes into the compare's timings).
   - [ ] 3.3 Scope `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` (`renderedDocument.ts`) and `collectItemTexts` (`equivalence.ts`) to a root/block without changing their whole-document behaviour; existing tests pass unchanged, new tests for a block.
   - [ ] 3.4 `DocIndex` and items for one replaced block: functions in `docIndex.ts` / `changes.ts` that replace one block's entries and items, keep other items' identity, keep existing ids, renumber `order`. Tests.
   - [ ] 3.5 `useEdits` hook with `update`, `revert`, `revertAll`, derived values, reset per comparison. Hook tests.
@@ -330,7 +414,7 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Specs**
 
-- `ReviewState.edits: { blockKey: string; unid: string; original: Segment[]; current: Segment[]; nextId: number }[]`
+- `ReviewState.edits: { unid: string; scope: BlockScope; original: Segment[]; current: Segment[]; nextId: number }[]`
   (PRD §7 "Saved review"); `sanitizeState` keeps well-formed records, drops others; schema stays 1.
 - Autosave includes edits (`reviewState` memo in `App.tsx`).
 - Resume order (PRD §7): the decision filter (`known`, `App.tsx` ~line 139) also accepts the item
@@ -390,7 +474,7 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** tasks 0–7.
 
 - [ ] 8.0 Documentation, measurements and final checks
-  - [ ] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers.
+  - [ ] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms; the target there is the user's decision.)
   - [ ] 8.2 `docs/requirements.md` updates and FR citations in code comments.
   - [ ] 8.3 `docs/architecture.md` "Inline edits" section, module map, Saved review.
   - [ ] 8.4 `docs/measurements.md` numbers.

@@ -21,6 +21,7 @@ import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
+import { unmappedBlocks } from './block-mapping';
 import { expectDeliverable, expectTrackedDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
 import { documentLook, lookDifference } from './look';
@@ -179,6 +180,14 @@ describeWithSamples('sample pair', () => {
       const anchors = result.revisions.flatMap((r) => r.affectedAnchors);
       const missing = anchors.filter((anchor) => !analysis.index.blockByUnid.has(anchor.unid));
       expect(missing.map((anchor) => anchor.kind)).toEqual(['sec']);
+    });
+
+    it('maps every paragraph block to its redline paragraph by Unid', async () => {
+      const start = performance.now();
+      const { checked, unmapped } = await unmappedBlocks(result.redline, result.html);
+      console.log(`Block mapping on the sample: ${Math.round(performance.now() - start)} ms (with HTML parse)`);
+      expect(checked).toBe(775);
+      expect(unmapped).toEqual([]);
     });
 
     it('shows every content, move and paragraph-mark revision, and 355 of 378 formatting revisions', () => {

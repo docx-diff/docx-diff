@@ -2,11 +2,14 @@
 //   BIG_PAIR=1 npx vitest run test/big-pair.test.ts
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { paragraphUnids } from '../src/engine/blockKey';
 import { exportDocx } from '../src/engine/exportDocx';
+import { readPart, unzipDocx } from '../src/engine/ooxml';
 import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import { rejectRevisions } from '../src/engine/rejectRewrite';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { bigPair } from './big-pair';
+import { unmappedBlocks } from './block-mapping';
 import { expectedText } from './expectedText';
 import { initNodeEngine } from './node-engine';
 import { docxText } from './text';
@@ -33,6 +36,16 @@ describe.skipIf(!process.env.BIG_PAIR)('~300-page pair', () => {
       analysisMs: analysis.timings,
     });
     expect(analysis.items.flatMap((item) => item.revisionIds)).toHaveLength(result.revisions.length);
+  });
+
+  it('maps every paragraph block to its redline paragraph by Unid', async () => {
+    const files = unzipDocx(result.redline);
+    const start = performance.now();
+    await paragraphUnids(readPart(files, '/word/document.xml')!);
+    console.log(`~300-page block mapping (body part): ${Math.round(performance.now() - start)} ms`);
+    const { checked, unmapped } = await unmappedBlocks(result.redline, result.html);
+    expect(checked).toBe(analysis.index.blocks.length);
+    expect(unmapped).toEqual([]);
   });
 
   it('exports in under 10 s (FR-44): all accepted, all rejected, alternating per item', async () => {
