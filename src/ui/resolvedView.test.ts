@@ -9,6 +9,7 @@ import {
   applyResolution,
   applyResolvedDecisions,
   prepareResolvedPanel,
+  replaceResolvedBlock,
   resolvedText,
 } from './resolvedView';
 
@@ -333,5 +334,70 @@ describe('applyRangeOrder', () => {
     resolved.wrapper.querySelector('[data-anchor="t1"]')!.before(divider);
     applyRangeOrder(resolved, positions, 1, new Set(['tail']));
     expect(order(resolved)).toEqual(['a', 'd', 'g', 'range-divider', 't1', 't2']);
+  });
+});
+
+describe('replaceResolvedBlock', () => {
+  /**
+   * A panel shown with these sides, decisions and comment icons, then with one block replaced,
+   * and a panel prepared from the HTML with the block already replaced and shown the same.
+   */
+  const both = (oldBlock: string, newBlock: string, sides: Map<string, ResolvedSide>, decisions: Record<string, Decision>, toggles: Map<string, boolean>) => {
+    expect(HTML).toContain(oldBlock);
+    const show = (resolved: ReturnType<typeof panel>) => {
+      applyResolution(resolved, sides);
+      applyResolvedDecisions(resolved, decisions);
+      applyCommentToggles(resolved, toggles);
+      return resolved;
+    };
+    const live = show(panel());
+    const unid = /data-anchor="([^"]+)"/.exec(oldBlock)![1]!;
+    const template = live.wrapper.ownerDocument.createElement('template');
+    template.innerHTML = newBlock;
+    replaceResolvedBlock(live, live.wrapper.querySelector<HTMLElement>(`[data-anchor="${unid}"]`)!, template.content.firstElementChild as HTMLElement);
+    return { live, fresh: show(panel(HTML.replace(oldBlock, newBlock))) };
+  };
+
+  it('gives the DOM of a panel prepared with the new block: a block with a comment icon', () => {
+    const { live, fresh } = both(
+      '<p data-anchor="b">An <ins data-change-id="i">inserted</ins> word.</p>',
+      '<p data-anchor="b">An <ins data-change-id="i">inserted</ins> <del data-change-id="e1">word</del><ins data-change-id="e1">phrase</ins>.</p>',
+      new Map([...all('accept'), ['i', 'reject'], ['e1', 'accept']]),
+      { i: 'rejected', e1: 'accepted' },
+      new Map([['i', true], ['e1', false]]),
+    );
+    expect(dom(live)).toBe(dom(fresh));
+    expect(live.wrapper.querySelector('[data-anchor="b"] [data-comment-for="e1"]')).not.toBeNull();
+    expect(resolvedText(live.wrapper)).toContain('An phrase.');
+  });
+
+  it('gives the DOM of a panel prepared with the new block: a block another paragraph is joined into', () => {
+    for (const side of ['accept', 'reject'] as const) {
+      const { live, fresh } = both(
+        '<p data-anchor="j2"><span data-list-marker="true">1.</span>here.</p>',
+        '<p data-anchor="j2"><span data-list-marker="true">1.</span>here <ins data-change-id="e2">and now</ins>.</p>',
+        new Map([...all('accept'), ['j', side], ['e2', 'reject']]),
+        { e2: 'rejected' },
+        new Map([['j', true]]),
+      );
+      expect(dom(live), side).toBe(dom(fresh));
+    }
+  });
+
+  it('gives the DOM of a panel prepared with the new block: a block with a note reference', () => {
+    for (const side of ['accept', 'reject'] as const) {
+      const { live, fresh } = both(
+        '<p data-anchor="f">Note<del data-change-id="n"><a href="#fn-2" id="fn-ref-2" class="footnote-ref"><sup>2</sup></a></del>.</p>',
+        '<p data-anchor="f">Note<del data-change-id="n"><a href="#fn-2" id="fn-ref-2" class="footnote-ref"><sup>2</sup></a></del> <ins data-change-id="e3">here</ins>.</p>',
+        new Map([...all('accept'), ['n', side]]),
+        { n: side === 'accept' ? 'accepted' : 'rejected' },
+        new Map([['n', true]]),
+      );
+      expect(dom(live), side).toBe(dom(fresh));
+      expect(live.noteReferences.get(live.wrapper.querySelector('#fn-2')!)).toEqual([live.wrapper.querySelector('a.footnote-ref')]);
+      // The note follows its reference's decision after the swap too.
+      applyResolution(live, new Map([...all('accept'), ['n', side === 'accept' ? 'reject' : 'accept']]), ['n']);
+      expect(live.wrapper.querySelector('#fn-2')!.classList.contains(RESOLVED_HIDDEN), side).toBe(side === 'reject');
+    }
   });
 });

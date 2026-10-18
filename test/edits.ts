@@ -9,7 +9,8 @@ import { W_NS, readPart, unzipDocx } from '../src/engine/ooxml';
 import type { BlockEditPatch, FinalDecision, RevisionListEntry } from '../src/engine/types';
 import type { BlockScope } from '../src/model/docIndex';
 import { OBJECT_CHAR, PART_OF_SCOPE, applyTextEdit, editRevisions, visibleText, type BlockEdit, type Segment } from '../src/model/paragraphEdit';
-import { readBlockSegments } from '../src/ui/blockSegments';
+import { readBlockSegments, uneditableReason } from '../src/ui/blockSegments';
+import { PARAGRAPH_BLOCK } from '../src/ui/renderedDocument';
 
 export function scopeOfBlock(block: Element): BlockScope {
   const scope = ((block as HTMLElement).dataset.sourceAnchorId ?? '').split(':')[1];
@@ -213,22 +214,12 @@ export function pickScenarios(blocks: readonly Element[], scenarios: readonly Sc
   return edits;
 }
 
-/**
- * The paragraph blocks the tests may edit: inline edits leave out paragraphs with moves, with an
- * inserted or deleted mark, those another paragraph is joined into, and those the patch refuses.
- */
+/** The paragraph blocks the panel lets the reviewer edit (`uneditableReason`), in the full documents. */
 export function editableBlocks(root: ParentNode, paragraphs: ReadonlyMap<string, RedlineParagraph>): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]')].filter((block) => {
-    const paragraph = paragraphs.get(`${scopeOfBlock(block)}:${block.dataset.anchor}`);
-    const previous = block.previousElementSibling;
-    return (
-      !!paragraph &&
-      !paragraph.unpatchable &&
-      !block.matches('.rev-para-ins, .rev-para-del') &&
-      !block.querySelector('.rev-move-from, .rev-move-to, .rev-para-mark-del') &&
-      !previous?.matches('[data-anchor].rev-para-ins, [data-anchor].rev-para-del')
-    );
-  });
+  const uneditable = Object.fromEntries([...paragraphs].filter(([, paragraph]) => paragraph.unpatchable).map(([key]) => [key.split(':')[1]!, 'unpatchable']));
+  return [...root.querySelectorAll<HTMLElement>(PARAGRAPH_BLOCK)].filter(
+    (block) => paragraphs.has(`${scopeOfBlock(block)}:${block.dataset.anchor}`) && uneditableReason(block, { outOfRange: new Set(), uneditable }) === undefined,
+  );
 }
 
 /** `expectedText` overrides for the edited blocks under the decisions. */

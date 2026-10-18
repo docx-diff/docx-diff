@@ -36,7 +36,19 @@ interface Paragraph {
 }
 
 export function buildOutline(root: ParentNode, headings: { original: readonly DocumentHeading[]; edited: readonly DocumentHeading[] }): OutlineEntry[] {
-  const version = headings.edited.length > 0 ? 'edited' : 'original';
+  const { version, paragraphs, matches } = match(root, headings);
+  return matches.flatMap((at, i) => {
+    // Not found (text the HTML shows differently): left out.
+    if (at === -1) return [];
+    const paragraph = paragraphs[at]!;
+    const heading = headings[version][i]!;
+    return [{ unid: paragraph.unid, level: heading.level, text: heading.text, inOriginal: paragraph.original !== '', inEdited: paragraph.edited !== '' }];
+  });
+}
+
+/** Each heading of the outline's version, and the index of its paragraph (`-1`: not found, and later headings still match). */
+function match(root: ParentNode, headings: { original: readonly DocumentHeading[]; edited: readonly DocumentHeading[] }) {
+  const version: 'original' | 'edited' = headings.edited.length > 0 ? 'edited' : 'original';
   const paragraphs: Paragraph[] = [];
   for (const block of root.querySelectorAll<HTMLElement>(':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]')) {
     if (block.closest('li[id^="fn-"], li[id^="en-"]')) continue;
@@ -50,24 +62,42 @@ export function buildOutline(root: ParentNode, headings: { original: readonly Do
       },
     });
   }
-
-  const entries: OutlineEntry[] = [];
+  const matches: number[] = [];
   let next = 0;
   for (const heading of headings[version]) {
     const at = findParagraph(paragraphs, next, heading.text, version);
-    // Not found (text the HTML shows differently): left out, and later headings still match.
-    if (at === -1) continue;
-    const paragraph = paragraphs[at]!;
-    entries.push({
-      unid: paragraph.unid,
-      level: heading.level,
-      text: heading.text,
-      inOriginal: paragraph.original !== '',
-      inEdited: paragraph.edited !== '',
-    });
-    next = at + 1;
+    matches.push(at);
+    if (at !== -1) next = at + 1;
   }
-  return entries;
+  return { version, paragraphs, matches };
+}
+
+/** A paragraph's text in the Edited version, as the outline compares it with a heading's. */
+export function editedParagraphText(block: Element): string {
+  return paragraphText(block as HTMLElement, MISSING.edited.content);
+}
+
+/** The block of each Edited heading (`undefined`: not found), as `buildOutline` places them. */
+export function editedHeadingBlocks(root: ParentNode, headings: { original: readonly DocumentHeading[]; edited: readonly DocumentHeading[] }): (string | undefined)[] {
+  const { version, paragraphs, matches } = match(root, headings);
+  return version === 'edited' ? matches.map((at) => paragraphs[at]?.unid) : [];
+}
+
+/**
+ * The headings with each Edited heading's text taken from its block as it is now (`blocks`, from
+ * `editedHeadingBlocks` on the document before any inline edit), for the given edited blocks.
+ */
+export function withEditedHeadings<H extends { original: readonly DocumentHeading[]; edited: readonly DocumentHeading[] }>(
+  headings: H,
+  blocks: readonly (string | undefined)[],
+  edited: ReadonlyMap<string, Element>,
+): H {
+  if (!blocks.some((unid) => unid !== undefined && edited.has(unid))) return headings;
+  const updated = headings.edited.map((heading, i) => {
+    const block = blocks[i] === undefined ? undefined : edited.get(blocks[i]!);
+    return block ? { ...heading, text: paragraphText(block as HTMLElement, MISSING.edited.content) } : heading;
+  });
+  return { ...headings, edited: updated };
 }
 
 /**

@@ -33,7 +33,7 @@ import { ColumnsToggle } from './ui/ColumnsToggle';
 import { CommentBubbles, CommentsToggle, type BubbleComment } from './ui/CommentBubbles';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
-import { DocumentPanel } from './ui/DocumentPanel';
+import { DocumentPanel, type PanelControl } from './ui/DocumentPanel';
 import { EngineStatus } from './ui/EngineStatus';
 import { ExportDialog, exportFailure, type ExportStatus } from './ui/ExportDialog';
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
@@ -47,6 +47,7 @@ import { ThemeToggle } from './ui/ThemeToggle';
 import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
+import { useEdits } from './ui/useEdits';
 import { useCompareSettings } from './ui/useCompareSettings';
 import { useExportSettings } from './ui/useExportSettings';
 import { useTheme } from './ui/theme';
@@ -72,6 +73,9 @@ export function App() {
   const [files, setFiles] = useState<{ original: File | null; edited: File | null }>({ original: null, edited: null });
   const comparisonState = useComparison(engine, files.original, files.edited);
   const comparison = comparisonState.status === 'done' ? comparisonState.comparison : null;
+  // The live items, their texts, the index and the headings, with the reviewer's inline edits.
+  const edits = useEdits(comparison);
+  const items = edits.items;
 
   const { storage, markUnavailable } = useReviewStorage();
   const store = storage.status === 'ready' ? storage.store : null;
@@ -91,15 +95,18 @@ export function App() {
   // A narrow window shows two columns; the setting is kept for when it is wider again (FR-25c).
   const threeColumns = view.threeColumns && !narrow;
   const [theme, toggleTheme] = useTheme();
-  const ignored = useMemo(
-    () => (comparison ? ignoredItems(comparison.analysis.items, comparison.itemTexts, settings) : new Set<string>()),
-    [comparison, settings],
+  const ignored = useSameSet(
+    useMemo(() => (items && edits.itemTexts ? ignoredItems(items, edits.itemTexts, settings) : new Set<string>()), [items, edits.itemTexts, settings]),
   );
 
   const [scrollLock, setScrollLock] = useState(true);
   const leftRef = useRef<HTMLDivElement>(null);
   const middleRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
+  /** The panels' controls, for inline edits (`showBlockUpdates`). */
+  const leftControl = useRef<PanelControl>(null);
+  const middleControl = useRef<PanelControl>(null);
+  const rightControl = useRef<PanelControl>(null);
   /** The panels shown, in order; a new array when the view changes. */
   const panelRefs = useMemo(() => (threeColumns ? [leftRef, middleRef, rightRef] : [leftRef, rightRef]), [threeColumns]);
   const scrollController = useScrollSync(panelRefs, scrollLock, comparison);
@@ -202,22 +209,22 @@ export function App() {
   };
   const startNew = useCallback(() => setPromptDone(true), []);
 
-  const items = comparison?.analysis.items;
   // The comparison range only reclassifies the changes (FR-19); their decisions are kept.
   const positions = useMemo(
     () => (comparison ? blockPositions(comparison.analysis.index, comparison.analysis.suggestedEndPoint) : new Map<string, number>()),
     [comparison],
   );
   const range = useMemo(
-    () =>
-      comparison ? classify(comparison.analysis.items, comparison.analysis.index, rangeState.endPoint, positions) : new Map<string, RangeClass>(),
-    [comparison, rangeState, positions],
+    () => (items && edits.index ? classify(items, edits.index, rangeState.endPoint, positions) : new Map<string, RangeClass>()),
+    [items, edits.index, rangeState, positions],
   );
   const spanning = useMemo(
-    () => (comparison ? spanningItems(comparison.analysis.items, comparison.analysis.index, rangeState.endPoint, range, positions) : []),
-    [comparison, rangeState, range, positions],
+    () => (items && edits.index ? spanningItems(items, edits.index, rangeState.endPoint, range, positions) : []),
+    [items, edits.index, rangeState, range, positions],
   );
-  const outOfRange = useMemo(() => new Set((items ?? []).filter((item) => range.get(item.id) === 'outOfRange').map((item) => item.id)), [items, range]);
+  const outOfRange = useSameSet(
+    useMemo(() => new Set((items ?? []).filter((item) => range.get(item.id) === 'outOfRange').map((item) => item.id)), [items, range]),
+  );
   const outsideBlocks = useMemo(
     () => (comparison ? outOfRangeBlocks(comparison.analysis.index, rangeState.endPoint, positions) : new Set<string>()),
     [comparison, rangeState, positions],
@@ -282,7 +289,8 @@ export function App() {
   );
   const selectFromList = useCallback((itemId: string) => select(itemId, true), [select]);
 
-  const outline = useMemo(() => (comparison ? buildOutline(comparison.document.body, comparison.result.headings) : []), [comparison]);
+  // Rebuilt when an edit changes a heading's text (the outline doesn't change otherwise).
+  const outline = useMemo(() => (comparison && edits.headings ? buildOutline(comparison.document.body, edits.headings) : []), [comparison, edits.headings]);
   const selectHeading = useCallback((unid: string) => revealBlock(scrollers(), unid, scrollController), [scrollers, scrollController]);
 
   const decide = useCallback((itemId: string, decision: Decision | null) => {
@@ -421,16 +429,19 @@ export function App() {
     setUsedAuthor({ comparison: current, author });
     setExportState({ status: 'running', startedAt: performance.now() });
     try {
-      const final = finalRevisionDecisions(current.analysis.items, state, range, undecided, ignored);
+      const liveItems = items ?? current.analysis.items;
+      const final = finalRevisionDecisions(liveItems, state, range, undecided, ignored);
       const decisions = Object.fromEntries(final);
+      const session = edits.session?.comparison === current ? edits.session : null;
       const bytes = await engine.exportDocx({
         redline: current.result.redline.slice(0),
-        revisions: current.result.revisions,
+        revisions: session?.revisions() ?? current.result.revisions,
         decisions,
         formattingChoice: state.formattingChoice,
-        outOfRange: current.analysis.items.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds),
-        comments: exportComments(current.analysis.items, state, range, final),
+        outOfRange: liveItems.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds),
+        comments: exportComments(liveItems, state, range, final),
         author,
+        edits: session?.patches(),
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });
@@ -438,7 +449,7 @@ export function App() {
     } catch (error) {
       const labels = new Map<string, string>();
       for (const entry of buildReviewList(reviewable, formatting, true)) if (entry.type === 'item') labels.set(entry.item.id, entry.label);
-      setExportState({ status: 'error', failure: exportFailure(error, current.analysis.items, labels) });
+      setExportState({ status: 'error', failure: exportFailure(error, items ?? current.analysis.items, labels) });
     }
   };
 
@@ -519,6 +530,7 @@ export function App() {
               <DocumentPanel
                 key={side}
                 ref={side === 'left' ? leftRef : side === 'right' ? rightRef : middleRef}
+                controlRef={side === 'left' ? leftControl : side === 'right' ? rightControl : middleControl}
                 side={side}
                 theme={theme}
                 title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
@@ -651,6 +663,13 @@ export function App() {
       )}
     </main>
   );
+}
+
+/** The set, or the previous one while its content is the same (memos and effects keyed on it don't re-run). */
+function useSameSet<T>(set: ReadonlySet<T>): ReadonlySet<T> {
+  const kept = useRef(set);
+  if (kept.current !== set && (kept.current.size !== set.size || [...set].some((value) => !kept.current.has(value)))) kept.current = set;
+  return kept.current;
 }
 
 function Notices(props: {

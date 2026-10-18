@@ -2,6 +2,7 @@
 // docs/architecture.md.
 import type { RevisionListEntry } from '../engine/types';
 import { adjacencyKey, noteKey, type DocIndex, type IndexBlock } from './docIndex';
+import type { BlockItem } from './paragraphEdit';
 
 export type ChangeKind = 'inserted' | 'deleted' | 'replaced' | 'formatting' | 'moved' | 'paragraph';
 
@@ -198,7 +199,7 @@ function toItem(group: RevisionListEntry[], order: number, index: DocIndex | und
     revisionIds: group.map((r) => r.id),
     removedText,
     addedText,
-    location: locate(first, anchors, index),
+    location: locate(first.scope, anchors, index),
     wordDelta: { removed: countWords(removedText), added: countWords(addedText) },
     order,
     anchors,
@@ -231,10 +232,56 @@ function kindOf(group: RevisionListEntry[]): ChangeKind {
   return primary.type === 'insert' ? 'inserted' : 'deleted';
 }
 
-function locate(first: RevisionListEntry, anchors: string[], index: DocIndex | undefined): ChangeLocation {
+/** Where an item is, from the first of its blocks the index knows (else `scope`, a revision's). */
+function locate(scope: string, anchors: string[], index: DocIndex | undefined): ChangeLocation {
   const block = anchors.map((unid) => index?.blockByUnid.get(unid)).find((b) => b !== undefined);
-  const scope = block?.scope ?? first.scope;
+  scope = block?.scope ?? scope;
   if (scope === 'fn') return { scope: 'footnote', noteId: block?.noteId };
   if (scope === 'en') return { scope: 'endnote', noteId: block?.noteId };
   return { scope: block?.inTable ? 'table' : 'body' };
+}
+
+/**
+ * The items with one block's text items replaced (after an inline edit): `before` names the
+ * block's items before, `parts` its items now (`blockItems` in `paragraphEdit.ts`), in order of appearance. An item whose revisions and
+ * text stay is kept as it is (the same object, with a relabelled kind); a changed one keeps its id
+ * and the rest of its fields; a new one is located in the block. The block's items take the place
+ * of its old ones (in a block that had none, before the first item of a later block), and items
+ * are renumbered in that order. Items of other blocks keep their objects unless their `order` moves.
+ */
+export function replaceBlockItems(
+  items: readonly ChangeItem[],
+  unid: string,
+  before: Iterable<string>,
+  parts: readonly BlockItem[],
+  index: DocIndex,
+): ChangeItem[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const replacedIds = new Set([...before, ...parts.map((part) => part.id)]);
+  const blockItems = parts.map((part): ChangeItem => {
+    const existing = byId.get(part.id);
+    if (!existing) {
+      return { ...part, location: locate('body', [unid], index), order: 0, anchors: [unid] };
+    }
+    const same = existing.removedText === part.removedText && existing.addedText === part.addedText && existing.revisionIds.join(' ') === part.revisionIds.join(' ');
+    if (same) return existing;
+    const changed: ChangeItem = { ...existing, ...part };
+    // A relabelled formatting item is a text change again (the caller may relabel it anew).
+    delete changed.text;
+    delete changed.description;
+    return changed;
+  });
+
+  const rest = items.filter((item) => !replacedIds.has(item.id));
+  const first = items.findIndex((item) => replacedIds.has(item.id));
+  let at: number;
+  if (first >= 0) {
+    at = items.slice(0, first).filter((item) => !replacedIds.has(item.id)).length;
+  } else {
+    const position = new Map(index.blocks.map((block, i) => [block.unid, i]));
+    const own = position.get(unid) ?? Infinity;
+    const later = rest.findIndex((item) => item.anchors.some((anchor) => (position.get(anchor) ?? -1) > own));
+    at = later >= 0 ? later : rest.length;
+  }
+  return [...rest.slice(0, at), ...blockItems, ...rest.slice(at)].map((item, order) => (item.order === order ? item : { ...item, order }));
 }

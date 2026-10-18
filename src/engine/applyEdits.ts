@@ -6,7 +6,8 @@
 // Original-side characters (unchanged and deleted) and the segments' line up one to one: each one
 // keeps its place and may only turn from unchanged into deleted or back. Inserted text lies in the
 // gaps between them; per gap, the paragraph's inserted characters are matched with the segments'
-// (same revision), the others are removed or typed in. Everything else in the paragraph (bookmarks,
+// (same revision), the others are removed or typed in (`alignUnits`, shared with the panels' block
+// rendering, `src/ui/blockSegments.ts`). Everything else in the paragraph (bookmarks,
 // comment ranges, hyperlinks, note references, …) stays where it is.
 //
 // To make that simple, the runs the patch changes or types next to are first split into one run per
@@ -15,9 +16,9 @@
 // every id of the text parts. Works on @xmldom/xmldom documents, since it runs in the worker.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import type { BlockScope } from '../model/docIndex';
-import { PART_OF_SCOPE, type Segment } from '../model/paragraphEdit';
+import { PART_OF_SCOPE, alignUnits, segmentUnits, type AlignStep, type AlignUnit } from '../model/paragraphEdit';
 import { paragraphUnids } from './blockKey';
-import { ElementIndex, W_NS, parseConstituentKey, readPart, writePart, type DocxFiles } from './ooxml';
+import { ElementIndex, W_NS, parseConstituentKey, readPart, unzipDocx, writePart, type DocxFiles } from './ooxml';
 import type { BlockEditPatch, RevisionListEntry } from './types';
 
 /** An edit that cannot be applied to the redline (its paragraph is missing or doesn't match). */
@@ -174,28 +175,17 @@ interface Leaf {
   revisionId?: string;
 }
 
-/** One character or object of the final segments. */
-interface Unit {
-  object: boolean;
-  ch: string;
-  side: 'equal' | 'del' | 'ins';
-  revisionId?: string;
-}
-
-/** An Original-side character in both, or an inserted one only in the paragraph (removed), only in the segments (typed), or in both. */
-type Step = { leaf: Leaf; unit: Unit } | { leaf: Leaf; unit?: undefined } | { leaf?: undefined; unit: Unit };
-
 function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartContext): void {
   const fail = (detail: string) => new EditPatchError(edit.unid, detail);
   const unpatchable = unpatchableContent(paragraph);
   if (unpatchable) throw fail(unpatchable);
-  const units = unitsOf(edit.segments);
+  const units = segmentUnits(edit.segments);
   // The runs the patch changes, or puts new text next to, are split first: then each of their
   // characters has a run (and `w:ins`/`w:del`) of its own.
   const affected = new Set<Element>();
   let previous: Leaf | undefined;
   let typed = false;
-  for (const step of planSteps(collectLeaves(paragraph, context, fail), units, fail)) {
+  for (const step of alignUnits(collectLeaves(paragraph, context, fail), units, fail)) {
     if (!step.leaf) {
       if (previous) affected.add(previous.run);
       typed = true;
@@ -213,9 +203,9 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
     if (WRAPPERS.has(wrapper.localName!) && wrapper.namespaceURI === W_NS) splitWrapper(wrapper, context);
   }
   const leaves = collectLeaves(paragraph, context, fail);
-  const steps = planSteps(leaves, units, fail);
+  const steps = alignUnits(leaves, units, fail);
 
-  const visibleChar = (step: Step) => !!step.leaf && !!step.unit && !step.leaf.object && step.unit.side !== 'del';
+  const visibleChar = (step: AlignStep<Leaf>) => !!step.leaf && !!step.unit && !step.leaf.object && step.unit.side !== 'del';
   const fallbackRun = leaves.find((leaf) => !leaf.object)?.run;
   let cursor: Element | null = null;
   let lastRun: Element | undefined;
@@ -249,88 +239,8 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
   joinPieces(paragraph, context);
 }
 
-/**
- * The patch in final order: per gap between Original-side characters (which the paragraph and the
- * segments share one to one), its inserted characters matched up, then the next Original-side one.
- */
-function planSteps(leaves: Leaf[], units: Unit[], fail: (detail: string) => Error): Step[] {
-  const isOriginal = (item: Leaf | Unit) => item.side !== 'ins';
-  const originalLeaves = leaves.filter(isOriginal);
-  const originalUnits = units.filter(isOriginal);
-  if (originalLeaves.length !== originalUnits.length) throw fail('its Original text differs from the edit’s');
-  originalLeaves.forEach((leaf, i) => {
-    const unit = originalUnits[i]!;
-    if (leaf.object !== unit.object || (!leaf.object && !sameChar(leaf.ch, unit.ch))) throw fail(`its Original text differs from the edit’s at ${i}`);
-  });
-
-  const gaps = <T extends Leaf | Unit>(items: T[]): T[][] => {
-    const found: T[][] = [[]];
-    for (const item of items) {
-      if (isOriginal(item)) found.push([]);
-      else found.at(-1)!.push(item);
-    }
-    return found;
-  };
-  const leafGaps = gaps(leaves);
-  const unitGaps = gaps(units);
-  const steps: Step[] = [];
-  leafGaps.forEach((gap, k) => {
-    steps.push(...matchInserted(gap, unitGaps[k]!));
-    if (k < originalLeaves.length) steps.push({ leaf: originalLeaves[k]!, unit: originalUnits[k]! });
-  });
-  return steps;
-}
-
-const isSpace = (ch: string) => ch === ' ' || ch === '\u00a0';
-/** The HTML shows some spaces as no-break spaces. */
-const sameChar = (a: string, b: string) => a === b || (isSpace(a) && isSpace(b));
-
-function unitsOf(segments: readonly Segment[]): Unit[] {
-  const units: Unit[] = [];
-  for (const segment of segments) {
-    if (segment.kind === 'object') {
-      units.push({ object: true, ch: '', side: segment.owner?.change ?? 'equal', revisionId: segment.owner?.revisionId });
-    } else {
-      const revisionId = segment.kind === 'equal' ? undefined : segment.revisionId;
-      for (const ch of Array.from(segment.text)) units.push({ object: false, ch, side: segment.kind, revisionId });
-    }
-  }
-  return units;
-}
-
-/** Matches a gap's inserted characters in the paragraph with the segments' (same character and revision), keeping their order. */
-function matchInserted(leaves: Leaf[], units: Unit[]): Step[] {
-  const same = (leaf: Leaf, unit: Unit) =>
-    leaf.object === unit.object && sameChar(leaf.ch, unit.ch) && leaf.revisionId === unit.revisionId;
-  let start = 0;
-  while (start < leaves.length && start < units.length && same(leaves[start]!, units[start]!)) start++;
-  let end = 0;
-  while (end < leaves.length - start && end < units.length - start && same(leaves[leaves.length - 1 - end]!, units[units.length - 1 - end]!)) end++;
-  const head: Step[] = leaves.slice(0, start).map((leaf, i) => ({ leaf, unit: units[i]! }));
-  const tail: Step[] = leaves.slice(leaves.length - end).map((leaf, i) => ({ leaf, unit: units[units.length - end + i]! }));
-
-  // Longest common subsequence of the rest.
-  const a = leaves.slice(start, leaves.length - end);
-  const b = units.slice(start, units.length - end);
-  const lengths = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      lengths[i]![j] = same(a[i]!, b[j]!) ? lengths[i + 1]![j + 1]! + 1 : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
-    }
-  }
-  const middle: Step[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && same(a[i]!, b[j]!)) middle.push({ leaf: a[i++]!, unit: b[j++]! });
-    else if (i < a.length && (j === b.length || lengths[i + 1]![j]! >= lengths[i]![j + 1]!)) middle.push({ leaf: a[i++]! });
-    else middle.push({ unit: b[j++]! });
-  }
-  return [...head, ...middle, ...tail];
-}
-
 /** Turns an Original-side character unchanged ↔ deleted, as the segments have it. */
-function retype(leaf: Leaf, unit: Unit, context: PartContext, fail: (detail: string) => Error): void {
+function retype(leaf: Leaf, unit: AlignUnit, context: PartContext, fail: (detail: string) => Error): void {
   if (leaf.side === unit.side && leaf.revisionId === unit.revisionId) return;
   if (leaf.object) throw fail('an object’s change differs');
   if (leaf.side === 'equal' && unit.side === 'del') {
@@ -380,6 +290,24 @@ export function unpatchableContent(paragraph: Element): string | undefined {
     return undefined;
   };
   return visit(paragraph, false);
+}
+
+/**
+ * The paragraphs of the redline the patch refuses (`unpatchableContent`), by `data-anchor`, with
+ * the reason: the panel doesn't let the reviewer edit them, so every edit can be exported.
+ */
+export async function unpatchableParagraphs(redline: Uint8Array): Promise<Record<string, string>> {
+  const files = unzipDocx(redline);
+  const found: Record<string, string> = {};
+  for (const partUri of Object.values(PART_OF_SCOPE)) {
+    const part = readPart(files, partUri);
+    if (!part) continue;
+    for (const [unid, paragraph] of await paragraphUnids(part)) {
+      const reason = unpatchableContent(paragraph);
+      if (reason !== undefined) found[unid] = reason;
+    }
+  }
+  return found;
 }
 
 /** Splits a run into runs of one character or object each (zero-width content gets one too). */

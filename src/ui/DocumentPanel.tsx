@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import panelCss from './panel.css?inline';
 import type { ChangeItem } from '../model/changes';
 import type { Decision } from '../model/decisions';
@@ -9,7 +9,7 @@ import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
-import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
+import { markCommon, markItems, mergeJoinedParagraphs, within, type RenderedDocument } from './renderedDocument';
 import {
   applyCommentToggles,
   applyRangeOrder,
@@ -17,11 +17,22 @@ import {
   applyResolvedDecisions,
   placeCommentToggles,
   prepareResolvedPanel,
+  replaceResolvedBlock,
   type ResolvedPanel,
 } from './resolvedView';
 
 /** The Original, the Edited, or the Resolved column between them (the document as the export resolves it). */
 export type PanelSide = 'left' | 'right' | 'resolved';
+
+/** What the App can do to a panel's content without importing the document again. */
+export interface PanelControl {
+  /**
+   * Replaces a paragraph block with new markup of it (an inline edit: the master document's
+   * element, which is copied), shown with what the panel shows for its items; the text at the top
+   * of the panel stays where it is.
+   */
+  replaceBlock: (unid: string, block: Element) => void;
+}
 
 const SIDE_NAMES: Record<PanelSide, string> = { left: 'Original', right: 'Edited', resolved: 'Resolved' };
 
@@ -71,6 +82,8 @@ interface Props {
   commentToggles?: ReadonlyMap<string, boolean>;
   onToggleComment?: (itemId: string) => void;
   bubbles?: ReactNode;
+  /** Receives the panel's `PanelControl`. */
+  controlRef?: Ref<PanelControl>;
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
@@ -159,6 +172,53 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const [contentVersion, setContentVersion] = useState(0);
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  /** The props a block replacement reads (it runs outside rendering). */
+  const latest = useRef({ ignored, settings, outOfRangeItems });
+  latest.current = { ignored, settings, outOfRangeItems };
+
+  useImperativeHandle(
+    props.controlRef,
+    () => ({
+      replaceBlock(unid, source) {
+        const scroller = scrollerRef.current;
+        const wrapper = scroller?.shadowRoot?.querySelector<HTMLElement>('.doc');
+        const at = blocksRef.current.findIndex((block) => block.dataset.anchor === unid);
+        if (!scroller || !wrapper || at < 0) return;
+        const old = blocksRef.current[at]!;
+        const anchor = scroller.scrollTop > 0 ? topBlock(scroller, wrapper) : null;
+        const block = wrapper.ownerDocument.importNode(source, true) as HTMLElement;
+        block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
+
+        const styled = Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
+        if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+        styledRef.current = [...styledRef.current.filter(([element]) => !old.contains(element)), ...styled];
+
+        const { ignored, settings, outOfRangeItems } = latest.current;
+        markItems(block, ignored, 'change-ignored');
+        markCommon(block, settings);
+        markItems(block, outOfRangeItems, 'change-out-of-range');
+        if (resolvedRef.current) replaceResolvedBlock(resolvedRef.current, old, block);
+        else old.replaceWith(block);
+        blocksRef.current = blocksRef.current.with(at, block);
+        elementsRef.current = elementMap(wrapper);
+
+        const ids = new Set(within(block, '[data-change-id]').map((element) => element.dataset.changeId!));
+        if (side !== 'resolved') for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
+        const current = appliedCurrent.current;
+        if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
+
+        const kept = anchor?.block === old ? block : anchor?.block;
+        if (anchor && kept && kept.getClientRects().length > 0) {
+          const offset = kept.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+          const top = scroller.scrollTop + offset - anchor.offset;
+          if (scrollQuietly.current) scrollQuietly.current(scroller, top);
+          else scroller.scrollTop = top;
+        }
+        scroller.dispatchEvent(new Event(CONTENT_CHANGED));
+      },
+    }),
+    [side],
+  );
 
   useLayoutEffect(() => {
     const host = scrollerRef.current!;

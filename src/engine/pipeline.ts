@@ -1,6 +1,8 @@
 // The compare pipeline the worker runs: normalize and check the inputs, read their headings and
-// the Edited's author, compare, list revisions, tag and render.
+// the Edited's author, compare, list revisions, tag and render, and find the paragraphs inline
+// edits can't change.
 // Kept apart from the worker so that Node tests run exactly the same steps.
+import { unpatchableParagraphs } from './applyEdits';
 import { documentAuthor } from './author';
 import { compare, listRevisions, render } from './docxodus';
 import { documentHeadings } from './headings';
@@ -17,7 +19,7 @@ export async function runCompare(
   edited: Uint8Array,
   onStage: (stage: ProgressStage) => void = () => {},
 ): Promise<ComparePipelineResult> {
-  const timings = { normalize: 0, checkInputs: 0, headings: 0, author: 0, compare: 0, list: 0, tag: 0, render: 0 };
+  const timings = { normalize: 0, checkInputs: 0, headings: 0, author: 0, compare: 0, list: 0, tag: 0, render: 0, editable: 0 };
   const timed = async <T>(name: keyof typeof timings, step: () => T | Promise<T>): Promise<T> => {
     const start = performance.now();
     try {
@@ -46,6 +48,7 @@ export async function runCompare(
     console.warn(`Revision markup not found while tagging: ${tagged.missingKeys.length} keys`, tagged.missingKeys.slice(0, 5));
   }
   const html = await timed('render', () => render(tagged.bytes));
+  const uneditableBlocks = await timed('editable', () => unpatchableParagraphs(redline));
 
-  return { redline, revisions, html, inputsHadRevisions, editedAuthor, headings, timings };
+  return { redline, revisions, html, uneditableBlocks, inputsHadRevisions, editedAuthor, headings, timings };
 }

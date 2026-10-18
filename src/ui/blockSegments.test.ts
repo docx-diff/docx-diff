@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import { originalText, visibleText, OBJECT_CHAR } from '../model/paragraphEdit';
-import { readBlockSegments } from './blockSegments';
+import { applyTextEdit, originalText, visibleText, OBJECT_CHAR, type Segment } from '../model/paragraphEdit';
+import { readBlockSegments, renderBlockSegments, uneditableReason } from './blockSegments';
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
 const block = (document: Document, unid: string) => document.querySelector(`[data-anchor="${unid}"]`)!;
@@ -41,14 +41,14 @@ describe('readBlockSegments', () => {
 
   it('reads an empty paragraph as no segments, and drops the space before a deleted mark’s ¶', () => {
     expect(readBlockSegments(block(small, 'e'))).toEqual([]);
-    const filler = parse('<p data-anchor="f"><span> </span></p><p data-anchor="g" class="rev-para-del"><span>Text</span><span xml:space="preserve"> </span><span class="rev-para-mark-del">¶</span></p>');
+    const filler = parse('<p data-anchor="f"><span>\u00a0</span></p><p data-anchor="g" class="rev-para-del"><span>Text</span><span xml:space="preserve"> </span><span class="rev-para-mark-del">¶</span></p>');
     expect(readBlockSegments(block(filler, 'f'))).toEqual([]);
     expect(readBlockSegments(block(filler, 'g'))).toEqual([{ kind: 'equal', text: 'Text' }]);
   });
 
   it('reads tabs and line breaks as objects, without the mark after a break', () => {
     const document = parse(
-      '<p data-anchor="b"><span>One</span><span data-docx-tab="left"></span><span>two<br>‎three</span><ins data-author="rev:r9"><br>‎</ins></p>',
+      '<p data-anchor="b"><span>One</span><span data-docx-tab="left"></span><span>two<br>\u200ethree</span><ins data-author="rev:r9"><br>\u200e</ins></p>',
     );
     const segments = readBlockSegments(block(document, 'b'));
     expect(segments).toEqual([
@@ -71,5 +71,139 @@ describe('readBlockSegments', () => {
       { kind: 'del', text: '„szövegek', itemId: 'r1', revisionId: 'r1' },
       { kind: 'ins', text: 'szutták', itemId: 'r1', revisionId: 'r2' },
     ]);
+  });
+});
+
+describe('renderBlockSegments', () => {
+  /** The block's segments after an edit of its visible text, and the block rendered with them. */
+  const edit = (html: string, change: (visible: string) => string, caret?: (after: string) => number) => {
+    const element = block(parse(html), 'x');
+    const before = readBlockSegments(element);
+    const after = change(visibleText(before));
+    const { segments } = applyTextEdit(before, after, { unid: 'x', nextId: 1, caret: caret?.(after) });
+    const rendered = renderBlockSegments(element, segments);
+    return { segments, rendered, html: rendered.innerHTML };
+  };
+
+  it('gives the block back as it was when the segments are its own', () => {
+    const shapes = [
+      ...[...parse(SMALL_HTML).querySelectorAll('[data-anchor]')].map((element) => element.outerHTML),
+      '<p data-anchor="l"><span data-list-marker="true">1.<span data-docx-tab="left"></span></span><span>Item</span></p>',
+      '<p data-anchor="b"><span>One</span><span data-docx-tab="left"></span><span>two<br>\u200ethree</span><ins data-author="rev:r9"><br>\u200e</ins></p>',
+      '<p data-anchor="f"><span>\u00a0</span></p>',
+      '<p data-anchor="g" class="rev-para-del"><span>Text</span><span xml:space="preserve"> </span><span class="rev-para-mark-del">¶</span></p>',
+      '<p data-anchor="h"><span>Hours:</span><span> from dawn, </span><a id="hours"></a><span>every day</span></p>',
+    ];
+    for (const html of shapes) {
+      const element = parse(html).querySelector('[data-anchor]')!;
+      expect(renderBlockSegments(element, readBlockSegments(element)).outerHTML, html).toBe(element.outerHTML);
+    }
+  });
+
+  it('puts a typed word in a new insertion with the formatting of the character before it', () => {
+    const { segments, rendered, html } = edit(
+      '<p data-anchor="x"><span class="docx-a">The red </span><span class="docx-b">house</span></p>',
+      (visible) => visible.replace('red ', 'red big '),
+    );
+    expect(readBlockSegments(rendered)).toEqual(segments);
+    expect(html).toBe(
+      '<span class="docx-a">The red </span><ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a">big </span></ins><span class="docx-b">house</span>',
+    );
+  });
+
+  it('takes the formatting of the character after the text typed at the start', () => {
+    const { html } = edit('<p data-anchor="x"><span class="docx-a">house</span></p>', (visible) => `Big ${visible}`, () => 4);
+    expect(html).toBe('<ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a">Big </span></ins><span class="docx-a">house</span>');
+  });
+
+  it('keeps a typo fixed inside an insertion in that insertion, with its attributes', () => {
+    const { segments, rendered } = edit(
+      '<p data-anchor="x"><span class="docx-a">The </span><ins class="rev-ins" data-author="rev:r2" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">hosue</span></ins></p>',
+      (visible) => visible.replace('hosue', 'house'),
+    );
+    expect(rendered.innerHTML).toBe(
+      '<span class="docx-a">The </span><ins class="rev-ins" data-author="rev:r2" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">house</span></ins>',
+    );
+    expect(readBlockSegments(rendered)).toEqual(segments);
+  });
+
+  it('turns a changed word of unchanged text into a deletion and an insertion, dated like the block’s changes', () => {
+    const { segments, rendered } = edit(
+      '<p data-anchor="x"><span class="docx-a">The red house</span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">!</span></ins></p>',
+      (visible) => visible.replace('red', 'blue'),
+    );
+    expect(rendered.innerHTML).toBe(
+      '<span class="docx-a">The </span>' +
+        '<del class="rev-del" data-author="rev:ex.1" data-date="2000-01-01T00:00:00Z" data-change-id="ex.1"><span class="docx-a">red</span></del>' +
+        '<ins class="rev-ins" data-author="rev:ex.2" data-date="2000-01-01T00:00:00Z" data-change-id="ex.1"><span class="docx-a">blue</span></ins>' +
+        '<span class="docx-a"> house</span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">!</span></ins>',
+    );
+    expect(readBlockSegments(rendered)).toEqual(segments);
+  });
+
+  it('gives deleted text typed back its place as unchanged text', () => {
+    const { segments, rendered } = edit(
+      '<p data-anchor="x"><span class="docx-a">The </span><ins class="rev-ins" data-author="rev:r2" data-change-id="r1"><span class="docx-a">jungle</span></ins><del class="rev-del" data-author="rev:r1" data-change-id="r1"><span class="docx-d">forest</span></del><span class="docx-a">.</span></p>',
+      (visible) => visible.replace('jungle', 'forest'),
+    );
+    expect(segments).toEqual([{ kind: 'equal', text: 'The forest.' }]);
+    expect(rendered.innerHTML).toBe('<span class="docx-a">The </span><span class="docx-d">forest</span><span class="docx-a">.</span>');
+    expect(readBlockSegments(rendered)).toEqual(segments);
+  });
+
+  it('keeps list labels, bookmarks, objects and the mark after a break in place', () => {
+    const label = edit(
+      '<p data-anchor="x"><span data-list-marker="true">1.</span><span class="docx-a">Item</span></p>',
+      (visible) => `New ${visible}`,
+      () => 4,
+    );
+    expect(label.html).toBe('<span data-list-marker="true">1.</span><ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a">New </span></ins><span class="docx-a">Item</span>');
+    const objects = edit(
+      '<p data-anchor="x"><span class="docx-a">One<br>\u200etwo</span><a id="mark"></a><span class="docx-a"> three</span><a href="#fn-1" class="footnote-ref" data-footnote-id="1"><sup>1</sup></a></p>',
+      (visible) => visible.replace('two', 'two and'),
+      (after) => after.indexOf('and') + 3,
+    );
+    expect(objects.html).toBe(
+      '<span class="docx-a">One<br>\u200etwo</span><ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a"> and</span></ins><a id="mark"></a><span class="docx-a"> three</span><a href="#fn-1" class="footnote-ref" data-footnote-id="1"><sup>1</sup></a>',
+    );
+    expect(readBlockSegments(objects.rendered)).toEqual(objects.segments);
+  });
+
+  it('drops an empty paragraph’s filler when it gets text, and gives one to a paragraph whose text goes', () => {
+    const typed = edit('<p data-anchor="x"><span class="docx-a">\u00a0</span></p>', () => 'Text');
+    expect(typed.html).toBe('<ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a">Text</span></ins>');
+    const element = block(parse('<p data-anchor="x"><ins data-author="rev:r1" data-change-id="r1"><span>Text</span></ins></p>'), 'x');
+    const segments: Segment[] = [];
+    const emptied = renderBlockSegments(element, segments);
+    expect(emptied.textContent).toBe('\u00a0');
+    expect(readBlockSegments(emptied)).toEqual([]);
+  });
+
+  it('refuses segments whose Original text differs from the block’s', () => {
+    const element = block(parse('<p data-anchor="x"><span>Text</span></p>'), 'x');
+    expect(() => renderBlockSegments(element, [{ kind: 'equal', text: 'Other' }])).toThrow(/Original text differs/);
+  });
+});
+
+describe('uneditableReason', () => {
+  const small = parse(SMALL_HTML);
+  const none = { outOfRange: new Set<string>(), uneditable: {} };
+
+  it('lets paragraphs in the body, table cells and notes be edited', () => {
+    for (const unid of ['a', 't', 'n', 'm']) expect(uneditableReason(block(small, unid), none), unid).toBeUndefined();
+  });
+
+  it('refuses paragraphs with a paragraph-mark change or move content, and those following a changed mark', () => {
+    expect(uneditableReason(block(small, 'b'), none)).toBe('paragraph-break');
+    expect(uneditableReason(block(small, 'c'), none)).toBe('joined');
+    expect(uneditableReason(block(small, 'd'), none)).toBe('paragraph-break');
+    expect(uneditableReason(block(small, 'e'), none)).toBe('joined');
+    expect(uneditableReason(block(small, 'g'), none)).toBe('move');
+  });
+
+  it('refuses paragraphs outside the range, those the export can’t patch, and what isn’t a paragraph', () => {
+    expect(uneditableReason(block(small, 'a'), { ...none, outOfRange: new Set(['a']) })).toBe('out-of-range');
+    expect(uneditableReason(block(small, 'a'), { ...none, uneditable: { a: 'a run contains w:fldChar' } })).toBe('object');
+    expect(uneditableReason(small.querySelector('table')!, none)).toBe('not-a-paragraph');
   });
 });

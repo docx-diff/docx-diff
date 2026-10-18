@@ -105,6 +105,35 @@ describe('decorateDocument', () => {
   });
 });
 
+describe('decoration scoped to one block', () => {
+  it('decorates a block (its own attributes too) as the whole document does, and nothing outside it', () => {
+    const whole = parseRenderedHtml(SMALL_HTML);
+    decorateDocument(whole, ITEMS, buildDocIndex(SMALL_HTML));
+    const scoped = parseRenderedHtml(SMALL_HTML);
+    for (const unid of ['a', 'b', 'e']) decorateDocument(scoped.querySelector(`[data-anchor="${unid}"]`)!, ITEMS, buildDocIndex(SMALL_HTML));
+    for (const unid of ['a', 'b', 'e']) {
+      expect(scoped.querySelector(`[data-anchor="${unid}"]`)!.outerHTML).toBe(whole.querySelector(`[data-anchor="${unid}"]`)!.outerHTML);
+    }
+    expect(scoped.querySelector('[data-anchor="d"]')!.outerHTML).toBe(parseRenderedHtml(SMALL_HTML).querySelector('[data-anchor="d"]')!.outerHTML);
+  });
+
+  it('splits shared edges and marks items in a block only', () => {
+    const html = `<p data-anchor="p">a <ins data-change-id="r" class="rev-ins">big house</ins><del data-change-id="r" class="rev-del">small house</del></p><p data-anchor="q"><ins data-change-id="s" class="rev-ins">big house</ins><del data-change-id="s" class="rev-del">small house</del></p>`;
+    const document = parseRenderedHtml(html);
+    const [p, q] = document.querySelectorAll('p');
+    isolateCommonAffixes(p!, [item('r', 'replaced', ['r'], ['p']), item('s', 'replaced', ['s'], ['q'])]);
+    expect([...p!.querySelectorAll('[data-common-needs]')].map((e) => e.textContent)).toEqual([' ', 'house', ' ', 'house']);
+    expect(q!.querySelectorAll('[data-common-needs]')).toHaveLength(0);
+    markCommon(p!, { ignoreQuotes: false, ignoreDashes: false, ignoreWhitespace: false });
+    expect(p!.querySelectorAll('.change-common')).toHaveLength(4);
+    q!.dataset.changeId = 's';
+    markItems(q!, new Set(['s']), 'change-ignored');
+    expect([q!, ...q!.querySelectorAll('.change-ignored')]).toHaveLength(3);
+    expect(q!.classList.contains('change-ignored')).toBe(true);
+    expect(p!.querySelectorAll('.change-ignored')).toHaveLength(0);
+  });
+});
+
 describe('mergeJoinedParagraphs', () => {
   // a and b lose their paragraph mark in the Edited document, so a + b + the list item are one
   // paragraph there; d is wholly deleted (hidden on the right) and skipped; s is split in the Edited.

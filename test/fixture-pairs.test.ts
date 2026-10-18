@@ -21,7 +21,7 @@ import { blockPositions, classify } from '../src/model/range';
 import { resolvedItemDecisions } from '../src/model/resolved';
 import { decorateDocument, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { originalText, visibleText } from '../src/model/paragraphEdit';
-import { readBlockSegments } from '../src/ui/blockSegments';
+import { readBlockSegments, renderBlockSegments } from '../src/ui/blockSegments';
 import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
 import { expectDeliverable } from './deliverable';
 import { editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, spaces, type RedlineParagraph } from './edits';
@@ -183,6 +183,14 @@ describe.each(FIXTURES.map((fixture) => fixture.name))('inline edits on fixture 
     paragraphs = await redlineParagraphs(redline());
   });
 
+  it('reports at compare time the paragraphs the export’s patch refuses', () => {
+    const refused = [...paragraphs].filter(([, paragraph]) => paragraph.unpatchable).map(([key]) => key.split(':')[1]);
+    expect(Object.keys(result.uneditableBlocks).sort()).toEqual(refused.sort());
+    if (name !== 'field-hyperlink') return;
+    expect(Object.values(result.uneditableBlocks).length).toBeGreaterThan(0);
+    for (const reason of Object.values(result.uneditableBlocks)) expect(reason).toMatch(/fldChar|fldSimple|instrText/);
+  });
+
   it('reads each paragraph block’s segments with its redline paragraph’s Original and Edited text', () => {
     let checked = 0;
     for (const block of body.querySelectorAll<HTMLElement>(':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]')) {
@@ -194,6 +202,17 @@ describe.each(FIXTURES.map((fixture) => fixture.name))('inline edits on fixture 
       checked++;
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('renders each paragraph block with its own segments as it was, and with edited segments as markup that reads as them', () => {
+    for (const block of body.querySelectorAll<HTMLElement>(':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]')) {
+      expect(renderBlockSegments(block, readBlockSegments(block)).outerHTML).toBe(block.outerHTML);
+    }
+    const scripted = scriptEdits(body, pickScenarios(editableBlocks(body, paragraphs)));
+    for (const edit of scripted.blocks) {
+      const block = body.querySelector(`[data-anchor="${edit.unid}"]`)!;
+      expect(readBlockSegments(renderBlockSegments(block, edit.current)), edit.unid).toEqual(edit.current);
+    }
   });
 
   it('changes no text when every editable paragraph is patched with its own segments', async () => {

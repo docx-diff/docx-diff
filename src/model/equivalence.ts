@@ -144,6 +144,14 @@ export function commonAffixes(removed: string, added: string): { prefix: CommonT
   return { prefix, suffix };
 }
 
+/** The blocks under `root` (`root` included) by `data-anchor`. */
+function blockElements(root: ParentNode): Map<string, HTMLElement> {
+  const blocks = new Map<string, HTMLElement>();
+  if ('matches' in root && (root as Element).matches('[data-anchor]')) blocks.set((root as HTMLElement).dataset.anchor!, root as HTMLElement);
+  for (const element of root.querySelectorAll<HTMLElement>('[data-anchor]')) blocks.set(element.dataset.anchor!, element);
+  return blocks;
+}
+
 /** Rendering aids that are not document text. */
 const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, .rev-format-marker';
 /** `NodeFilter.SHOW_TEXT` (not a global with jsdom in Node). */
@@ -152,11 +160,12 @@ const SHOW_TEXT = 0x4;
 /**
  * Reads, from the decorated HTML (elements carry `data-change-id`), the text of each text change's
  * paragraphs before and after applying only that change. Other changes in the same paragraphs stay
- * in the Original's state. Paragraphs are joined with a line break.
+ * in the Original's state. Paragraphs are joined with a line break. Only the blocks under `root`
+ * (`root` included), or those of a map of blocks by `data-anchor`, count: for an item in several
+ * blocks, pass a root holding them all.
  */
-export function collectItemTexts(document: Document, items: readonly ChangeItem[]): Map<string, ItemText> {
-  const blocks = new Map<string, HTMLElement>();
-  for (const element of document.querySelectorAll<HTMLElement>('[data-anchor]')) blocks.set(element.dataset.anchor!, element);
+export function collectItemTexts(root: ParentNode | ReadonlyMap<string, HTMLElement>, items: readonly ChangeItem[]): Map<string, ItemText> {
+  const blocks = root instanceof Map ? (root as ReadonlyMap<string, HTMLElement>) : blockElements(root as ParentNode);
 
   const texts = new Map<string, ItemText>();
   for (const item of items) {

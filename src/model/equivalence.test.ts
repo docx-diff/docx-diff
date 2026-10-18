@@ -149,5 +149,9 @@ describe('collectItemTexts', () => {
       paragraphMark: true,
     });
     expect(texts.has('f')).toBe(false);
+    // From one block: the items' other blocks don't count.
+    const fromBlock = collectItemTexts(document.querySelector('[data-anchor="p"]')!, [item('a', 'replaced'), item('c', 'deleted', ['p', 'q'])]);
+    expect(fromBlock.get('a')).toEqual(texts.get('a'));
+    expect(fromBlock.get('c')).toEqual({ before: 'Tilos „szentelt" vizet orvosnak.', after: 'Tilos „szentelt" vizet orvosnak.', paragraphMark: false });
   });
 });

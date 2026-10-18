@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import { adjacencyKey, buildDocIndex, noteKey } from './docIndex';
+import { adjacencyKey, buildDocIndex, noteKey, replaceIndexBlock } from './docIndex';
 
 describe('buildDocIndex', () => {
   const index = buildDocIndex(SMALL_HTML);
@@ -47,5 +47,25 @@ describe('buildDocIndex', () => {
   it('records revisions whose text touches within a paragraph', () => {
     // r1/r2: "<del>old</del><ins>new</ins>"; r5's deletion is followed only by its own ¶ marker.
     expect(index.adjacentRevisions).toEqual(new Set([adjacencyKey('r1', 'r2')]));
+  });
+});
+
+describe('replaceIndexBlock', () => {
+  it('takes the replaced block’s revisions and adjacencies from its new markup, and keeps the blocks', () => {
+    const index = buildDocIndex(SMALL_HTML);
+    const document = new DOMParser().parseFromString(SMALL_HTML, 'text/html');
+    const before = document.querySelector('[data-anchor="a"]')!;
+    const after = new DOMParser().parseFromString(
+      '<p data-anchor="a">Kept <del data-author="rev:r1">old</del><ins data-author="rev:ea.2">newer</ins> text <ins data-author="rev:ea.3">!</ins></p>',
+      'text/html',
+    ).querySelector('p')!;
+    const replaced = replaceIndexBlock(index, before, after);
+    expect(replaced.revisionsInHtml.has('r2')).toBe(false);
+    expect(['r1', 'ea.2', 'ea.3', 'r3'].every((id) => replaced.revisionsInHtml.has(id))).toBe(true);
+    expect(replaced.adjacentRevisions.has(adjacencyKey('r1', 'r2'))).toBe(false);
+    expect(replaced.adjacentRevisions.has(adjacencyKey('r1', 'ea.2'))).toBe(true);
+    expect(replaced.adjacentRevisions.has(adjacencyKey('ea.2', 'ea.3'))).toBe(false);
+    expect(replaced.blocks).toBe(index.blocks);
+    expect(index.revisionsInHtml.has('r2')).toBe(true);
   });
 });

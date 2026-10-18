@@ -54,25 +54,34 @@ export function documentCss(document: Document): string {
     .replace(/(^|[\s,>+~(}])(html|body)(?=$|[\s,.:#[>+~){])/g, '$1.doc');
 }
 
+/** The elements under `root` matching the selector, `root` itself first when it matches. */
+export function within<E extends Element = HTMLElement>(root: ParentNode, selector: string): E[] {
+  const found = [...root.querySelectorAll<E>(selector)];
+  return 'matches' in root && (root as Element).matches(selector) ? [root as E, ...found] : found;
+}
+
+/** The document a root belongs to. */
+const documentOf = (root: ParentNode): Document => (root as Node).ownerDocument ?? (root as Document);
+
 /**
- * Marks the document for display, in place:
+ * Marks the document (or the part of it under `root`, e.g. one block) for display, in place:
  * - every revision element (`data-author="rev:<id>"`) gets `data-change-id` = its item's id;
  * - formatting items none of whose revisions has an element get a marker element with their
  *   `data-change-id` at the start of each paragraph they affect;
  * - blocks missing from one version get `not-in-original` / `not-in-edited`, so each panel can
  *   hide them (also note list items whose paragraphs are all missing).
  */
-export function decorateDocument(document: Document, items: readonly ChangeItem[], index: DocIndex): void {
+export function decorateDocument(root: ParentNode, items: readonly ChangeItem[], index: DocIndex): void {
   const itemByRevision = new Map<string, string>();
   for (const item of items) for (const revisionId of item.revisionIds) itemByRevision.set(revisionId, item.id);
 
-  for (const element of document.querySelectorAll<HTMLElement>('[data-author^="rev:"]')) {
+  for (const element of within(root, '[data-author^="rev:"]')) {
     const itemId = itemByRevision.get(revisionIdFromAuthor(element.dataset.author)!);
     if (itemId !== undefined) element.dataset.changeId = itemId;
   }
 
   const blockElements = new Map<string, HTMLElement>();
-  for (const element of document.querySelectorAll<HTMLElement>('[data-anchor]')) {
+  for (const element of within(root, '[data-anchor]')) {
     blockElements.set(element.dataset.anchor!, element);
   }
 
@@ -81,7 +90,7 @@ export function decorateDocument(document: Document, items: readonly ChangeItem[
     for (const unid of item.anchors) {
       const block = blockElements.get(unid);
       if (!block) continue;
-      const marker = document.createElement('span');
+      const marker = documentOf(root).createElement('span');
       marker.className = 'rev-format-marker';
       marker.dataset.changeId = item.id;
       block.prepend(marker);
@@ -94,7 +103,7 @@ export function decorateDocument(document: Document, items: readonly ChangeItem[
     if (!block.inOriginal) element.classList.add('not-in-original');
     if (!block.inEdited) element.classList.add('not-in-edited');
   }
-  for (const note of document.querySelectorAll('li[id^="fn-"], li[id^="en-"]')) {
+  for (const note of root.querySelectorAll('li[id^="fn-"], li[id^="en-"]')) {
     const blocks = [...note.querySelectorAll('[data-anchor]')];
     if (blocks.length === 0) continue;
     for (const missing of ['not-in-original', 'not-in-edited']) {
@@ -103,9 +112,9 @@ export function decorateDocument(document: Document, items: readonly ChangeItem[
   }
 }
 
-/** Adds a class to every element of the given items. */
+/** Adds a class to every element of the given items (under `root`, `root` included). */
 export function markItems(root: ParentNode, itemIds: ReadonlySet<string>, className: string): void {
-  for (const element of root.querySelectorAll<HTMLElement>('[data-change-id]')) {
+  for (const element of within(root, '[data-change-id]')) {
     element.classList.toggle(className, itemIds.has(element.dataset.changeId!));
   }
 }
@@ -250,12 +259,13 @@ const SHOW_TEXT = 0x4;
  * elements of their own, so that a panel can show them as plain text: a child element cannot undo
  * its parent's strikethrough. Each such element gets `data-common-needs`: the compare settings
  * (space-separated, possibly none) under which it counts as unchanged; `markCommon` applies them.
+ * Only the items' elements under `root` count.
  */
-export function isolateCommonAffixes(document: Document, items: readonly ChangeItem[]): void {
+export function isolateCommonAffixes(root: ParentNode, items: readonly ChangeItem[]): void {
   for (const item of items) {
     if (item.kind !== 'replaced') continue;
-    const removed = [...document.querySelectorAll<HTMLElement>(`del[data-change-id="${item.id}"]`)];
-    const added = [...document.querySelectorAll<HTMLElement>(`ins[data-change-id="${item.id}"]`)];
+    const removed = within(root, `del[data-change-id="${item.id}"]`);
+    const added = within(root, `ins[data-change-id="${item.id}"]`);
     if (removed.length === 0 || added.length === 0) continue;
     const text = (elements: HTMLElement[]) => elements.map((element) => element.textContent ?? '').join('');
     const { prefix, suffix } = commonAffixes(text(removed), text(added));
@@ -324,9 +334,9 @@ function splitElement(element: HTMLElement, offset: number): HTMLElement {
   return tail;
 }
 
-/** Gives `change-common` to the split-off edge elements that the settings count as unchanged. */
+/** Gives `change-common` to the split-off edge elements (under `root`, `root` included) that the settings count as unchanged. */
 export function markCommon(root: ParentNode, settings: CompareSettings): void {
-  for (const element of root.querySelectorAll<HTMLElement>('[data-common-needs]')) {
+  for (const element of within(root, '[data-common-needs]')) {
     const needs = element.dataset.commonNeeds!.split(' ').filter(Boolean) as (keyof CompareSettings)[];
     element.classList.toggle('change-common', needs.every((name) => settings[name]));
   }

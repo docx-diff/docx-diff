@@ -39,7 +39,7 @@
 // placed again after every change, since joins and decisions move the item's text.
 import type { Decision } from '../model/decisions';
 import type { ResolvedSide } from '../model/resolved';
-import { PARAGRAPH_BLOCK, joinParagraphs } from './renderedDocument';
+import { PARAGRAPH_BLOCK, joinParagraphs, within } from './renderedDocument';
 
 export const RESOLVED_HIDDEN = 'resolved-hidden';
 const MERGED = 'merged-into-next';
@@ -177,6 +177,69 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
     for (let around = reference.parentElement?.closest('[data-change-id]'); around; around = around.parentElement?.closest('[data-change-id]')) addNote(around, note);
   }
   return { wrapper, elements, markers, moves, decisions: {}, children, sides: new Map(), moved: [], pulledMarks: new Map(), noteReferences, itemNotes, commentToggles: new Map() };
+}
+
+/**
+ * Replaces a paragraph block with new markup of it (an inline edit, `block`: imported into the
+ * panel's document) and shows it for the sides and decisions last applied. The run of joined
+ * paragraphs around it is restored first (earlier blocks' content can be joined into it) and joined
+ * again after; the maps of the items in the old or the new block are rebuilt.
+ */
+export function replaceResolvedBlock(handle: ResolvedPanel, old: HTMLElement, block: HTMLElement): void {
+  restore(handle, [runOf(handle, old)]);
+  const affected = new Set([old, ...old.querySelectorAll<HTMLElement>('[data-change-id]')].flatMap((element) => element.dataset.changeId ?? []));
+  for (const element of [block, ...block.querySelectorAll<HTMLElement>('[data-change-id]')]) if (element.dataset.changeId !== undefined) affected.add(element.dataset.changeId);
+  for (const id of affected) {
+    for (const marker of handle.markers.get(id) ?? []) marker.remove();
+    handle.markers.delete(id);
+  }
+  old.replaceWith(block);
+  handle.children.delete(old);
+  for (const entry of handle.moved) {
+    if (entry.block === old) entry.block = block;
+    if (entry.next === old) entry.next = block;
+  }
+
+  // The items' elements, in document order, and their markers.
+  const elements = new Map<string, HTMLElement[]>();
+  for (const id of affected) {
+    const list = [...(handle.elements.get(id) ?? []).filter((element) => element.isConnected), ...within(block, `[data-change-id="${id}"]`)];
+    list.sort(inDocumentOrder);
+    if (list.length > 0) elements.set(id, list);
+    else handle.elements.delete(id);
+  }
+  for (const [id, list] of elements) handle.elements.set(id, list);
+  for (const [id, markers] of insertMarkers(elements)) handle.markers.set(id, markers);
+  handle.children.set(block, [...block.childNodes]);
+
+  // Note references in the block, and the notes of the items (as `prepareResolvedPanel` finds them).
+  const notes = new Map([...handle.wrapper.querySelectorAll(NOTE)].map((note) => [note.id, note]));
+  const noteOf = (reference: Element) => notes.get(reference.getAttribute('href')?.replace(/^#/, '') ?? '');
+  for (const [note, references] of handle.noteReferences) {
+    const kept = references.filter((reference) => reference.isConnected);
+    if (kept.length !== references.length) handle.noteReferences.set(note, kept);
+  }
+  for (const reference of block.querySelectorAll(NOTE_REFERENCE)) {
+    const note = noteOf(reference);
+    if (note) handle.noteReferences.set(note, [...(handle.noteReferences.get(note) ?? []), reference].sort(inDocumentOrder));
+  }
+  for (const id of affected) {
+    const itemNotes = new Set<Element>();
+    for (const element of handle.elements.get(id) ?? []) {
+      const note = element.closest(NOTE);
+      if (note) itemNotes.add(note);
+      for (const reference of element.querySelectorAll(NOTE_REFERENCE)) {
+        const referenced = noteOf(reference);
+        if (referenced) itemNotes.add(referenced);
+      }
+    }
+    if (itemNotes.size > 0) handle.itemNotes.set(id, itemNotes);
+    else handle.itemNotes.delete(id);
+  }
+
+  join(handle, [runOf(handle, block)]);
+  applyResolution(handle, handle.sides, affected);
+  placeCommentToggles(handle);
 }
 
 /** Whether the element is hidden when its item resolves to `side`; decided by the element alone. */
@@ -337,7 +400,10 @@ function shownForMarks(element: Element): boolean {
   return !hidden || hidden.matches(NOTE);
 }
 
-const follows = (element: Node, other: Node) => (other.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+/** `Node.DOCUMENT_POSITION_FOLLOWING` (`Node` is not a global with jsdom in Node). */
+const DOCUMENT_POSITION_FOLLOWING = 4;
+const follows = (element: Node, other: Node) => (other.compareDocumentPosition(element) & DOCUMENT_POSITION_FOLLOWING) !== 0;
+const inDocumentOrder = (a: Node, b: Node) => (follows(b, a) ? -1 : 1);
 
 /** The items' markers and decision marks, for the sides and decisions last applied. */
 function updateMarks(handle: ResolvedPanel, ids: Iterable<string>): void {

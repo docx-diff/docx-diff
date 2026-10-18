@@ -74,7 +74,14 @@ Under Node, `initialize` takes 0.14 s and the warm-up (`DocumentComparer.Warmup(
 
 **Compare pipeline**, sample pair: input revision check 0.3–0.6 s, compare 2.3–2.5 s, list 0.8–0.9 s,
 tagging 0.3–0.4 s, render 2.7–2.9 s: **6.4 s** in the module worker in headless Chromium, ~7 s under
-Node. Main-thread analysis 0.53 s under jsdom (`buildChangeItems` 7 ms).
+Node. Main-thread analysis 0.53 s under jsdom (`buildChangeItems` 7 ms). Listing the paragraphs
+inline edits can't change (`uneditableBlocks`: 8 on the sample) adds 0.27 s under Node.
+
+**Inline-edit update** (`test/sample-pair.test.ts`, jsdom under Node, one per scripted edit): the
+session (segments, items, master block, texts, index) 3–15 ms, 67 ms for the first update of a
+session (building its block map); the App's item memos (`classify`, `ignoredItems`,
+`resolvedItemDecisions`, `reviewableItems`) 5 ms; the Resolved column's `replaceResolvedBlock` plus
+the new items' resolution 22–47 ms. Not yet measured in a browser.
 
 **Synthetic ~300-page pair** (`test/big-pair.ts`: 89,723 words, 3,000 paragraphs, 2,411 revisions,
 1.7 MB HTML; plain text, so faster than the planning pair): check 0.4 s, compare 4.1 s, list 4.8 s, tag

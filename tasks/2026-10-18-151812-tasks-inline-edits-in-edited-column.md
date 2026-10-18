@@ -8,8 +8,8 @@ PRD: [`2026-10-18-151812-prd---inline-edits-in-edited-column.md`](2026-10-18-151
 New:
 - `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment`/`BlockEdit` types, `visibleText`/`originalText`, `editSpan`, `applyTextEdit` (old visible text → new visible text applied to the segments: ownership, whole-word widening, typed-back cancellation, new ids), `revertBlock`, `revisionTexts`, `blockItems`. Shared by the main thread and the worker.
 - `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`.
-- `src/ui/blockSegments.ts` - `readBlockSegments`: a rendered block's segments from the decorated HTML (`equal` / `del` / `ins` / inline objects: note references, tabs, breaks; item ids from `data-change-id`, revision ids from `data-author`) (task 2.6); task 3.1 adds rendering segments back to block HTML.
-- `src/ui/blockSegments.test.ts` - Reader tests on `test/small-html.ts` shapes (objects, back links/¶/list labels skipped, empty-paragraph and deleted-mark fillers, shared edges); task 3 adds the HTML round trip and editability checks (PRD-12).
+- `src/ui/blockSegments.ts` - `readBlockSegments`: a rendered block's segments from the decorated HTML (`equal` / `del` / `ins` / inline objects: note references, tabs, breaks; item ids from `data-change-id`, revision ids from `data-author`) (task 2.6); `renderBlockSegments`: segments back into the block's markup (task 3.1); `uneditableReason` + `UNEDITABLE_MESSAGES`: which blocks can be edited, and the message (task 3.2).
+- `src/ui/blockSegments.test.ts` - Reader tests on `test/small-html.ts` shapes (objects, back links/¶/list labels skipped, empty-paragraph and deleted-mark fillers, shared edges); rendering (own segments give the block back, typed word, typo inside an insertion, word changed, typed back, labels/bookmarks/objects/break mark kept, fillers, refused Original); editability.
 - `src/engine/applyEdits.ts` - The export's first step: patches each edited block's `w:p` to its final segments (Original-side characters aligned one to one, inserted ones matched per gap; only touched runs split, then joined again) and returns the updated revision list (new `w:ins`/`w:del`, `w:id`s above every id of the text parts, updated `constituentKeys`, emptied revisions dropped); `EditPatchError`; `unpatchableContent`, the one rule for the paragraphs it refuses (also used by task 3.2 and `test/edits.ts`).
 - `src/engine/applyEdits.test.ts` - Unit tests on hand-written redline XML: plain runs, formatting from the neighbour, ids, empty paragraph, inside an engine `w:ins` (one and several runs), engine `w:del` partly typed back, typed-back replacement dropped, `w:rPrChange` in split runs, hyperlink, bookmark/comment range, tab/break, note references (plain and inserted), refused content (field, `w:sdt`), unknown revision.
 - `test/edits.ts` - Test helpers for inline edits: `scriptEdits` (reader + `applyTextEdit` → patches and new revisions), the scenarios (`scenarioEdit`, `pickScenarios`), `editableBlocks`, `redlineParagraphs` (each `w:p`'s Original/Edited text by unid, and whether `unpatchableContent` refuses it), `segmentsText` / `editedOverrides` for `expectedText`.
@@ -18,8 +18,10 @@ New:
 - `src/engine/blockKey.ts` - `paragraphUnids`: the engine's Unid of every `w:p` of a part, i.e. the rendered blocks' `data-anchor` (task 0).
 - `src/engine/blockKey.test.ts` - The mapping checked on every fixture and on repeated/empty paragraphs, identical cells, headings and inline objects.
 - `test/block-mapping.ts` - `unmappedBlocks(redline, html)`: paragraph blocks whose `data-anchor` names no `w:p` (used by the blockKey, sample and big-pair tests).
-- `src/ui/useEdits.ts` - Edit state per review: edit records, derived items / item texts / index / headings, update and revert actions, the ids of the items an edit created (accepted by default).
-- `src/ui/useEdits.test.tsx` - Hook tests with a small comparison.
+- `src/ui/useEdits.ts` - `EditSession` (one per comparison): edit records, derived items / item texts / index / headings, the master document's blocks patched; `update`, `revert`, `revertAll`, `restore`, `revisions()`, `patches()`; `BlockUpdate` (with the items a live edit created); `showBlockUpdates` (panels + accept); the `useEdits` hook.
+- `src/ui/useEdits.test.tsx` - Session tests (PRD-16's example, typo inside an insertion, typed back, revert to the compared markup and items, ids never reused, restore and skipped records, heading) and a hook test.
+- `src/ui/DocumentPanel.test.tsx` - `replaceBlock` in the side panels (decisions, current, ignored, new items' elements known, dark colours) and the Resolved column; `showBlockUpdates` over three panels.
+- `test/small-comparison.ts` - A comparison built without the engine for UI tests of inline edits (`smallComparison`).
 - `src/ui/EditableToggle.tsx` - The Edited panel header's toggle and the Revert all edits button.
 - `src/ui/editing.ts` - The panel's editing behaviour: contenteditable on editable blocks, `beforeinput`/`keydown` rules (PRD-11–13), composition, debounce, cursor save/restore as text offsets, own undo stack, revert ↺ placement.
 - `src/ui/editing.test.ts` - Unit tests (jsdom) for the rules that don't need layout: blocked input types, plain-text paste, debounce/composition timing, cursor offsets, undo stack.
@@ -27,36 +29,40 @@ New:
 - `e2e/editing.spec.ts` - e2e: toggle, typing and updates, blocked actions, shortcuts while typing, dead key, undo/revert, range warning, Swap confirmation, reload/resume, export round trip.
 
 Changed:
-- `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` (task 3.2).
-- `src/engine/pipeline.ts` - Reports the paragraphs with fields, content controls and other objects the HTML doesn't mark (`uneditableBlocks`, task 3.2).
+- `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` and its `editable` timing (task 3.2).
+- `src/engine/pipeline.ts` - Reports the paragraphs with fields, content controls and other objects the HTML doesn't mark (`uneditableBlocks`, from `unpatchableParagraphs` in `applyEdits.ts`, task 3.2).
+- `src/engine/applyEdits.ts` - The alignment moved to `paragraphEdit.ts` (`alignUnits`, shared with `renderBlockSegments`); `unpatchableParagraphs` (task 3).
 - `src/engine/exportDocx.ts` - `ExportOptions.edits`: runs `applyEdits` first and passes the patched redline and updated revisions to every later step (the decision check included).
-- `src/model/paragraphEdit.ts` - Also `PART_OF_SCOPE` and `editRevisions` (list entries for the revisions edits created) (task 2).
+- `src/model/paragraphEdit.ts` - Also `PART_OF_SCOPE` and `editRevisions` (list entries for the revisions edits created) (task 2); `AlignUnit`, `segmentUnits`, `alignUnits` (task 3).
 - `src/ui/resolvedView.ts` - `resolvedText` (tests) reads tabs as spaces and drops the mark after a break (task 2: first fixture with them).
 - `src/engine/exportDocx.test.ts` - Uses `test/engine-decide.ts`.
 - `test/expectedText.ts` - `overrides`: the text of edited paragraphs (by part and `w:p` ordinal).
 - `docs/architecture.md`, `docs/measurements.md` - Task 2: "Inline edits" (reading a block, export patch), Export step 0, module map, Testing; export timings with edits.
 - `src/engine/engine.worker.ts` - Passes `edits` through.
-- `src/model/changes.ts` - Items from edited blocks keep their ids; `order` renumbered; helpers to rebuild the items of one block.
-- `src/model/docIndex.ts` - Index entries for one block replaced (`revisionsInHtml`, `adjacentRevisions`, `revisionTitles`, note references).
-- `src/model/equivalence.ts` - `collectItemTexts` for one block's items.
-- `src/model/outline.ts` - Outline from the edited headings.
-- `src/ui/renderedDocument.ts` - `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` scoped to a root/block.
-- `src/ui/DocumentPanel.tsx` - Imperative `replaceBlock(unid, html)` on the panel ref; `headerControls` for the Edited panel; editing mode (class, no click-to-select); card hidden while editing.
-- `src/ui/resolvedView.ts` - `replaceBlock(handle, unid, html)`: restore the run of joined paragraphs, swap, rebuild the block's elements/markers/children/notes/comment toggles, join again.
+- `src/model/changes.ts` - `replaceBlockItems`: one block's items replaced (untouched items keep their objects, ids kept, new ones located in the block, `order` renumbered); `locate` takes a fallback scope.
+- `src/model/docIndex.ts` - `replaceIndexBlock`: one block's revisions in the HTML and adjacencies replaced (blocks, versions, note references, titles don't change with an edit).
+- `src/model/equivalence.ts` - `collectItemTexts` over any root or a map of blocks.
+- `src/model/outline.ts` - `editedHeadingBlocks`, `withEditedHeadings`, `editedParagraphText` (outline from the edited headings).
+- `src/ui/renderedDocument.ts` - `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` scoped to a root/block (root included, `within`).
+- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `headerControls` for the Edited panel; editing mode (class, no click-to-select); card hidden while editing.
+- `src/ui/resolvedView.ts` - `replaceResolvedBlock(handle, old, block)`: restore the run of joined paragraphs, swap, rebuild the items' elements/markers/children/note references/item notes, join again, apply the sides; `follows` without the `Node` global.
+- `src/ui/resolvedView.test.ts` - `replaceResolvedBlock` ≡ a panel prepared from the updated HTML (comment icon, joined run, note reference).
 - `src/ui/panel.css` - Editable styles (tint/outline, cursors, ↺ button), no style text written at run time.
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
 - `src/ui/useKeyboardShortcuts.test.tsx` - A key from an editable element inside a shadow root is not a shortcut.
-- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`, panel `replaceBlock` calls, Editable state (off per review), Escape handling, Swap confirmation, range warning, resume order, autosave of edits, export with edits.
+- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), Escape handling, Swap confirmation, range warning, resume order, autosave of edits.
 - `src/ui/RangeControl.tsx` - Asks before an end point that leaves edited paragraphs outside the range (PRD-24a).
 - `src/ui/HelpPopover.tsx` - A line about Editable.
 - `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState`.
 - `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
 - `src/index.css` - Toggle, Revert all and toast styles (tokens, light and dark).
 - `test/fixtures/make-fixtures.ts` - Fixture `link-bookmark-tab` (task 2).
-- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` - Inline edits: segments ≡ redline paragraph text on every fixture, self-patch is a no-op, scripted edits (accept/reject/alternating ≡ `expectedText` with overrides, `verifyDeliverable`, each engine revision of the patched redline ≡ `DocxSession`), a heading edit (small generated pair), on the sample body + footnote edits and an undecided edited item tracked (FR-38b); the sample's block mapping (task 0).
+- `test/edits.ts` - `editableBlocks` uses `uneditableReason` (task 3).
+- `src/ui/renderedDocument.test.ts`, `src/model/{changes,docIndex,equivalence,outline}.test.ts`, `src/ui/useComparison.test.tsx` - Block-scoped decoration, `replaceBlockItems`, `replaceIndexBlock`, `collectItemTexts` from a block, edited headings; `uneditableBlocks` in the fake result (task 3).
+- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` - Inline edits: `uneditableBlocks` ≡ the paragraphs the patch refuses, rendering a block with its own / edited segments (task 3), the sample's update through `EditSession` with timings (task 3.10); segments ≡ redline paragraph text on every fixture, self-patch is a no-op, scripted edits (accept/reject/alternating ≡ `expectedText` with overrides, `verifyDeliverable`, each engine revision of the patched redline ≡ `DocxSession`), a heading edit (small generated pair), on the sample body + footnote edits and an undecided edited item tracked (FR-38b); the sample's block mapping (task 0).
 - `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1).
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3).
 
 ### Notes
 
@@ -370,18 +376,41 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** task 0 (timings, mapping), task 1; `src/App.tsx`, `src/ui/DocumentPanel.tsx`, `src/ui/resolvedView.ts`, `src/ui/renderedDocument.ts`, `src/model/{changes,docIndex,equivalence,outline}.ts`.
 
 - [ ] 3.0 Live review state with edits
-  - [ ] 3.1 In `src/ui/blockSegments.ts` (reader from task 2.6), render segments back to block HTML in the converter's markup. Tests on `test/small-html.ts` shapes and every fixture's blocks: block → segments → HTML → segments is identity.
-  - [ ] 3.2 Editability check (PRD-12) in `blockSegments.ts`: in range, no move content, no paragraph-mark revision, not a join target in any panel, not in `uneditableBlocks`. Return a reason for the message (PRD-13). Tests.
+  - [x] 3.1 In `src/ui/blockSegments.ts` (reader from task 2.6), render segments back to block HTML in the converter's markup. Tests on `test/small-html.ts` shapes and every fixture's blocks: block → segments → HTML → segments is identity.
+  - [x] 3.2 Editability check (PRD-12) in `blockSegments.ts`: in range, no move content, no paragraph-mark revision, not a join target in any panel, not in `uneditableBlocks`. Return a reason for the message (PRD-13). Tests.
     - Worker side first: `CompareResult.uneditableBlocks` (unid → reason) from `runCompare` (`src/engine/pipeline.ts`), via `paragraphUnids` on the redline: every paragraph for which `unpatchableContent` (`src/engine/applyEdits.ts`) gives a reason. Don't write a second list: the export refuses exactly those paragraphs, so a paragraph editable in the panel can always be exported. It covers fields (`w:fldChar`, `w:fldSimple`, `w:instrText`), inline `w:sdt`, `w:sym`, `w:noBreakHyphen`, `w:ptab`, drawings/`w:pict`/`w:object`/`mc:AlternateContent`, nested paragraphs (task 0 findings, item 2: the HTML doesn't mark them), and also `w:customXml`, `w:dir`/`w:bdo`, math, nested `w:ins`/`w:del`, a hyperlink inside a change, and run content such as `w:pgNum`. Map its detail to the PRD-13 message ("contains a field or object that can't be edited here"). Engine test on the fixtures (`field-hyperlink`) and the sample (its time goes into the compare's timings).
-  - [ ] 3.3 Scope `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` (`renderedDocument.ts`) and `collectItemTexts` (`equivalence.ts`) to a root/block without changing their whole-document behaviour; existing tests pass unchanged, new tests for a block.
-  - [ ] 3.4 `DocIndex` and items for one replaced block: functions in `docIndex.ts` / `changes.ts` that replace one block's entries and items, keep other items' identity, keep existing ids, renumber `order`. Tests.
-  - [ ] 3.5 `useEdits` hook with `update`, `revert`, `revertAll`, derived values, reset per comparison. Hook tests.
-  - [ ] 3.6 Switch `App.tsx` to the derived values (the export gets `useEdits().revisions` and `edits`); accept created items (live edits only); keep the master `comparison.document.body` patched so a Resolved column mounted later (two → three columns) shows the edits; check that with no edits everything is unchanged (`npm test`, `npm run test:e2e`).
-  - [ ] 3.7 `DocumentPanel` `replaceBlock` for the side panels (caches, classes, decisions, current, dark colours). jsdom tests.
-  - [ ] 3.8 `resolvedView.replaceBlock` with join restore/rejoin, markers, notes, comment toggles. Tests: block inside a run of joined paragraphs, a block with a comment icon, a block with a note reference; DOM equals a fresh `prepareResolvedPanel` + `applyResolution` on the updated HTML.
-  - [ ] 3.9 Outline from edited headings; test.
-  - [ ] 3.10 Timing of one update in `test/sample-pair.test.ts` (jsdom, logged) for task 8.
-  - [ ] 3.11 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+  - [x] 3.3 Scope `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` (`renderedDocument.ts`) and `collectItemTexts` (`equivalence.ts`) to a root/block without changing their whole-document behaviour; existing tests pass unchanged, new tests for a block.
+  - [x] 3.4 `DocIndex` and items for one replaced block: functions in `docIndex.ts` / `changes.ts` that replace one block's entries and items, keep other items' identity, keep existing ids, renumber `order`. Tests.
+  - [x] 3.5 `useEdits` hook with `update`, `revert`, `revertAll`, derived values, reset per comparison. Hook tests.
+  - [x] 3.6 Switch `App.tsx` to the derived values (the export gets `useEdits().revisions` and `edits`); accept created items (live edits only); keep the master `comparison.document.body` patched so a Resolved column mounted later (two → three columns) shows the edits; check that with no edits everything is unchanged (`npm test`, `npm run test:e2e`).
+  - [x] 3.7 `DocumentPanel` `replaceBlock` for the side panels (caches, classes, decisions, current, dark colours). jsdom tests.
+  - [x] 3.8 `resolvedView.replaceBlock` with join restore/rejoin, markers, notes, comment toggles. Tests: block inside a run of joined paragraphs, a block with a comment icon, a block with a note reference; DOM equals a fresh `prepareResolvedPanel` + `applyResolution` on the updated HTML.
+  - [x] 3.9 Outline from edited headings; test.
+  - [x] 3.10 Timing of one update in `test/sample-pair.test.ts` (jsdom, logged) for task 8.
+  - [x] 3.11 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+
+**Notes** (task 3, for later tasks)
+
+- The App's entry point for an edit is `edits.update(unid, newVisibleText, caret)` (also `revert`,
+  `revertAll`, `restore`), then `showBlockUpdates(updates, [leftControl, middleControl,
+  rightControl].map((ref) => ref.current), (ids) => dispatch({ type: 'acceptAllUndecided', itemIds: ids }))`.
+  Only `update` returns `createdItemIds`; revert/restore never do. Not called anywhere yet (task 4.7).
+- `update` takes the block's **visible text** (`visibleText` form: objects as `OBJECT_CHAR`); the
+  editing code must read the panel block that way (`readBlockSegments` + `visibleText` works on the
+  Edited panel's copy too: hidden `del` is skipped as a change, not by CSS). It returns `null` when
+  nothing changed. It throws when `applyTextEdit` does (an object deleted or typed): task 4.4 blocks
+  those first.
+- `uneditableReason(block, { outOfRange, uneditable })` wants the **master** (or an unjoined panel)
+  block; `uneditable` is `comparison.result.uneditableBlocks`; `outOfRange` the out-of-range blocks
+  for the right panel (`outOfRangeBlocks(index, endPoint, positions)`, which the App computes as
+  `outsideBlocks` but doesn't pass to the right panel). Messages: `UNEDITABLE_MESSAGES`.
+- A panel's `replaceBlock` keeps the panel's own `contenteditable` attributes only if task 4 puts them
+  back after the swap (the master block has none): set them in `replaceBlock` or after
+  `showBlockUpdates`, and restore the cursor after that.
+- `EditSession.isEdited(unid)` / `editedBlocks()` give "paragraphs with edits" (task 5: ↺ button,
+  Revert all count, Swap/range confirmations); a reverted block keeps its `BlockEdit` (for `nextId`).
+- Saved records (task 6) are `BlockEdit`s as they are (`SavedBlockEdit`); `restore` checks `original`
+  against the block as compared and reports `skipped`.
 
 ### 4.0 Editing in the Edited panel
 

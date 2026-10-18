@@ -149,12 +149,39 @@ export function buildDocIndex(html: string, parse: HtmlParser = parseWithDomPars
   };
 }
 
-/** Walks the text in document order and records revisions whose content touches within a block. */
-function findAdjacentRevisions(document: Document): Set<string> {
+/**
+ * The index with one block's markup replaced (`before` → `after`, e.g. by an inline edit): its
+ * revisions and their adjacencies are those of `after`. The blocks, their versions and the note
+ * references stay as they are: an edit adds no paragraph and removes no object.
+ */
+export function replaceIndexBlock(index: DocIndex, before: Element, after: Element): DocIndex {
+  const [revisionsBefore, revisionsAfter] = [revisionsIn(before), revisionsIn(after)];
+  const revisionsInHtml = new Set(index.revisionsInHtml);
+  for (const id of revisionsBefore) if (!revisionsAfter.has(id)) revisionsInHtml.delete(id);
+  for (const id of revisionsAfter) revisionsInHtml.add(id);
+  const adjacentRevisions = new Set(index.adjacentRevisions);
+  for (const key of findAdjacentRevisions(before)) adjacentRevisions.delete(key);
+  for (const key of findAdjacentRevisions(after)) adjacentRevisions.add(key);
+  return { ...index, revisionsInHtml, adjacentRevisions };
+}
+
+/** The revisions with an element under `root` (`root` included). */
+function revisionsIn(root: Element): Set<string> {
+  const ids = new Set<string>();
+  for (const element of [root, ...root.querySelectorAll('[data-author^="rev:"]')]) {
+    const id = revisionIdFromAuthor(element.getAttribute('data-author'));
+    if (id !== null) ids.add(id);
+  }
+  return ids;
+}
+
+/** Walks the text under `root` (the document's body) in order and records revisions whose content touches within a block. */
+function findAdjacentRevisions(root: Document | Element): Set<string> {
   const adjacent = new Set<string>();
   let block: Element | null = null;
   let previous: string | null = null;
-  const walker = document.createTreeWalker(document.body ?? document.documentElement, SHOW_TEXT);
+  const start = 'body' in root ? (root.body ?? root.documentElement) : root;
+  const walker = (start.ownerDocument ?? (root as Document)).createTreeWalker(start, SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const parent = node.parentElement;
     const text = node.textContent ?? '';

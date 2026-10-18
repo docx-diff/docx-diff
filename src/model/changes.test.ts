@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RevisionListEntry } from '../engine/types';
-import { buildChangeItems, countWords, isBareParagraphMark } from './changes';
+import { buildChangeItems, countWords, isBareParagraphMark, replaceBlockItems, type ChangeItem } from './changes';
 import { adjacencyKey, buildDocIndex, type DocIndex, type IndexBlock } from './docIndex';
 
 const FAMILY = {
@@ -219,5 +219,44 @@ describe('buildChangeItems', () => {
     ]);
     expect(items[2]!.description).toBe('Bold removed, Font changed');
     expect(items[3]!.description).toBeUndefined();
+  });
+});
+
+describe('replaceBlockItems', () => {
+  const index = buildDocIndex(
+    '<p data-anchor="p" data-source-anchor-id="p:body:p">p</p><p data-anchor="q" data-source-anchor-id="p:body:q">q</p><table><tr><td><p data-anchor="t" data-source-anchor-id="p:body:t">t</p></td></tr></table><p data-anchor="r" data-source-anchor-id="p:body:r">r</p>',
+  );
+  const items = buildChangeItems([rev('a', 'ins', 'one ', ['p']), rev('b', 'del', 'two', ['q']), rev('c', 'ins', 'three', ['q']), rev('d', 'ins', 'four', ['r'])]);
+  const parts = (item: ChangeItem) => ({ id: item.id, kind: item.kind, revisionIds: item.revisionIds, removedText: item.removedText, addedText: item.addedText, wordDelta: item.wordDelta });
+
+  it('keeps the untouched items’ objects, updates a changed one under its id, and puts new ones in the block’s place', () => {
+    const [a, b, d] = items;
+    expect(b!.revisionIds).toEqual(['b', 'c']);
+    const added = { id: 'eq.1', kind: 'inserted' as const, revisionIds: ['eq.1'], removedText: '', addedText: 'new', wordDelta: { removed: 0, added: 1 } };
+    const shrunk = { ...parts(b!), kind: 'deleted' as const, revisionIds: ['b'], addedText: '', wordDelta: { removed: 1, added: 0 } };
+    const result = replaceBlockItems(items, 'q', ['b'], [shrunk, added], index);
+    expect(result.map((item) => `${item.order} ${item.id} ${item.kind}`)).toEqual(['0 a inserted', '1 b deleted', '2 eq.1 inserted', '3 d inserted']);
+    expect(result[0]).toBe(a);
+    expect(result[1]).toMatchObject({ ...shrunk, location: b!.location, anchors: b!.anchors });
+    expect(result[2]).toMatchObject({ ...added, location: { scope: 'body' }, anchors: ['q'] });
+    expect(result[3]).toEqual({ ...d, order: 3 });
+  });
+
+  it('keeps an item as it was when its revisions and text stay, and drops the items an edit removed', () => {
+    const relabelled: ChangeItem = { ...items[1]!, kind: 'formatting', text: 'two', description: 'Same text', removedText: 'two', addedText: 'three' };
+    const list = [items[0]!, relabelled, items[2]!];
+    expect(replaceBlockItems(list, 'q', ['b'], [{ ...parts(items[1]!) }], index)[1]).toBe(relabelled);
+    const touched = replaceBlockItems(list, 'q', ['b'], [{ ...parts(items[1]!), addedText: 'thre' }], index)[1]!;
+    expect(touched).toMatchObject({ id: 'b', kind: 'replaced', addedText: 'thre' });
+    expect(touched).not.toHaveProperty('text');
+    expect(touched).not.toHaveProperty('description');
+    expect(replaceBlockItems(items, 'p', ['a'], [], index).map((item) => `${item.order} ${item.id}`)).toEqual(['0 b', '1 d']);
+  });
+
+  it('puts the first items of a block before the items of later blocks, located in the block', () => {
+    const added = { id: 'et.1', kind: 'inserted' as const, revisionIds: ['et.1'], removedText: '', addedText: 'cell', wordDelta: { removed: 0, added: 1 } };
+    const result = replaceBlockItems(items, 't', [], [added], index);
+    expect(result.map((item) => item.id)).toEqual(['a', 'b', 'et.1', 'd']);
+    expect(result[2]!.location).toEqual({ scope: 'table' });
   });
 });

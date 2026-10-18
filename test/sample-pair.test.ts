@@ -13,7 +13,7 @@ import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { FinalDecision, RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
-import { revisionTexts } from '../src/model/paragraphEdit';
+import { revisionTexts, visibleText } from '../src/model/paragraphEdit';
 import { exportComments } from '../src/model/comments';
 import { INITIAL_DECISIONS, finalRevisionDecisions, reviewableItems } from '../src/model/decisions';
 import { buildOutline } from '../src/model/outline';
@@ -21,9 +21,11 @@ import { resolvedItemDecisions } from '../src/model/resolved';
 import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
-import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
+import { applyRangeOrder, applyResolution, prepareResolvedPanel, replaceResolvedBlock, resolvedText } from '../src/ui/resolvedView';
+import { EditSession } from '../src/ui/useEdits';
+import { readBlockSegments, renderBlockSegments } from '../src/ui/blockSegments';
 import { unmappedBlocks } from './block-mapping';
-import { SCENARIOS, editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, type RedlineParagraph, type ScriptedResult } from './edits';
+import { SCENARIOS, editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, type RedlineParagraph, type ScriptedEdit, type ScriptedResult } from './edits';
 import { expectDeliverable, expectTrackedDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
 import { documentLook, lookDifference } from './look';
@@ -531,6 +533,7 @@ describeWithSamples('sample pair', () => {
   describe('export with inline edits', () => {
     let body: HTMLElement;
     let paragraphs: Map<string, RedlineParagraph>;
+    let edits: ScriptedEdit[];
     let scripted: ScriptedResult;
     let revisions: RevisionListEntry[];
     /** Item id of each revision, the edits' new items included. */
@@ -543,7 +546,7 @@ describeWithSamples('sample pair', () => {
       // The sample has no editable heading: each of its `h*` blocks has a paragraph-mark change
       // (headings: test/fixture-pairs.test.ts). Nor any table.
       const inScope = (scope: string) => editable.filter((block) => scopeOfBlock(block) === scope);
-      const edits = [...pickScenarios(inScope('body')), ...pickScenarios(inScope('fn'), ['edit inside an insertion', 'insert a word', 'delete a word'])];
+      edits = [...pickScenarios(inScope('body')), ...pickScenarios(inScope('fn'), ['edit inside an insertion', 'insert a word', 'delete a word'])];
       expect(edits.map((edit) => edit.label)).toEqual([...SCENARIOS, 'edit inside an insertion', 'insert a word', 'delete a word']);
       scripted = scriptEdits(body, edits);
       revisions = [...result.revisions, ...scripted.revisions];
@@ -567,6 +570,73 @@ describeWithSamples('sample pair', () => {
       }
       return { exported, ms };
     };
+
+    it('reports at compare time the paragraphs the export’s patch refuses', () => {
+      const refused = [...paragraphs].filter(([, paragraph]) => paragraph.unpatchable).map(([key]) => key.split(':')[1]);
+      expect(Object.keys(result.uneditableBlocks).sort()).toEqual(refused.sort());
+      console.log(`sample pair: ${refused.length} paragraphs the patch refuses, found in ${result.timings.editable} ms`);
+    });
+
+    it('renders every paragraph block with its own segments as it was, and the edited blocks as markup that reads as their segments', () => {
+      for (const block of body.querySelectorAll<HTMLElement>(':is(p, h1, h2, h3, h4, h5, h6)[data-anchor]')) {
+        expect(renderBlockSegments(block, readBlockSegments(block)).outerHTML).toBe(block.outerHTML);
+      }
+      for (const edit of scripted.blocks) {
+        const block = body.querySelector(`[data-anchor="${edit.unid}"]`)!;
+        expect(readBlockSegments(renderBlockSegments(block, edit.current)), edit.unid).toEqual(edit.current);
+      }
+    });
+
+    it('updates the live review state for each edit as the scripted edits give it (timings logged, jsdom)', () => {
+      const prepared = prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), (html) => new JSDOM(html).window.document);
+      const file = new File([], 'sample.docx');
+      const session = new EditSession({
+        original: file,
+        edited: file,
+        originalName: file.name,
+        editedName: file.name,
+        result: { ...result, redline: new ArrayBuffer(0) },
+        ...prepared,
+        timings: { worker: 0, prepare: 0 },
+      });
+      const { index, suggestedEndPoint } = prepared.analysis;
+      const wrapper = prepared.document.body.ownerDocument.createElement('div');
+      wrapper.append(...[...prepared.document.body.childNodes].map((node) => node.cloneNode(true)));
+      const panel = prepareResolvedPanel(wrapper);
+      const positions = blockPositions(index, suggestedEndPoint);
+      const sidesOf = (items: typeof session.items) => {
+        const range = classify(items, session.index, suggestedEndPoint, positions);
+        const ignored = ignoredItems(items, session.itemTexts, DEFAULT_COMPARE_SETTINGS);
+        return { range, ignored, sides: resolvedItemDecisions(items, INITIAL_DECISIONS, range, ignored) };
+      };
+      applyResolution(panel, sidesOf(session.items).sides);
+
+      const timings: Record<string, string> = {};
+      for (const edit of edits) {
+        const after = edit.change(visibleText(session.blocks.get(edit.unid)?.current ?? readBlockSegments(prepared.document.body.querySelector(`[data-anchor="${edit.unid}"]`)!)));
+        let start = performance.now();
+        const update = session.update(edit.unid, after, edit.caret?.(after))!;
+        const sessionMs = performance.now() - start;
+        start = performance.now();
+        const { range, ignored, sides } = sidesOf(session.items);
+        reviewableItems(session.items, range, ignored);
+        const memosMs = performance.now() - start;
+        start = performance.now();
+        const old = wrapper.querySelector<HTMLElement>(`[data-anchor="${edit.unid}"]`)!;
+        replaceResolvedBlock(panel, old, update.block.cloneNode(true) as HTMLElement);
+        applyResolution(panel, sides, update.addedItemIds);
+        const panelMs = performance.now() - start;
+        timings[edit.label] = `${Math.round(sessionMs + memosMs + panelMs)} (session ${Math.round(sessionMs)}, memos ${Math.round(memosMs)}, Resolved column ${Math.round(panelMs)})`;
+
+        const expected = scripted.blocks.find((block) => block.unid === edit.unid)!.current;
+        expect(session.blocks.get(edit.unid)!.current, edit.label).toEqual(expected);
+        expect(readBlockSegments(prepared.document.body.querySelector(`[data-anchor="${edit.unid}"]`)!), edit.label).toEqual(expected);
+        expect(readBlockSegments(wrapper.querySelector(`[data-anchor="${edit.unid}"]`)!), edit.label).toEqual(expected);
+      }
+      expect(session.patches()).toEqual(scripted.patches);
+      expect(new Set(session.revisions().map((revision) => revision.id))).toEqual(new Set(revisions.map((revision) => revision.id)));
+      console.log('sample pair, one inline-edit update (ms, jsdom):', timings);
+    });
 
     it('accept all, reject all and alternating decisions give the text the segments imply', async () => {
       for (const [label, decisions] of [

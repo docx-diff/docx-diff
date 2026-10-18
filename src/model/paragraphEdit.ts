@@ -464,3 +464,95 @@ function kindOf(removedText: string, addedText: string, firstType: RevisionText[
   if (hasText(removedText)) return 'deleted';
   return firstType === 'insert' ? 'inserted' : 'deleted';
 }
+
+/** One character (a whole code point) or object of a block, for lining up two versions of it. */
+export interface AlignUnit {
+  object: boolean;
+  /** `''` for an object. */
+  ch: string;
+  side: 'equal' | 'del' | 'ins';
+  revisionId?: string;
+}
+
+/** An Original-side character in both, or an inserted one only in the old block (removed), only in the new segments (typed), or in both. */
+export type AlignStep<L> = { leaf: L; unit: AlignUnit } | { leaf: L; unit?: undefined } | { leaf?: undefined; unit: AlignUnit };
+
+/** The segments as units. */
+export function segmentUnits(segments: readonly Segment[]): AlignUnit[] {
+  const units: AlignUnit[] = [];
+  for (const segment of segments) {
+    if (segment.kind === 'object') {
+      units.push({ object: true, ch: '', side: segment.owner?.change ?? 'equal', revisionId: segment.owner?.revisionId });
+    } else {
+      const revisionId = segment.kind === 'equal' ? undefined : segment.revisionId;
+      for (const ch of Array.from(segment.text)) units.push({ object: false, ch, side: segment.kind, revisionId });
+    }
+  }
+  return units;
+}
+
+/**
+ * Lines up a block's units as it is (`leaves`, e.g. from its markup) with new segments' units, in
+ * final order. An edit never changes the Original text, so the Original-side characters (unchanged
+ * and deleted) of both correspond one to one (they may only turn from unchanged into deleted or
+ * back); per gap between them, the inserted characters are matched up (same character and
+ * revision), the others are removed or typed. `fail` makes the error when the Original texts differ.
+ */
+export function alignUnits<L extends AlignUnit>(leaves: readonly L[], units: readonly AlignUnit[], fail: (detail: string) => Error): AlignStep<L>[] {
+  const isOriginal = (item: AlignUnit) => item.side !== 'ins';
+  const originalLeaves = leaves.filter(isOriginal);
+  const originalUnits = units.filter(isOriginal);
+  if (originalLeaves.length !== originalUnits.length) throw fail('its Original text differs from the edit’s');
+  originalLeaves.forEach((leaf, i) => {
+    const unit = originalUnits[i]!;
+    if (leaf.object !== unit.object || (!leaf.object && !sameChar(leaf.ch, unit.ch))) throw fail(`its Original text differs from the edit’s at ${i}`);
+  });
+
+  const gaps = <T extends AlignUnit>(items: readonly T[]): T[][] => {
+    const found: T[][] = [[]];
+    for (const item of items) {
+      if (isOriginal(item)) found.push([]);
+      else found.at(-1)!.push(item);
+    }
+    return found;
+  };
+  const leafGaps = gaps(leaves);
+  const unitGaps = gaps(units);
+  const steps: AlignStep<L>[] = [];
+  leafGaps.forEach((gap, k) => {
+    steps.push(...matchInserted(gap, unitGaps[k]!));
+    if (k < originalLeaves.length) steps.push({ leaf: originalLeaves[k]!, unit: originalUnits[k]! });
+  });
+  return steps;
+}
+
+/** Matches a gap's inserted characters in the old block with the segments' (same character and revision), keeping their order. */
+function matchInserted<L extends AlignUnit>(leaves: L[], units: AlignUnit[]): AlignStep<L>[] {
+  const same = (leaf: L, unit: AlignUnit) =>
+    leaf.object === unit.object && sameChar(leaf.ch, unit.ch) && leaf.revisionId === unit.revisionId;
+  let start = 0;
+  while (start < leaves.length && start < units.length && same(leaves[start]!, units[start]!)) start++;
+  let end = 0;
+  while (end < leaves.length - start && end < units.length - start && same(leaves[leaves.length - 1 - end]!, units[units.length - 1 - end]!)) end++;
+  const head: AlignStep<L>[] = leaves.slice(0, start).map((leaf, i) => ({ leaf, unit: units[i]! }));
+  const tail: AlignStep<L>[] = leaves.slice(leaves.length - end).map((leaf, i) => ({ leaf, unit: units[units.length - end + i]! }));
+
+  // Longest common subsequence of the rest.
+  const a = leaves.slice(start, leaves.length - end);
+  const b = units.slice(start, units.length - end);
+  const lengths = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lengths[i]![j] = same(a[i]!, b[j]!) ? lengths[i + 1]![j + 1]! + 1 : Math.max(lengths[i + 1]![j]!, lengths[i]![j + 1]!);
+    }
+  }
+  const middle: AlignStep<L>[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && same(a[i]!, b[j]!)) middle.push({ leaf: a[i++]!, unit: b[j++]! });
+    else if (i < a.length && (j === b.length || lengths[i + 1]![j]! >= lengths[i]![j + 1]!)) middle.push({ leaf: a[i++]! });
+    else middle.push({ unit: b[j++]! });
+  }
+  return [...head, ...middle, ...tail];
+}

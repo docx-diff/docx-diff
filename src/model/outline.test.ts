@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DocumentHeading } from '../engine/types';
-import { buildOutline } from './outline';
+import { buildOutline, editedHeadingBlocks, withEditedHeadings } from './outline';
 
 function outlineOf(body: string, original: DocumentHeading[], edited: DocumentHeading[]) {
   return buildOutline(new DOMParser().parseFromString(`<html><body>${body}</body></html>`, 'text/html'), { original, edited });
@@ -63,5 +63,27 @@ describe('buildOutline', () => {
         [h(1, 'Intro'), h(1, 'Two halves')],
       ).map((entry) => entry.unid),
     ).toEqual(['a', 'b']);
+  });
+});
+
+describe('withEditedHeadings', () => {
+  it('takes an edited heading’s text from its block as it is now, so that the outline still places it', () => {
+    const document = new DOMParser().parseFromString(
+      '<html><body><h1 data-anchor="a">Title</h1><p data-anchor="b">Text</p><h2 data-anchor="c">Part <del>one</del><ins>two</ins></h2></body></html>',
+      'text/html',
+    );
+    const headings = { original: [h(1, 'Title'), h(2, 'Part one')], edited: [h(1, 'Title'), h(2, 'Part two')] };
+    const blocks = editedHeadingBlocks(document, headings);
+    expect(blocks).toEqual(['a', 'c']);
+    const edited = document.createElement('h2');
+    edited.dataset.anchor = 'c';
+    edited.innerHTML = 'Part <del>one</del><ins>two</ins> <ins>and three</ins>';
+    document.querySelector('[data-anchor="c"]')!.replaceWith(edited);
+    const updated = withEditedHeadings(headings, blocks, new Map([['c', edited]]));
+    expect(updated.edited).toEqual([h(1, 'Title'), h(2, 'Part two and three')]);
+    expect(updated.original).toBe(headings.original);
+    expect(buildOutline(document, updated).map((entry) => entry.text)).toEqual(['Title', 'Part two and three']);
+    // Blocks that aren't headings leave the headings as they were.
+    expect(withEditedHeadings(headings, blocks, new Map([['b', edited]]))).toBe(headings);
   });
 });

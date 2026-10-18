@@ -29,7 +29,7 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/types.ts` — `ComparisonEngine`, worker message types, `RevisionListEntry` (our copy of the engine's shape), `CompareResult`, `ExportRequest`.
 - `src/engine/settings.ts` — the one `docxDiffCompare` settings object.
 - `src/engine/docxodus.ts` — thin wrapper over `docxodus/core`: initialize from `<base>wasm/`, warm-up, version, compare, list, render, `acceptAll` (`docxDiffAcceptRevisions`); `engineVersion()` from `__DOCXODUS_VERSION__`.
-- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → read each input's headings and the Edited's author → compare → list → tag → render, with stage timings.
+- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → read each input's headings and the Edited's author → compare → list → tag → render → the paragraphs inline edits can't change (`uneditableBlocks`), with stage timings.
 - `src/engine/engine.worker.ts` / `src/engine/client.ts` — the worker and its main-thread client.
 - `src/engine/ooxml.ts` — zip/XML helpers, `parseConstituentKey`, `ElementIndex` (element name + `w:id` lookup).
 - `src/engine/normalizeText.ts` — text runs to NFC before comparing (FR-13a).
@@ -54,7 +54,7 @@ Model (pure TypeScript, main thread)
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
-- `blockSegments.ts` — a rendered block read as segments of the edit model ([Inline edits](#inline-edits)).
+- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`) ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -395,6 +395,58 @@ the segments' Original and Edited text equal the redline paragraph's, objects as
 (checked on every paragraph of every fixture, except those with fields, content controls, symbols,
 …, which the HTML doesn't mark); a no-break space counts as a space, as the converter renders some
 spaces as NBSP.
+
+**Rendering a block** (`renderBlockSegments`): new segments go back into the block's markup by
+the same alignment as the export's patch (`alignUnits`, below): each character or object of the
+block keeps its elements (its ancestors below the block, cloned once per run of characters sharing
+them), and everything that isn't text (list labels, ¶ glyphs, back links, bookmarks, the mark after
+a break) stays before the character it preceded. A character turning unchanged ↔ deleted, and typed
+text, take the elements of the neighbouring character (before, else after) without its
+`ins`/`del`, in a new `ins`/`del` of their revision (`data-author`, `data-change-id`, the block's
+`data-date`) unless they stay in, or join, that character's revision. A block rendered with its own
+segments is unchanged (checked on every fixture and the sample).
+
+**Which blocks can be edited** (`uneditableReason`): paragraph blocks in the comparison range,
+without move content or a paragraph-mark change, not following a paragraph whose mark changes (a
+panel joins that one into it), and not refused by the export's patch. The last can't be seen in the
+HTML (fields, content controls, symbols render as plain text): the worker lists those paragraphs at
+compare time (`CompareResult.uneditableBlocks`, unid → `unpatchableContent`'s reason; 0.27 s on the
+sample), so a paragraph the panel lets the reviewer edit can always be exported.
+
+**Live review state** (`EditSession` in `src/ui/useEdits.ts`, one per comparison, behind the
+`useEdits` hook). A `Comparison` stays as compared (a new one still means a new review); the session
+holds the `BlockEdit`s and the values derived from them, which the App uses instead of the
+comparison's: the items, their texts, the `DocIndex`, the headings. An update (`update`, `revert`,
+`revertAll`, `restore`) touches one block:
+- its segments (`applyTextEdit`), then its items: `blockItems` gives the block's items now, and
+  `replaceBlockItems` (`src/model/changes.ts`) puts them where its old ones were, keeping the object
+  of an item the edit left alone (so a relabelled kind stays) and every existing id; `order` is
+  renumbered;
+- its markup in the master document (`comparison.document.body`, which a panel mounted later copies,
+  e.g. the Resolved column when switching to three columns): rendered, decorated (`decorateDocument`
+  scoped to the block, its shared edges isolated again, `change-as-formatting`) and swapped in;
+- the changed items' texts (`collectItemTexts` over the session's block map) and same-text
+  relabelling; the index's revisions in the HTML and adjacencies (`replaceIndexBlock`; blocks, their
+  versions and note references don't change); an Edited heading's text (`withEditedHeadings`, so
+  that the outline still finds it; the headings are matched to their blocks once, at the first edit
+  of a block with a heading's text).
+A block whose segments are back to the comparison's gets its element, items and texts as compared.
+`nextId` is never reset, so a later edit's item never takes an earlier one's id (and its decision).
+The update returns the new master element and the items removed, added and created; only items a
+live edit created start as accepted (`showBlockUpdates`), never those a revert, undo or replay
+brings back. The export gets `revisions()` (the engine's plus `editRevisions` of every edited
+block) and `patches()`.
+
+**Panels** don't import the document again: `DocumentPanel`'s `controlRef` (`PanelControl`) has
+`replaceBlock(unid, block)`, which swaps in a copy of the master block with the panel's classes
+(ignored, common edges, out of range, decisions and current change as last applied, dark colours)
+and keeps the text at the top of the panel in place. In the Resolved column,
+`replaceResolvedBlock` (`src/ui/resolvedView.ts`) first restores the block's run of joined
+paragraphs, swaps it, rebuilds the maps of the items in the old or new block (elements in document
+order, markers, saved children, note references, item notes), joins again and shows the items for
+the sides last applied; a panel built from the updated HTML is the same DOM. The App keeps the
+`ignored` and out-of-range sets by content (`useSameSet`), so an update doesn't make every panel
+re-mark the whole document or the Resolved column redo its range order.
 
 **Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
 `w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,

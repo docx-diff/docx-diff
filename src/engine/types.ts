@@ -135,6 +135,11 @@ export interface CompareResult {
   revisions: RevisionListEntry[];
   /** The redline rendered to HTML, with each revision's elements carrying `data-author="rev:<revisionId>"`. */
   html: string;
+  /**
+   * The redline paragraphs inline edits can't change (fields, content controls, objects the HTML
+   * doesn't mark, …), by `data-anchor`, with the reason (`unpatchableContent` in `applyEdits.ts`).
+   */
+  uneditableBlocks: Record<string, string>;
   /** Either input already contained tracked changes; the engine compared their accepted view (FR-13). */
   inputsHadRevisions: boolean;
   /** Who made the Edited's changes, as the Edited says (FR-38c); `null` when it does not say. */
@@ -142,7 +147,7 @@ export interface CompareResult {
   /** Each input's headings, for the outline (FR-24a). */
   headings: { original: DocumentHeading[]; edited: DocumentHeading[] };
   /** Milliseconds per stage. */
-  timings: { normalize: number; checkInputs: number; headings: number; author: number; compare: number; list: number; tag: number; render: number };
+  timings: { normalize: number; checkInputs: number; headings: number; author: number; compare: number; list: number; tag: number; render: number; editable: number };
 }
 
 /** A heading of an input document: a body paragraph with an outline level. */
