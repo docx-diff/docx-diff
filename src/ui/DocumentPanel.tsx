@@ -32,6 +32,8 @@ interface Props {
   title: string;
   /** The title's tooltip, when not the title itself. */
   titleTooltip?: string;
+  /** Controls shown after the title (the Resolved column's Comments button). */
+  headerControls?: ReactNode;
   document: RenderedDocument;
   /** Changes the compare settings ignore: shown as plain text. */
   ignored: ReadonlySet<string>;
@@ -377,9 +379,12 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
 
   return (
     <section className={`document-panel document-panel--${side}`} aria-label={side === 'resolved' ? title : `${SIDE_NAMES[side]}: ${title}`}>
-      <h2 className="document-panel__title" title={props.titleTooltip ?? title}>
-        {title}
-      </h2>
+      <div className="document-panel__header">
+        <h2 className="document-panel__title" title={props.titleTooltip ?? title}>
+          {title}
+        </h2>
+        {props.headerControls}
+      </div>
       <div className="document-panel__body">
         <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0}>
           {props.card}

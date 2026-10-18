@@ -222,7 +222,9 @@ to ~300 pages; no backend.
     after the change (after its ✓/✗) shows or hides it, without selecting the change (tooltip
     "Show comment" / "Hide comment"; Enter and Space work too). All bubbles are open when a review
     is shown, after a reload or on resuming; closing one is not remembered. A new comment's bubble
-    opens; a removed or blanked comment takes its bubble and icon away.
+    opens; a removed or blanked comment takes its bubble and icon away. A **Comments** button with
+    the same icon in the column's header hides all bubbles while any is open, otherwise shows them
+    all (pressed while any is open; disabled when there are none).
 
     27d. **Undecided with comment** (in both menus) leaves the item undecided, resetting a decision
     it has, and opens its comment box as in FR-27b: a comment for the change the export keeps as a

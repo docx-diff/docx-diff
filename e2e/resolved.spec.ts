@@ -298,6 +298,16 @@ test('comments show in bubbles in the Resolved column, hidden and shown again by
   await page.keyboard.press('Enter');
   await expect(bubbles).toHaveCount(1);
 
+  // The header's Comments button hides all bubbles while any is open, then shows them all.
+  const all = page.getByRole('region', { name: 'Resolved' }).getByRole('button', { name: 'Comments' });
+  await expect(all).toHaveAttribute('aria-pressed', 'true');
+  await all.click();
+  await expect(bubbles).toHaveCount(0);
+  await expect(all).toHaveAttribute('aria-pressed', 'false');
+  await expect(all).toHaveAttribute('title', 'Show all comments');
+  await all.click();
+  await expect(bubbles).toHaveCount(2);
+
   // After a reload, every bubble is open again.
   await expect.poll(() => savedComments(page).then((saved) => Object.keys(saved).length)).toBe(2);
   await page.reload();

@@ -178,3 +178,27 @@ export function CommentBubbles({ comments, closed, onClose, scrollerRef }: Props
     </>
   );
 }
+
+/**
+ * The button in the Resolved column's header hiding or showing all bubbles (FR-27c): pressed while
+ * any is open, then a click hides them all; otherwise a click shows them all.
+ */
+export function CommentsToggle({ comments, closed, onToggleAll }: { comments: readonly BubbleComment[]; closed: ReadonlySet<string>; onToggleAll: () => void }) {
+  const anyOpen = comments.some((comment) => !closed.has(comment.itemId));
+  const label = comments.length === 0 ? 'No comments' : anyOpen ? 'Hide all comments' : 'Show all comments';
+  return (
+    <button
+      type="button"
+      className="button button--small comments-toggle"
+      title={label}
+      aria-pressed={anyOpen}
+      disabled={comments.length === 0}
+      onClick={onToggleAll}
+    >
+      <svg className="comments-toggle__icon" viewBox="0 0 16 14" width="12" height="11" aria-hidden="true">
+        <path d="M2 0h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7l-4 3v-3H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z" fill="currentColor" />
+      </svg>
+      Comments
+    </button>
+  );
+}

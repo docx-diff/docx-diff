@@ -30,7 +30,7 @@ import { buildReviewList, navigationOrder, nextUndecided, step } from './model/r
 import { savedFilesMatch, type ReviewState, type SavedReview } from './storage/reviewStore';
 import { ChangesList } from './ui/ChangesList';
 import { ColumnsToggle } from './ui/ColumnsToggle';
-import { CommentBubbles, type BubbleComment } from './ui/CommentBubbles';
+import { CommentBubbles, CommentsToggle, type BubbleComment } from './ui/CommentBubbles';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
@@ -322,6 +322,14 @@ export function App() {
     [],
   );
   const closeBubble = useCallback((itemId: string) => setClosedBubbles((closed) => new Set(closed).add(itemId)), []);
+  // The header's Comments button: hides every bubble while any is open, else shows them all.
+  const toggleAllBubbles = useCallback(
+    () =>
+      setClosedBubbles((closed) =>
+        bubbleComments.some(({ itemId }) => !closed.has(itemId)) ? new Set(bubbleComments.map(({ itemId }) => itemId)) : new Set(),
+      ),
+    [bubbleComments],
+  );
 
   /** Decides the undecided reviewable items up to and including `itemId`; returns their ids. */
   const decideUntil = useCallback(
@@ -515,6 +523,9 @@ export function App() {
                 theme={theme}
                 title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
                 titleTooltip={side === 'resolved' ? 'Shows the resolved text; formatting as in the Edited document' : undefined}
+                headerControls={
+                  side === 'resolved' ? <CommentsToggle comments={bubbleComments} closed={closedBubbles} onToggleAll={toggleAllBubbles} /> : undefined
+                }
                 document={comparison.document}
                 ignored={ignored}
                 settings={settings}

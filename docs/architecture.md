@@ -308,7 +308,9 @@ it relies on (which element carries which id) are listed at the top of `src/ui/r
   shown through a `<slot>` like the inline card (so they scroll with the text and get the page's
   styles), placed below the icon (else `changeBox` + `GAP`) and stacked by `stackBoxes`. The panel
   dispatches `CONTENT_CHANGED` on its scroller after it changed its text, since a decision can
-  move a comment without resizing anything. Which bubbles are closed is App state, not saved.
+  move a comment without resizing anything. Which bubbles are closed is App state, not saved; the
+  header's Comments button (`CommentsToggle`, passed as the panel's `headerControls`) closes them
+  all or none.
 - **Scroll anchoring:** the update runs in a layout effect; it first notes the top-most visible
   block and its offset (`topBlock`), and afterwards scrolls the column so that block stays put,
   through `scrollQuietly` (the scroll sync doesn't react to it). Text appearing or disappearing

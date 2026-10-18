@@ -855,14 +855,22 @@ body {
   border-left: 1px solid var(--border);
 }
 
-.document-panel__title {
-  margin: 0;
+.document-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.375rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.document-panel__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--muted);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -882,6 +890,17 @@ body {
   /* Its size comes from the layout around it, so changes elsewhere (e.g. the changes list) don't
      lay out the long document again. */
   contain: strict;
+}
+
+/* The Resolved column's button hiding or showing all comment bubbles (FR-27c); it keeps the
+   header's height. */
+.comments-toggle {
+  flex: none;
+  margin-block: -0.25rem;
+}
+
+.comments-toggle__icon {
+  display: block;
 }
 
 /* Overview bar */
