@@ -482,8 +482,11 @@ change there; in a block that can't be edited it shows why. The current change's
   Edited panel joins for unjoined copies, so each paragraph is edited as itself (its text is one
   block's, its edit one `w:p`'s). A paragraph that continues into the next shows its deleted ¶
   (`unjoined-continues`); the paragraph a run joins into is hidden when it has no text of its own
-  (`unjoined-empty`: the empty paragraph left where a blank line was removed). Turning it off joins
-  them again (not when a new comparison replaces the document).
+  (`unjoined-empty`: the empty paragraph left where a blank line was removed). The paragraphs shown
+  in place of a hidden one take its converter classes and style, as joined they take its
+  properties: on the sample the Edited replaced the blank lines with paragraph spacing, which the
+  hidden paragraph carries (a heading keeps its own look: the converter's rules name the tag,
+  `p.docx-Normal`). Turning it off joins them again (not when a new comparison replaces the document).
 - The browser edits the panel's copy of the block. An update reads its visible text
   (`readBlockSegments` + `visibleText`: hidden deletions don't count, whatever the browser did to
   them; a `<br>` with no text after it is the browser's placeholder, not the converter's) and calls

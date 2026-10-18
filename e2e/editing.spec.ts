@@ -310,6 +310,17 @@ test.describe('two columns', () => {
     const right = page.getByTestId('panel-right');
     // The empty paragraph it was joined into is hidden while editing.
     await expect(right.locator('p.unjoined-empty').first()).toBeHidden();
+    // The paragraph shown in its place keeps its spacing (which replaced the removed blank line).
+    const spacing = await page.getByTestId('panel-right').evaluate((host) => {
+      const margins = (block: Element) => ['marginTop', 'marginBottom'].map((side) => getComputedStyle(block)[side as 'marginTop']).join(' ');
+      const pairs = [...host.shadowRoot!.querySelectorAll('.unjoined-empty')].flatMap((empty) => {
+        const shown = empty.previousElementSibling;
+        return shown?.matches('p.rev-para-del:not(.not-in-edited)') ? [[margins(shown), margins(empty)]] : [];
+      });
+      return { pairs: pairs.length, differing: pairs.filter(([shown, empty]) => shown !== empty).length };
+    });
+    expect(spacing.pairs).toBe(40);
+    expect(spacing.differing).toBe(0);
     const target = right.locator('p.rev-para-del[contenteditable="true"]').nth(3);
     await target.scrollIntoViewIfNeeded();
     const before = (await target.innerText()).trim();

@@ -151,14 +151,35 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
 /**
  * The Edited panel's run of joined paragraphs shown one by one (`joinRun`, while editing): the
  * paragraph they join into is hidden when it has no text of its own (e.g. the empty paragraph left
- * where a blank line was removed), else the paragraphs before it show their deleted ¶.
+ * where a blank line was removed), else the paragraphs before it show their deleted ¶. A hidden
+ * one lends the paragraphs shown in its place its look (the converter's paragraph classes and
+ * style): the Edited gives the joined paragraph its properties, e.g. the spacing that replaced the
+ * blank line. The run's blocks are copies of the master's, so joining again restores their own.
  */
 function markUnjoined(run: readonly HTMLElement[]): void {
   const target = run.at(-1);
   if (!target || run.length < 2 || target.classList.contains('rev-para-del')) return;
   const empty = visibleText(readBlockSegments(target)) === '';
   target.classList.toggle('unjoined-empty', empty);
-  for (const block of run.slice(0, -1)) if (block.classList.contains('rev-para-del') && !block.classList.contains('not-in-edited')) block.classList.toggle('unjoined-continues', !empty);
+  for (const block of run.slice(0, -1)) {
+    if (!block.classList.contains('rev-para-del') || block.classList.contains('not-in-edited')) continue;
+    block.classList.toggle('unjoined-continues', !empty);
+    if (empty) takeParagraphLook(block, target);
+  }
+}
+
+/**
+ * The converter's paragraph classes (`docx-…`) and style of `source` in place of the block's own.
+ * Not across tags: the converter's rules name them (`p.docx-Normal`), so a heading keeps its look.
+ */
+function takeParagraphLook(block: HTMLElement, source: HTMLElement): void {
+  if (block.localName !== source.localName) return;
+  const isLook = (name: string) => name.startsWith('docx-');
+  block.classList.remove(...[...block.classList].filter(isLook));
+  block.classList.add(...[...source.classList].filter(isLook));
+  const style = source.getAttribute('style');
+  if (style === null) block.removeAttribute('style');
+  else block.setAttribute('style', style);
 }
 
 /** The first block shown at the top of the panel, and its offset from the panel's top. */
