@@ -96,11 +96,13 @@ have to leave the tool, and the comparison doesn't slow down.
 12. **Not editable** (the cursor cannot be placed there, or the action is blocked):
     - text after the comparison range's end point (the out-of-range tail, FR-17/FR-18);
     - paragraphs containing any part of a **move** (FR-8 Moved), source or destination;
-    - paragraphs whose paragraph mark is inserted or deleted (shown joined in the panel,
-      `mergeJoinedParagraphs`), and **Paragraph break** items. This includes every paragraph of an
-      inserted table row and of a footnote/endnote only the Edited has (their marks are inserted);
-    - paragraphs that another paragraph's content is joined into, in any panel (the paragraph
-      after one with an inserted or deleted mark);
+    - paragraphs the Edited doesn't have at all (wholly deleted), and paragraphs with content the
+      export can't patch (fields, content controls, symbols, drawings, …);
+    - (changed 2026-10-18, see Decided) paragraphs with an inserted or deleted mark, and those
+      another paragraph is joined into, **are** editable: while Editable is on, the Edited panel
+      shows the paragraphs it joins one by one (a deleted ¶ where one continues into the next; an
+      empty paragraph that only received joined text is hidden), and joins them again when it is
+      turned off. The marks themselves (Paragraph break items) can't be changed;
     - inline objects inside a paragraph: footnote/endnote reference marks, list numbers, images,
       fields, tabs and line breaks. They stay where they are. The reviewer can type around them but cannot delete or
       select-and-replace across them.
@@ -510,7 +512,12 @@ Decided 2026-10-18:
   from, and what it adds outside existing changes is a new, accepted change (requirement 16).
 - Editing inside a **rejected** change: the item stays rejected (requirement 16). The reviewer is
   editing the Edited's wording, perhaps with a comment, and decides it separately.
-- Paragraphs with paragraph-mark changes or moves are not editable (requirement 12): acceptable.
+- Paragraphs with moves are not editable (requirement 12): acceptable. Paragraphs with
+  paragraph-mark changes were excluded too at first; **changed the same day**: on the sample the
+  editor removed the blank line after most paragraphs (each text paragraph's mark deleted, joined
+  into the empty paragraph after it), which left 25 of ~180 paragraphs in range editable. Every
+  paragraph before the end point (without a move or unpatchable content) is editable; the Edited
+  panel shows joined paragraphs one by one while editing.
 - The local diff's word regions may differ from a fresh engine compare: acceptable, as long as the
   text checks (§8) hold.
 - Moving the range end point past edited paragraphs warns first (requirement 24a).

@@ -406,11 +406,13 @@ text, take the elements of the neighbouring character (before, else after) witho
 `data-date`) unless they stay in, or join, that character's revision. A block rendered with its own
 segments is unchanged (checked on every fixture and the sample).
 
-**Which blocks can be edited** (`uneditableReason`): paragraph blocks in the comparison range,
-without move content or a paragraph-mark change, without another paragraph joined into them in a
-side panel (the rule of `mergeJoinedParagraphs`: a preceding paragraph whose mark that version
-lacks, past the paragraphs the panel doesn't show at all; a wholly deleted empty paragraph before
-it joins nothing), and not refused by the export's patch. The last can't be seen in the
+**Which blocks can be edited** (`uneditableReason`): paragraph blocks in the comparison range that
+the Edited version has (not wholly deleted ones), without move content, and not refused by the
+export's patch. A paragraph-mark change doesn't matter: the edit model and the patch work on the
+paragraph's text, and its mark stays as it is. (On the sample, the editor removed the blank line
+after most paragraphs: the engine reports the text paragraph's mark as deleted, so the Edited
+panel joins it into the empty paragraph after it. Excluding such paragraphs left 25 of the ~180 in
+range editable.) The last can't be seen in the
 HTML (fields, content controls, symbols render as plain text): the worker lists those paragraphs at
 compare time (`CompareResult.uneditableBlocks`, unid → `unpatchableContent`'s reason; 0.27 s on the
 sample), so a paragraph the panel lets the reviewer edit can always be exported.
@@ -442,11 +444,18 @@ block) and `patches()`.
 **Panels** don't import the document again: `DocumentPanel`'s `controlRef` (`PanelControl`) has
 `replaceBlock(unid, block)`, which swaps in a copy of the master block with the panel's classes
 (ignored, common edges, out of range, decisions and current change as last applied, dark colours)
-and keeps the text at the top of the panel in place. In the Resolved column,
+and keeps the text at the top of the panel in place. In a side panel it swaps the block's whole run
+of joined paragraphs (`joinRun`: the paragraphs whose mark that version lacks before it, the
+paragraph they join into, and the blocks the panel doesn't show between them), copied from the
+master document and joined again (`joinInPanel`), since the block's content may sit in another
+block of the run. In the Resolved column,
 `replaceResolvedBlock` (`src/ui/resolvedView.ts`) first restores the block's run of joined
 paragraphs, swaps it, rebuilds the maps of the items in the old or new block (elements in document
-order, markers, saved children, note references, item notes), joins again and shows the items for
-the sides last applied; a panel built from the updated HTML is the same DOM. The App keeps the
+order, markers, saved children, note references, item notes; the ¶ glyphs and deletion markers
+without an id as `prepareResolvedPanel` assigns them; what is still in the panel is decided by
+`wrapper.contains`, not `isConnected`, so a detached panel works too), joins again and shows the
+items for the sides last applied; a panel built from the updated HTML is the same DOM (checked on the
+sample after its scripted edits, which include paragraphs with deleted marks and in notes). The App keeps the
 `ignored` and out-of-range sets by content (`useSameSet`), so an update doesn't make every panel
 re-mark the whole document or the Resolved column redo its range order.
 
@@ -457,6 +466,12 @@ at run time) and each block `uneditableReason` allows gets `contenteditable` (an
 its note references, tabs and `NOT_TEXT` elements `contenteditable=false`; a block an update puts in
 is prepared again (`replaceBlock`), and all of them when the range changes. A click doesn't select a
 change there; in a block that can't be edited it shows why. The current change's card is hidden.
+- **Joined paragraphs are shown one by one while editing**: turning Editable on swaps every run the
+  Edited panel joins for unjoined copies, so each paragraph is edited as itself (its text is one
+  block's, its edit one `w:p`'s). A paragraph that continues into the next shows its deleted ¶
+  (`unjoined-continues`); the paragraph a run joins into is hidden when it has no text of its own
+  (`unjoined-empty`: the empty paragraph left where a blank line was removed). Turning it off joins
+  them again (not when a new comparison replaces the document).
 - The browser edits the panel's copy of the block. An update reads its visible text
   (`readBlockSegments` + `visibleText`: hidden deletions don't count, whatever the browser did to
   them; a `<br>` with no text after it is the browser's placeholder, not the converter's) and calls

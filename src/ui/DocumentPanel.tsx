@@ -10,7 +10,9 @@ import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
-import { markCommon, markItems, mergeJoinedParagraphs, within, type RenderedDocument } from './renderedDocument';
+import { PARAGRAPH_BLOCK, joinInPanel, joinRun, markCommon, markItems, mergeJoinedParagraphs, within, type RenderedDocument } from './renderedDocument';
+import { readBlockSegments } from './blockSegments';
+import { visibleText } from '../model/paragraphEdit';
 import {
   applyCommentToggles,
   applyRangeOrder,
@@ -137,6 +139,19 @@ function applyDecision(elements: readonly HTMLElement[], decision: Decision | un
   }
 }
 
+/**
+ * The Edited panel's run of joined paragraphs shown one by one (`joinRun`, while editing): the
+ * paragraph they join into is hidden when it has no text of its own (e.g. the empty paragraph left
+ * where a blank line was removed), else the paragraphs before it show their deleted ¶.
+ */
+function markUnjoined(run: readonly HTMLElement[]): void {
+  const target = run.at(-1);
+  if (!target || run.length < 2 || target.classList.contains('rev-para-del')) return;
+  const empty = visibleText(readBlockSegments(target)) === '';
+  target.classList.toggle('unjoined-empty', empty);
+  for (const block of run.slice(0, -1)) if (block.classList.contains('rev-para-del') && !block.classList.contains('not-in-edited')) block.classList.toggle('unjoined-continues', !empty);
+}
+
 /** The first block shown at the top of the panel, and its offset from the panel's top. */
 function topBlock(scroller: HTMLElement, wrapper: Element): { block: Element; offset: number } | null {
   const top = scroller.getBoundingClientRect().top;
@@ -189,49 +204,124 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   if (props.editing) editingOptions.current = props.editing;
   const editingOn = props.editing !== undefined;
 
+  /** The Edited panel shows the paragraphs it joins one by one (while editing): each can be edited as itself. */
+  const unjoinedRef = useRef(false);
+
+  /**
+   * Puts copies of master blocks in place of the panel's (runs of siblings, `joinRun`), joined as the
+   * panel joins them (unless unjoined), with the panel's classes, decisions and current change.
+   * Returns false when the panel has none of them (not shown).
+   */
+  const swapRuns = (runs: readonly (readonly Element[])[]): boolean => {
+    const wrapper = scrollerRef.current?.shadowRoot?.querySelector<HTMLElement>('.doc');
+    if (!wrapper || side === 'resolved') return false;
+    const shown = new Map(blocksRef.current.map((block) => [block.dataset.anchor!, block]));
+    const owner = wrapper.ownerDocument;
+    const swapped: HTMLElement[] = [];
+    for (const run of runs) {
+      const blocks: HTMLElement[] = [];
+      for (const source of run) {
+        const old = shown.get((source as HTMLElement).dataset.anchor!);
+        if (!old) continue;
+        const block = owner.importNode(source, true) as HTMLElement;
+        block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
+        styledRef.current = styledRef.current.filter(([element]) => !old.contains(element));
+        old.replaceWith(block);
+        blocks.push(block);
+      }
+      if (unjoinedRef.current) markUnjoined(blocks);
+      else joinInPanel(blocks, side);
+      swapped.push(...blocks);
+    }
+    if (swapped.length === 0) return false;
+
+    const styled = swapped.flatMap((block) => Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]));
+    if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+    styledRef.current = [...styledRef.current, ...styled];
+    const { ignored, settings, outOfRangeItems } = latest.current;
+    for (const block of swapped) {
+      markItems(block, ignored, 'change-ignored');
+      markCommon(block, settings);
+      markItems(block, outOfRangeItems, 'change-out-of-range');
+    }
+    blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
+    elementsRef.current = elementMap(wrapper);
+    const ids = new Set(swapped.flatMap((block) => within(block, '[data-change-id]').map((element) => element.dataset.changeId!)));
+    for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
+    const current = appliedCurrent.current;
+    if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
+    for (const block of swapped) for (const paragraph of within(block, PARAGRAPH_BLOCK)) editingRef.current?.prepareBlock(paragraph);
+    return true;
+  };
+
+  /** Keeps the text at the top of the panel where it is while `change` changes the content above or in it. */
+  const keepingTop = (change: () => boolean) => {
+    const scroller = scrollerRef.current;
+    const wrapper = scroller?.shadowRoot?.querySelector<HTMLElement>('.doc');
+    if (!scroller || !wrapper) return;
+    const anchor = scroller.scrollTop > 0 ? topBlock(scroller, wrapper) : null;
+    const anchorUnid = (anchor?.block as HTMLElement | undefined)?.dataset.anchor;
+    if (!change()) return;
+    const kept = anchor && (anchor.block.isConnected ? anchor.block : blocksRef.current.find((block) => block.dataset.anchor === anchorUnid));
+    if (anchor && kept && kept.getClientRects().length > 0) {
+      const offset = kept.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      const top = scroller.scrollTop + offset - anchor.offset;
+      if (scrollQuietly.current) scrollQuietly.current(scroller, top);
+      else scroller.scrollTop = top;
+    }
+    scroller.dispatchEvent(new Event(CONTENT_CHANGED));
+  };
+
+  /** Joins the Edited panel's joined paragraphs again, or shows them one by one. */
+  const setUnjoined = (unjoined: boolean) => {
+    if (side !== 'right' || unjoinedRef.current === unjoined) return;
+    unjoinedRef.current = unjoined;
+    const runs: Element[][] = [];
+    const seen = new Set<Element>();
+    for (const block of document.body.querySelectorAll('[data-anchor].rev-para-del:not(.not-in-edited)')) {
+      if (seen.has(block)) continue;
+      const run = joinRun(block, 'right');
+      for (const element of run) seen.add(element);
+      runs.push(run);
+    }
+    keepingTop(() => swapRuns(runs));
+  };
+
   useImperativeHandle(
     props.controlRef,
     () => ({
       replaceBlock(unid, source) {
         const scroller = scrollerRef.current;
         const wrapper = scroller?.shadowRoot?.querySelector<HTMLElement>('.doc');
-        const at = blocksRef.current.findIndex((block) => block.dataset.anchor === unid);
-        if (!scroller || !wrapper || at < 0) return;
-        const old = blocksRef.current[at]!;
-        const anchor = scroller.scrollTop > 0 ? topBlock(scroller, wrapper) : null;
-        const block = wrapper.ownerDocument.importNode(source, true) as HTMLElement;
-        block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
-
-        const styled = Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
-        if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
-        styledRef.current = [...styledRef.current.filter(([element]) => !old.contains(element)), ...styled];
-
-        const { ignored, settings, outOfRangeItems } = latest.current;
-        markItems(block, ignored, 'change-ignored');
-        markCommon(block, settings);
-        markItems(block, outOfRangeItems, 'change-out-of-range');
-        if (resolvedRef.current) replaceResolvedBlock(resolvedRef.current, old, block);
-        else old.replaceWith(block);
-        blocksRef.current = blocksRef.current.with(at, block);
-        elementsRef.current = elementMap(wrapper);
-        editingRef.current?.prepareBlock(block);
-
-        const ids = new Set(within(block, '[data-change-id]').map((element) => element.dataset.changeId!));
-        if (side !== 'resolved') for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
-        const current = appliedCurrent.current;
-        if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
-
-        const kept = anchor?.block === old ? block : anchor?.block;
-        if (anchor && kept && kept.getClientRects().length > 0) {
-          const offset = kept.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-          const top = scroller.scrollTop + offset - anchor.offset;
-          if (scrollQuietly.current) scrollQuietly.current(scroller, top);
-          else scroller.scrollTop = top;
+        if (!scroller || !wrapper) return;
+        if (side !== 'resolved') {
+          keepingTop(() => swapRuns([joinRun(source, side)]));
+          return;
         }
-        scroller.dispatchEvent(new Event(CONTENT_CHANGED));
+        const at = blocksRef.current.findIndex((block) => block.dataset.anchor === unid);
+        if (at < 0) return;
+        const old = blocksRef.current[at]!;
+        keepingTop(() => {
+          const block = wrapper.ownerDocument.importNode(source, true) as HTMLElement;
+          block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
+          const styled = Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
+          if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+          styledRef.current = [...styledRef.current.filter(([element]) => !old.contains(element)), ...styled];
+          const { ignored, settings, outOfRangeItems } = latest.current;
+          markItems(block, ignored, 'change-ignored');
+          markCommon(block, settings);
+          markItems(block, outOfRangeItems, 'change-out-of-range');
+          replaceResolvedBlock(resolvedRef.current!, old, block);
+          blocksRef.current = blocksRef.current.with(at, block);
+          elementsRef.current = elementMap(wrapper);
+          const current = appliedCurrent.current;
+          if (current !== null) for (const element of within(block, '[data-change-id]')) if (element.dataset.changeId === current) element.classList.add('change-current');
+          return true;
+        });
       },
     }),
-    [side],
+    // The helpers read refs only, and the master document's runs.
+    [side, document],
   );
 
   useLayoutEffect(() => {
@@ -329,14 +419,18 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     const wrapper = root?.querySelector<HTMLElement>('.doc');
     if (!editingOn || !root || !wrapper) return;
     const findBlock = (unid: string) => blocksRef.current.find((block) => block.dataset.anchor === unid);
+    setUnjoined(true);
     const editing = new PanelEditing(root, wrapper, () => editingOptions.current!, findBlock);
     editing.attach();
     editingRef.current = editing;
     const attachedTo = documentRef.current;
     return () => {
       editingRef.current = null;
-      // A new document is a new review: what was typed in the old one is dropped.
-      editing.detach(documentRef.current === attachedTo);
+      // A new document is a new review: what was typed in the old one is dropped (and the panel is filled anew).
+      const same = documentRef.current === attachedTo;
+      editing.detach(same);
+      if (same) setUnjoined(false);
+      else unjoinedRef.current = false;
     };
   }, [editingOn, contentVersion]);
 

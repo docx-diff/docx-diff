@@ -129,12 +129,44 @@ export function markItems(root: ParentNode, itemIds: ReadonlySet<string>, classN
  * accept pass keeps it.
  */
 export function mergeJoinedParagraphs(root: ParentNode, side: 'left' | 'right'): void {
-  const missingMark = side === 'left' ? 'rev-para-ins' : 'rev-para-del';
-  const missingBlock = side === 'left' ? 'not-in-original' : 'not-in-edited';
-  joinParagraphs([...root.querySelectorAll<HTMLElement>(`[data-anchor].${missingMark}`)], {
-    losesMark: () => true,
+  joinInPanel([...root.querySelectorAll<HTMLElement>(`[data-anchor].${sideJoins[side].missingMark}`)], side);
+}
+
+/** The classes of a side panel's joins: a block whose mark that version lacks, and a block it lacks altogether. */
+const sideJoins = {
+  left: { missingMark: 'rev-para-ins', missingBlock: 'not-in-original' },
+  right: { missingMark: 'rev-para-del', missingBlock: 'not-in-edited' },
+} as const;
+
+/** `mergeJoinedParagraphs` for some of the blocks (in place: their next siblings are the panel's). */
+export function joinInPanel(blocks: readonly HTMLElement[], side: 'left' | 'right'): void {
+  const { missingMark, missingBlock } = sideJoins[side];
+  joinParagraphs(blocks, {
+    losesMark: (block) => block.classList.contains(missingMark),
     skipped: (element) => element.matches(`[data-anchor].${missingBlock}`),
   });
+}
+
+/**
+ * The sibling blocks a side panel joins with the block (`mergeJoinedParagraphs`), in document
+ * order: the paragraphs before it whose mark that version lacks, the paragraph they join into, and
+ * the blocks the panel doesn't show between them. Just the block when nothing joins it. Read on
+ * the unjoined (master) document.
+ */
+export function joinRun(block: Element, side: 'left' | 'right'): Element[] {
+  const { missingMark, missingBlock } = sideJoins[side];
+  const skipped = (element: Element) => element.matches(`[data-anchor].${missingBlock}`);
+  const inRun = (element: Element) => element.hasAttribute('data-anchor') && (skipped(element) || element.classList.contains(missingMark));
+  const run = [block];
+  for (let previous = block.previousElementSibling; previous && inRun(previous); previous = previous.previousElementSibling) run.unshift(previous);
+  if (inRun(block)) {
+    let next = block.nextElementSibling;
+    for (; next && inRun(next); next = next.nextElementSibling) run.push(next);
+    if (next?.matches(PARAGRAPH_BLOCK)) run.push(next);
+  }
+  // Blocks the panel doesn't show join nothing at the run's start.
+  while (run.length > 1 && run[0] !== block && skipped(run[0]!)) run.shift();
+  return run;
 }
 
 export interface JoinRules {

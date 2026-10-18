@@ -371,6 +371,20 @@ describe('replaceResolvedBlock', () => {
     expect(resolvedText(live.wrapper)).toContain('An phrase.');
   });
 
+  it('gives the DOM of a panel prepared with the new block: a block whose mark is deleted', () => {
+    for (const side of ['accept', 'reject'] as const) {
+      const { live, fresh } = both(
+        '<p data-anchor="j1" class="rev-para-del" data-change-id="j">Joined <span class="rev-para-mark-del">¶</span></p>',
+        '<p data-anchor="j1" class="rev-para-del" data-change-id="j">Joined <ins data-change-id="e3">now</ins> <span class="rev-para-mark-del">¶</span></p>',
+        new Map([...all('accept'), ['j', side], ['e3', 'accept']]),
+        {},
+        new Map(),
+      );
+      expect(dom(live), side).toBe(dom(fresh));
+      for (const glyph of live.wrapper.querySelectorAll('.rev-para-mark-del')) expect(glyph.className).toContain('resolved-hidden');
+    }
+  });
+
   it('gives the DOM of a panel prepared with the new block: a block another paragraph is joined into', () => {
     for (const side of ['accept', 'reject'] as const) {
       const { live, fresh } = both(

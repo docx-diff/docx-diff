@@ -243,27 +243,11 @@ describe('uneditableReason', () => {
     for (const unid of ['a', 't', 'n', 'm']) expect(uneditableReason(block(small, unid), none), unid).toBeUndefined();
   });
 
-  it('refuses paragraphs with a paragraph-mark change or move content, and those following a changed mark', () => {
-    expect(uneditableReason(block(small, 'b'), none)).toBe('paragraph-break');
-    expect(uneditableReason(block(small, 'c'), none)).toBe('joined');
-    expect(uneditableReason(block(small, 'd'), none)).toBe('paragraph-break');
-    expect(uneditableReason(block(small, 'e'), none)).toBe('joined');
+  it('refuses paragraphs with move content and wholly deleted ones, not those with a paragraph-mark change or joined text', () => {
+    for (const unid of ['b', 'c', 'd', 'e']) expect(uneditableReason(block(small, unid), none), unid).toBeUndefined();
     expect(uneditableReason(block(small, 'g'), none)).toBe('move');
-  });
-
-  it('lets paragraphs after wholly deleted or inserted ones be edited: the panels join nothing into them', () => {
-    const document = parse(
-      '<p data-anchor="x" class="rev-para-del not-in-edited"><del data-author="rev:r1"> </del><span class="rev-para-mark-del">¶</span></p>' +
-        '<p data-anchor="y"><span>After a deleted empty paragraph</span></p>' +
-        '<p data-anchor="i" class="rev-para-ins not-in-original"><ins data-author="rev:r2">New</ins></p>' +
-        '<p data-anchor="z"><span>After an inserted paragraph</span></p>' +
-        '<p data-anchor="j" class="rev-para-del"><span>Joined</span><span class="rev-para-mark-del">¶</span></p>' +
-        '<p data-anchor="w" class="rev-para-del not-in-edited"><del data-author="rev:r3">Gone</del><span class="rev-para-mark-del">¶</span></p>' +
-        '<p data-anchor="v"><span>Gets the joined text past the deleted paragraph</span></p>',
-    );
-    expect(uneditableReason(block(document, 'y'), none)).toBeUndefined();
-    expect(uneditableReason(block(document, 'z'), none)).toBeUndefined();
-    expect(uneditableReason(block(document, 'v'), none)).toBe('joined');
+    const deleted = parse('<p data-anchor="x" class="rev-para-del not-in-edited"><del data-author="rev:r1">Gone</del><span class="rev-para-mark-del">¶</span></p>');
+    expect(uneditableReason(block(deleted, 'x'), none)).toBe('not-a-paragraph');
   });
 
   it('refuses paragraphs outside the range, those the export can’t patch, and what isn’t a paragraph', () => {

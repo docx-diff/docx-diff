@@ -67,7 +67,7 @@ describe('PanelEditing', () => {
       '<p data-anchor="b" class="rev-para-ins"><span>Added</span></p>' +
       '<table data-anchor="t"><tr><td><p data-anchor="c"><span>Cell</span></p></td></tr></table>';
     root.append(wrapper);
-    reasons = { b: 'paragraph-break', t: 'not-a-paragraph' };
+    reasons = { b: 'move', t: 'not-a-paragraph' };
     options = {
       reasonOf: (unid) => reasons[unid],
       textOf: (unid) => ({ a: `Kept new text${OBJECT_CHAR}`, c: 'Cell' })[unid] ?? '',
@@ -137,7 +137,7 @@ describe('PanelEditing', () => {
     click(block('t').querySelector('td')!);
     expect(options.onMessage).not.toHaveBeenCalled();
     click(block('b').querySelector('span')!);
-    expect(options.onMessage).toHaveBeenCalledWith('This paragraph can’t be edited here: it contains a paragraph break change.');
+    expect(options.onMessage).toHaveBeenCalledWith('This paragraph can’t be edited here: it contains a moved passage.');
   });
 
   it('updates the block 400 ms after the last input, with its visible text', () => {

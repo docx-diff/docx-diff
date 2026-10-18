@@ -609,7 +609,8 @@ describeWithSamples('sample pair', () => {
         const ignored = ignoredItems(items, session.itemTexts, DEFAULT_COMPARE_SETTINGS);
         return { range, ignored, sides: resolvedItemDecisions(items, INITIAL_DECISIONS, range, ignored) };
       };
-      applyResolution(panel, sidesOf(session.items).sides);
+      let applied = sidesOf(session.items).sides;
+      applyResolution(panel, applied);
 
       const timings: Record<string, string> = {};
       for (const edit of edits) {
@@ -624,15 +625,24 @@ describeWithSamples('sample pair', () => {
         start = performance.now();
         const old = wrapper.querySelector<HTMLElement>(`[data-anchor="${edit.unid}"]`)!;
         replaceResolvedBlock(panel, old, update.block.cloneNode(true) as HTMLElement);
-        applyResolution(panel, sides, update.addedItemIds);
+        // As the panel does: the items whose side changed (`DocumentPanel`).
+        const changed = [...new Set([...applied.keys(), ...sides.keys()])].filter((id) => (applied.get(id) ?? 'accept') !== (sides.get(id) ?? 'accept'));
+        applyResolution(panel, sides, [...new Set([...changed, ...update.addedItemIds])]);
+        applied = sides;
         const panelMs = performance.now() - start;
         timings[edit.label] = `${Math.round(sessionMs + memosMs + panelMs)} (session ${Math.round(sessionMs)}, memos ${Math.round(memosMs)}, Resolved column ${Math.round(panelMs)})`;
 
         const expected = scripted.blocks.find((block) => block.unid === edit.unid)!.current;
         expect(session.blocks.get(edit.unid)!.current, edit.label).toEqual(expected);
         expect(readBlockSegments(prepared.document.body.querySelector(`[data-anchor="${edit.unid}"]`)!), edit.label).toEqual(expected);
-        expect(readBlockSegments(wrapper.querySelector(`[data-anchor="${edit.unid}"]`)!), edit.label).toEqual(expected);
       }
+      // The Resolved column after the updates is the one built from the updated document (a block
+      // it joins into the next one can't be read on its own).
+      const fresh = prepared.document.body.ownerDocument.createElement('div');
+      fresh.append(...[...prepared.document.body.childNodes].map((node) => node.cloneNode(true)));
+      const freshPanel = prepareResolvedPanel(fresh);
+      applyResolution(freshPanel, sidesOf(session.items).sides);
+      expect(wrapper.innerHTML).toBe(fresh.innerHTML);
       expect(session.patches()).toEqual(scripted.patches);
       expect(new Set(session.revisions().map((revision) => revision.id))).toEqual(new Set(revisions.map((revision) => revision.id)));
       console.log('sample pair, one inline-edit update (ms, jsdom):', timings);

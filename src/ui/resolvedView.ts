@@ -146,13 +146,7 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
     if (list) list.push(element);
     else elements.set(id, [element]);
   }
-  for (const element of wrapper.querySelectorAll<HTMLElement>(`.rev-para-mark-del, ${DEL_MARKER}`)) {
-    if (element.dataset.changeId !== undefined) continue;
-    // A deletion marker without an id of its own goes with the closest change around it.
-    const owner = element.matches(DEL_MARKER) ? element.parentElement?.closest<HTMLElement>('[data-change-id]') : null;
-    if (owner) elements.get(owner.dataset.changeId!)!.push(element);
-    else element.classList.add(RESOLVED_HIDDEN);
-  }
+  addMarksWithoutIds(wrapper, elements);
   const markers = insertMarkers(elements);
   const moves = new Set<string>();
   for (const [id, list] of elements) if (list.some((element) => element.matches('.rev-move-from, .rev-move-to'))) moves.add(id);
@@ -180,6 +174,20 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
 }
 
 /**
+ * The ¶ glyphs and deletion markers without an id of their own: a deletion marker goes with the
+ * closest change around it, the rest is always hidden.
+ */
+function addMarksWithoutIds(root: Element, elements: Map<string, HTMLElement[]>): void {
+  for (const element of within(root, `.rev-para-mark-del, ${DEL_MARKER}`)) {
+    if (element.dataset.changeId !== undefined) continue;
+    const owner = element.matches(DEL_MARKER) ? element.parentElement?.closest<HTMLElement>('[data-change-id]') : null;
+    const list = owner ? elements.get(owner.dataset.changeId!) : undefined;
+    if (list) list.push(element);
+    else element.classList.add(RESOLVED_HIDDEN);
+  }
+}
+
+/**
  * Replaces a paragraph block with new markup of it (an inline edit, `block`: imported into the
  * panel's document) and shows it for the sides and decisions last applied. The run of joined
  * paragraphs around it is restored first (earlier blocks' content can be joined into it) and joined
@@ -203,11 +211,12 @@ export function replaceResolvedBlock(handle: ResolvedPanel, old: HTMLElement, bl
   // The items' elements, in document order, and their markers.
   const elements = new Map<string, HTMLElement[]>();
   for (const id of affected) {
-    const list = [...(handle.elements.get(id) ?? []).filter((element) => element.isConnected), ...within(block, `[data-change-id="${id}"]`)];
+    const list = [...(handle.elements.get(id) ?? []).filter((element) => handle.wrapper.contains(element)), ...within(block, `[data-change-id="${id}"]`)];
     list.sort(inDocumentOrder);
     if (list.length > 0) elements.set(id, list);
     else handle.elements.delete(id);
   }
+  addMarksWithoutIds(block, elements);
   for (const [id, list] of elements) handle.elements.set(id, list);
   for (const [id, markers] of insertMarkers(elements)) handle.markers.set(id, markers);
   handle.children.set(block, [...block.childNodes]);
@@ -216,7 +225,7 @@ export function replaceResolvedBlock(handle: ResolvedPanel, old: HTMLElement, bl
   const notes = new Map([...handle.wrapper.querySelectorAll(NOTE)].map((note) => [note.id, note]));
   const noteOf = (reference: Element) => notes.get(reference.getAttribute('href')?.replace(/^#/, '') ?? '');
   for (const [note, references] of handle.noteReferences) {
-    const kept = references.filter((reference) => reference.isConnected);
+    const kept = references.filter((reference) => handle.wrapper.contains(reference));
     if (kept.length !== references.length) handle.noteReferences.set(note, kept);
   }
   for (const reference of block.querySelectorAll(NOTE_REFERENCE)) {

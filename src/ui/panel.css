@@ -258,3 +258,16 @@
   outline: 1px dashed var(--accent-border);
   outline-offset: 2px;
 }
+
+/* While editing, the Edited panel shows the paragraphs it joins one by one (DocumentPanel.tsx):
+   each paragraph whose mark the Edited lacks shows its deleted ¶, unless the paragraph it joins
+   into is an empty one, which is hidden (a removed blank line). */
+.doc[data-side='right'] .unjoined-empty {
+  display: none;
+}
+
+.doc[data-side='right'] .unjoined-continues > .rev-para-mark-del {
+  display: inline;
+  color: var(--change-del-line);
+  opacity: 0.6;
+}

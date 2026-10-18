@@ -342,50 +342,33 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
 }
 
 /** Why a block can't be edited in the panel. */
-export type UneditableReason = 'not-a-paragraph' | 'out-of-range' | 'move' | 'paragraph-break' | 'joined' | 'object';
+export type UneditableReason = 'not-a-paragraph' | 'out-of-range' | 'move' | 'object';
 
 /** The message shown for a click in a block that can't be edited. */
 export const UNEDITABLE_MESSAGES: Record<UneditableReason, string> = {
   'not-a-paragraph': 'This can’t be edited here.',
   'out-of-range': 'This paragraph can’t be edited here: it is outside the comparison range.',
   move: 'This paragraph can’t be edited here: it contains a moved passage.',
-  'paragraph-break': 'This paragraph can’t be edited here: it contains a paragraph break change.',
-  joined: 'This paragraph can’t be edited here: text from another paragraph is joined into it.',
   object: 'This paragraph can’t be edited here: it contains a field or object that can’t be edited here.',
 };
 
 /**
  * Why the block of the decorated, unjoined document can't be edited (`undefined` when it can):
- * only paragraphs in the comparison range are, without move content or a paragraph-mark change,
- * without another paragraph's content joined into them in a side panel (`joinedInto`), and without
- * content the export's patch refuses (`uneditable`, from the compare: `CompareResult.uneditableBlocks`).
+ * only paragraphs in the comparison range are, without move content, without content the export's
+ * patch refuses (`uneditable`, from the compare: `CompareResult.uneditableBlocks`), and shown in
+ * the Edited version (a wholly deleted paragraph isn't). A paragraph-mark change doesn't matter:
+ * while editing, the Edited panel shows the paragraphs it joins one by one.
  */
 export function uneditableReason(
   block: Element,
   context: { outOfRange: ReadonlySet<string>; uneditable: Readonly<Record<string, string>> },
 ): UneditableReason | undefined {
   const unid = (block as HTMLElement).dataset.anchor;
-  if (unid === undefined || !block.matches(PARAGRAPH_BLOCK)) return 'not-a-paragraph';
+  if (unid === undefined || !block.matches(PARAGRAPH_BLOCK) || block.matches('.not-in-edited')) return 'not-a-paragraph';
   if (context.outOfRange.has(unid)) return 'out-of-range';
   if (block.querySelector('.rev-move-from, .rev-move-to')) return 'move';
-  if (block.matches('.rev-para-ins, .rev-para-del') || block.querySelector('.rev-para-mark-del')) return 'paragraph-break';
-  if (joinedInto(block, 'rev-para-ins', 'not-in-original') || joinedInto(block, 'rev-para-del', 'not-in-edited')) return 'joined';
   if (Object.hasOwn(context.uneditable, unid)) return 'object';
   return undefined;
-}
-
-/**
- * Whether a side panel joins a preceding paragraph into the block (`mergeJoinedParagraphs`): one
- * whose mark that panel's version lacks (`missingMark`), past the paragraphs it doesn't show at all
- * (`missingBlock`, e.g. a wholly deleted empty paragraph in the Edited panel), which join nothing.
- * The Resolved column's joins don't matter: its block replacement restores and redoes them.
- */
-function joinedInto(block: Element, missingMark: string, missingBlock: string): boolean {
-  for (let previous = block.previousElementSibling; previous; previous = previous.previousElementSibling) {
-    if (previous.matches(`[data-anchor].${missingBlock}`)) continue;
-    return previous.matches(`[data-anchor].${missingMark}`);
-  }
-  return false;
 }
 
 /** The key of an inline object element: a note reference, a tab or a line break. */

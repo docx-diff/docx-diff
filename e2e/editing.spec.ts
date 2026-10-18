@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { minimalDocx } from '../test/minimal-docx';
+import { readSamples, samplesAvailable } from '../test/samples';
+import { docxText } from '../test/text';
+import { downloadReviewed } from './download';
 import { TWO_COLUMNS, pinView } from './viewSettings';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -141,9 +144,8 @@ test.describe('two columns', () => {
     await page.keyboard.type('x');
     await expect(toast(page)).toHaveText(`${SIMPLE} Edits must stay within one paragraph.`);
 
-    // The paragraph with an inserted mark can't be edited.
-    await paragraph(page, 'right', 'Added.').click();
-    await expect(toast(page)).toHaveText(/can’t be edited here/);
+    // A paragraph with an inserted mark can be edited too (a moved one can't: below).
+    await expect(paragraph(page, 'right', 'Added.')).toHaveAttribute('contenteditable', 'true');
     await page.waitForTimeout(600);
     expect(await shown(page, 'right', 'First paragraph')).toBe('First paragraph here.');
     expect(await shown(page, 'right', 'Second paragraph')).toBe('Second paragraph.');
@@ -255,6 +257,65 @@ test.describe('two columns', () => {
     await page.keyboard.type(' part');
     await expect(cards(page)).toHaveCount(2);
     await expect(page.getByTestId('outline')).toContainText('Introduction part');
+  });
+  test('joined paragraphs are edited one by one, and joined again when Editable is turned off', async ({ page }) => {
+    await openAndCompare(page, fixture('paragraph-join', 'original'), fixture('paragraph-join', 'edited'));
+    const right = page.getByTestId('panel-right');
+    await expect(right.locator('p.merged-into-next')).toHaveCount(2);
+    const joined = await right.locator('p', { hasText: 'The monastery stood' }).innerText();
+    await startEditing(page);
+    await expect(right.locator('p.merged-into-next')).toHaveCount(0);
+    const first = right.locator('p[contenteditable="true"]', { hasText: 'The monastery stood' });
+    await expect(first.locator('.rev-para-mark-del')).toBeVisible();
+    await first.click();
+    await page.keyboard.press('Control+End');
+    // After the space the Edited put where the paragraphs join.
+    await page.keyboard.type('Indeed. ');
+    await expect(cards(page).filter({ hasText: 'Indeed.' })).toHaveCount(1);
+    await expect(toast(page)).toHaveText('');
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect(right.locator('p.merged-into-next')).toHaveCount(2);
+    expect((await right.locator('p', { hasText: 'The monastery stood' }).innerText()).replace(/\s+/g, ' ')).toBe(
+      joined.replace(/\s+/g, ' ').replace('began. ', 'began. Indeed. '),
+    );
+    const text = docxText((await downloadReviewed(page, 'accept')).bytes);
+    expect(text[0]).toContain('the path began. Indeed. Every morning');
+  });
+
+  test('a paragraph the Original panel joins (split in the Edited) can be edited; the Original keeps its text', async ({ page }) => {
+    await openAndCompare(page, fixture('paragraph-split', 'original'), fixture('paragraph-split', 'edited'));
+    const left = await page.getByTestId('panel-left').locator('p', { hasText: 'The monastery stood' }).innerText();
+    await startEditing(page);
+    await cursorAtEnd(page, 'Every morning');
+    await page.keyboard.type(' Always.');
+    await expect(cards(page).filter({ hasText: 'Always.' })).toHaveCount(1);
+    expect(await page.getByTestId('panel-left').locator('p', { hasText: 'The monastery stood' }).innerText()).toBe(left);
+    // The Original panel's join is redone with the edit in it.
+    await expect(page.getByTestId('panel-left').locator('p.merged-into-next')).toHaveCount(1);
+    const text = docxText((await downloadReviewed(page, 'accept')).bytes);
+    expect(text).toEqual(docxText(fixture('paragraph-split', 'edited')).map((paragraph) => paragraph.replace('alms food.', 'alms food. Always.')));
+  });
+
+  test('on the sample pair, a paragraph whose blank line the editor removed can be edited', async ({ page }) => {
+    test.skip(!samplesAvailable, 'sample documents not present');
+    const { original, edited } = readSamples();
+    await openAndCompare(page, original, edited);
+    await startEditing(page);
+    const right = page.getByTestId('panel-right');
+    // The empty paragraph it was joined into is hidden while editing.
+    await expect(right.locator('p.unjoined-empty').first()).toBeHidden();
+    const target = right.locator('p.rev-para-del[contenteditable="true"]').nth(3);
+    await target.scrollIntoViewIfNeeded();
+    const before = (await target.innerText()).trim();
+    await target.click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type(' Szerkesztve.');
+    await page.keyboard.press('Escape');
+    await expect(toast(page)).toHaveText('');
+    expect((await target.innerText()).trim()).toBe(`${before} Szerkesztve.`);
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect(right.locator('p', { hasText: 'Szerkesztve.' })).toHaveCount(1);
+    await expect(right.locator('p.unjoined-empty')).toHaveCount(0);
   });
 });
 

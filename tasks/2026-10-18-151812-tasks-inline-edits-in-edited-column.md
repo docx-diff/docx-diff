@@ -45,7 +45,11 @@ Changed:
 - `src/model/equivalence.ts` - `collectItemTexts` over any root or a map of blocks.
 - `src/model/outline.ts` - `editedHeadingBlocks`, `withEditedHeadings`, `editedParagraphText` (outline from the edited headings).
 - `src/ui/renderedDocument.ts` - `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` scoped to a root/block (root included, `within`).
-- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `editing` prop: `PanelEditing` attached while it is set (flushed when turned off, not on a new document), replaced blocks prepared, refreshed when `reasonOf` changes, clicks don't select changes, `document-panel--editing` (task 4).
+- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `editing` prop: `PanelEditing` attached while it is set (flushed when turned off, not on a new document), replaced blocks prepared, refreshed when `reasonOf` changes, clicks don't select changes, `document-panel--editing`; side panels swap a block's whole join run (`swapRuns`), the Edited panel unjoined while editing (`setUnjoined`, `markUnjoined`) (task 4).
+- `src/ui/renderedDocument.ts` - Task 4: `joinInPanel` (a side panel's joins for some blocks) and `joinRun` (the run a side panel joins a block with).
+- `src/ui/resolvedView.ts` / `src/ui/resolvedView.test.ts` - Task 4: `replaceResolvedBlock` assigns id-less ¶ glyphs and deletion markers (`addMarksWithoutIds`, shared with `prepareResolvedPanel`) and keeps what `wrapper.contains`; test for a block whose mark is deleted.
+- `src/ui/renderedDocument.test.ts` - Task 4: `joinRun`.
+- `test/sample-pair.test.ts` - Task 4: the Resolved column after the scripted updates ≡ one built from the updated document (sides applied for every item whose side changed).
 - `src/ui/blockSegments.ts` - Task 4: `visibleOffset` / `visiblePoint` (cursor ↔ visible-text offset; char entries keep their text node), a `<br>` with no text after it (the browser's placeholder) is skipped.
 - `src/ui/useEdits.ts` - Task 4: `EditSession.blockElement(unid)`, `visibleText(unid)`.
 - `src/ui/resolvedView.ts` - `replaceResolvedBlock(handle, old, block)`: restore the run of joined paragraphs, swap, rebuild the items' elements/markers/children/note references/item notes, join again, apply the sides; `follows` without the `Node` global.
@@ -479,6 +483,14 @@ Update the file after completing each sub-task, not just after completing an ent
   none while typing. For `docs/measurements.md` (task 8).
 - e2e runs Chromium only; Firefox behaviour rests on the task 0 findings (no `ShadowRoot.getSelection`,
   `insertCompositionText` not cancelable: the composition path doesn't cancel anything).
+- **Changed after task 4's first commit (2026-10-18, user request: "it is unusable currently"):**
+  paragraphs with paragraph-mark changes and join targets are editable (PRD-12 updated). While
+  Editable is on, the Edited panel swaps each joined run for unjoined copies (`setUnjoined` in
+  `DocumentPanel.tsx`, `joinRun` / `joinInPanel` in `renderedDocument.ts`, CSS `unjoined-empty` /
+  `unjoined-continues`); a side panel's `replaceBlock` swaps the block's whole run from the master
+  and joins it again; `replaceResolvedBlock` assigns id-less ¶ glyphs / deletion markers as
+  `prepareResolvedPanel` does and uses `wrapper.contains` instead of `isConnected`. Wholly deleted
+  paragraphs and moves stay uneditable. Task 5's revert/undo go through the same `replaceBlock`.
 - CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
   caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 

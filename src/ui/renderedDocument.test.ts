@@ -8,6 +8,7 @@ import {
   documentCss,
   isolateCommonAffixes,
   joinParagraphs,
+  joinRun,
   markCommon,
   markItems,
   mergeJoinedParagraphs,
@@ -290,5 +291,31 @@ describe('prepareRenderedDocument', () => {
     expect(itemTexts.get('r1')).toEqual({ before: 'Kept old text1', after: 'Kept new text1', paragraphMark: false });
     expect(document.body.querySelector('[data-change-id="r8"]')).not.toBeNull();
     expect(document.css).toBe('');
+  });
+});
+
+describe('joinRun', () => {
+  const root = new DOMParser().parseFromString(
+    '<div>' +
+      '<p data-anchor="a">Alone</p>' +
+      '<p data-anchor="x" class="rev-para-del not-in-edited">Gone</p>' +
+      '<p data-anchor="b" class="rev-para-del">Joined</p>' +
+      '<p data-anchor="y" class="rev-para-del not-in-edited">Gone</p>' +
+      '<p data-anchor="c" class="rev-para-del">Joined too</p>' +
+      '<p data-anchor="d">Target</p>' +
+      '<p data-anchor="e" class="rev-para-ins">Split</p>' +
+      '<p data-anchor="f">Rest</p>' +
+      '</div>',
+    'text/html',
+  ).body.firstElementChild!;
+  const run = (unid: string, side: 'left' | 'right') => joinRun(root.querySelector(`[data-anchor="${unid}"]`)!, side).map((element) => element.getAttribute('data-anchor'));
+
+  it('gives the paragraphs a side panel joins with the block, past those it doesn’t show', () => {
+    for (const unid of ['b', 'c', 'd', 'y']) expect(run(unid, 'right'), unid).toEqual(['b', 'y', 'c', 'd']);
+    expect(run('a', 'right')).toEqual(['a']);
+    expect(run('x', 'right')).toEqual(['x', 'b', 'y', 'c', 'd']);
+    expect(run('e', 'right')).toEqual(['e']);
+    expect(run('f', 'left')).toEqual(['e', 'f']);
+    expect(run('d', 'left')).toEqual(['d']);
   });
 });
