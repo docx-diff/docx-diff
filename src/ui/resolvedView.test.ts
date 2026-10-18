@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ResolvedSide } from '../model/resolved';
 import type { Decision } from '../model/decisions';
-import { MARKER_SHOWN, RESOLVED_HIDDEN, applyRangeOrder, applyResolution, applyResolvedDecisions, prepareResolvedPanel, resolvedText } from './resolvedView';
+import {
+  MARKER_SHOWN,
+  RESOLVED_HIDDEN,
+  applyCommentToggles,
+  applyRangeOrder,
+  applyResolution,
+  applyResolvedDecisions,
+  prepareResolvedPanel,
+  resolvedText,
+} from './resolvedView';
 
 // Decorated redline HTML in the shapes of the fixtures (src/ui/resolvedView.ts): r a replacement
 // with shared edges, i an insertion, d a deletion, j a removed paragraph mark (the next paragraph
@@ -209,6 +218,68 @@ describe('applyResolvedDecisions', () => {
     applyResolvedDecisions(resolved, {}, ['d']);
     expect(ends(resolved)).toEqual([]);
     expect(resolved.wrapper.querySelectorAll('.change-rejected')).toHaveLength(0);
+  });
+});
+
+describe('applyCommentToggles', () => {
+  const toggle = (resolved: ReturnType<typeof panel>, id: string) => resolved.wrapper.querySelector<HTMLElement>(`.comment-toggle[data-comment-for="${id}"]`);
+  /** What the icon follows: the element's item and kind, or the text before it. */
+  const before = (resolved: ReturnType<typeof panel>, id: string) => {
+    const previous = toggle(resolved, id)!.previousSibling as HTMLElement;
+    if (previous.nodeType === 3) return `text:${previous.textContent}`;
+    return `${previous.dataset.changeId ?? ''}:${previous.classList.contains('resolved-marker') ? 'marker' : previous.localName}${previous.classList.contains('change-decided-end') ? ' ✓' : ''}`;
+  };
+
+  it('puts the icon after the ✓/✗ of the text shown, or after a shown marker', () => {
+    const resolved = panel();
+    applyResolution(resolved, new Map([['i', 'reject']]));
+    applyResolvedDecisions(resolved, { r: 'accepted', i: 'rejected' });
+    applyCommentToggles(resolved, new Map([['r', true], ['i', false], ['d', true], ['m', true]]));
+    expect(before(resolved, 'r')).toBe('r:ins ✓');
+    expect(before(resolved, 'i')).toBe('i:marker ✓');
+    // Undecided: an accepted deletion's dotted placeholder; a move's destination (after its source's marker).
+    expect(before(resolved, 'd')).toBe('d:marker');
+    expect(before(resolved, 'm')).toBe('m:ins');
+    expect(toggle(resolved, 'i')!.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(resolved, 'i')!.title).toBe('Show comment');
+    expect(toggle(resolved, 'r')!.getAttribute('aria-label')).toBe('Hide comment');
+  });
+
+  it("follows a paragraph mark's text into the next paragraph and back", () => {
+    const resolved = panel();
+    applyResolution(resolved, all('accept'));
+    applyCommentToggles(resolved, new Map([['j', true]]));
+    const icon = toggle(resolved, 'j')!;
+    expect(icon.parentElement!.dataset.anchor).toBe('j2');
+    expect(icon.previousElementSibling!.className).toContain('rev-para-mark-del');
+    applyResolution(resolved, new Map(all('accept')).set('j', 'reject'), ['j']);
+    applyCommentToggles(resolved, new Map([['j', true]]));
+    expect(toggle(resolved, 'j')).toBe(icon);
+    expect(icon.parentElement!.dataset.anchor).toBe('j1');
+    expect(icon.parentElement!.lastChild).toBe(icon);
+    expect(resolvedText(resolved.wrapper).slice(3, 5)).toEqual(['Joined', 'here.']);
+  });
+
+  it('comes back after a join is undone around it, and goes with its comment', () => {
+    const resolved = panel();
+    applyResolution(resolved, all('accept'));
+    // The deleted word's marker is in a paragraph that a join moves.
+    applyCommentToggles(resolved, new Map([['w', true]]));
+    expect(before(resolved, 'w')).toBe('w:marker');
+    applyResolution(resolved, new Map(all('accept')).set('v', 'reject'), ['v']);
+    applyCommentToggles(resolved, new Map([['w', true]]));
+    expect(before(resolved, 'w')).toBe('w:marker');
+    applyCommentToggles(resolved, new Map());
+    expect(resolved.wrapper.querySelectorAll('.comment-toggle')).toHaveLength(0);
+  });
+
+  it('adds no text', () => {
+    const resolved = panel();
+    applyResolution(resolved, all('reject'));
+    const text = resolvedText(resolved.wrapper);
+    applyCommentToggles(resolved, new Map(ITEMS.map((id) => [id, true])));
+    expect(resolvedText(resolved.wrapper)).toEqual(text);
+    expect(resolved.wrapper.querySelectorAll('.comment-toggle')).toHaveLength(ITEMS.length);
   });
 });
 

@@ -8,9 +8,9 @@ import { changeBox } from './reveal';
 export const CARD_SLOT = 'change-card';
 
 /** Space between the change and the card, so the lines around the change stay readable. */
-const GAP = 40;
+export const GAP = 40;
 /** Space kept between the card and the panel's edges. */
-const MARGIN = 8;
+export const MARGIN = 8;
 
 interface Props {
   item: ChangeItem;

@@ -34,6 +34,9 @@
 // (`span.resolved-marker`, no text) follows each item's last deletion and last insertion; it is shown
 // where the result drops that side and nothing of the item is left to see, and for moves at the end
 // the decision removed.
+//
+// Comment icons (PRD-23): `span.comment-toggle` (no text) after each commented item as shown,
+// placed again after every change, since joins and decisions move the item's text.
 import type { Decision } from '../model/decisions';
 import type { ResolvedSide } from '../model/resolved';
 import { PARAGRAPH_BLOCK, joinParagraphs } from './renderedDocument';
@@ -45,6 +48,7 @@ const NOTES = 'section.footnotes, section.endnotes';
 const MARKER = 'resolved-marker';
 export const MARKER_SHOWN = 'resolved-marker--shown';
 const DECIDED_END = 'change-decided-end';
+const COMMENT_TOGGLE = 'comment-toggle';
 const DIVIDER = 'range-divider';
 const DEL_MARKER = '.rev-del-marker, .rev-move-from-marker';
 /** Not text of the document: list labels, back links, Word's reference marks (no `w:t`), our own additions. */
@@ -81,6 +85,8 @@ export interface ResolvedPanel {
   noteReferences: Map<Element, Element[]>;
   /** The notes an item's decision can show or hide: those it is in, and those it references. */
   itemNotes: Map<string, Set<Element>>;
+  /** The comment icons, by item id. */
+  commentToggles: Map<string, HTMLElement>;
 }
 
 const isChange = (element: Element) => element.localName === 'ins' || element.localName === 'del';
@@ -170,7 +176,7 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
     // Every change around the reference.
     for (let around = reference.parentElement?.closest('[data-change-id]'); around; around = around.parentElement?.closest('[data-change-id]')) addNote(around, note);
   }
-  return { wrapper, elements, markers, moves, decisions: {}, children, sides: new Map(), moved: [], pulledMarks: new Map(), noteReferences, itemNotes };
+  return { wrapper, elements, markers, moves, decisions: {}, children, sides: new Map(), moved: [], pulledMarks: new Map(), noteReferences, itemNotes, commentToggles: new Map() };
 }
 
 /** Whether the element is hidden when its item resolves to `side`; decided by the element alone. */
@@ -377,12 +383,70 @@ function showNote(handle: ResolvedPanel, note: Element): void {
     const copy = note.cloneNode(true) as Element;
     copy.removeAttribute('id');
     copy.classList.add(NOTE_COPY);
+    for (const toggle of copy.querySelectorAll(`.${COMMENT_TOGGLE}`)) toggle.remove();
     // Anchors stay unique (the scroll sync and the range look blocks up by them).
     for (const block of copy.querySelectorAll<HTMLElement>('[data-anchor]')) {
       block.dataset.copyOf = block.dataset.anchor;
       delete block.dataset.anchor;
     }
     note.after(copy);
+  }
+}
+
+/**
+ * The comment icons (PRD-23): one for each item in `toggles`, whose value says whether its bubble
+ * is open; the others' icons are removed. Each is placed by `placeCommentToggles`.
+ */
+export function applyCommentToggles(handle: ResolvedPanel, toggles: ReadonlyMap<string, boolean>): void {
+  for (const [id, toggle] of handle.commentToggles) {
+    if (toggles.has(id)) continue;
+    toggle.remove();
+    handle.commentToggles.delete(id);
+  }
+  for (const [id, open] of toggles) {
+    let toggle = handle.commentToggles.get(id);
+    if (!toggle) {
+      toggle = handle.wrapper.ownerDocument.createElement('span');
+      toggle.className = COMMENT_TOGGLE;
+      toggle.dataset.commentFor = id;
+      toggle.setAttribute('role', 'button');
+      toggle.tabIndex = 0;
+      handle.commentToggles.set(id, toggle);
+    }
+    const label = open ? 'Hide comment' : 'Show comment';
+    toggle.title = label;
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('aria-expanded', String(open));
+  }
+  placeCommentToggles(handle);
+}
+
+/**
+ * Puts each comment icon after its item as shown: after the last of its insertions, deletions and
+ * shown markers (so after its ✓/✗); for an item that is only a paragraph mark, at the end of its
+ * paragraph's text. An icon already in place isn't moved (it keeps the focus); one with no place
+ * (nothing of the item is shown) is taken out.
+ */
+export function placeCommentToggles(handle: ResolvedPanel): void {
+  const shown = (element: Element) => !element.closest(`.${RESOLVED_HIDDEN}, .${MERGED}`);
+  for (const [id, toggle] of handle.commentToggles) {
+    const elements = handle.elements.get(id) ?? [];
+    const markers = (handle.markers.get(id) ?? []).filter((marker) => marker.classList.contains(MARKER_SHOWN));
+    let last: Node | null = null;
+    for (const element of [...elements.filter(isChange), ...markers]) if (shown(element) && (!last || follows(element, last))) last = element;
+    let block: Element | null = null;
+    if (!last) {
+      // The last paragraph of the item; when joined into the next one, where its text went.
+      const blocks = elements.filter((element) => element.matches(PARAGRAPH_BLOCK) && !element.closest(`.${RESOLVED_HIDDEN}`));
+      const lastBlock = blocks[blocks.length - 1];
+      if (lastBlock?.classList.contains(MERGED)) last = [...(handle.children.get(lastBlock) ?? [])].reverse().find((child) => child.isConnected) ?? null;
+      else block = lastBlock ?? null;
+    }
+    if (last) {
+      if (last.nextSibling !== toggle) last.parentNode!.insertBefore(toggle, last.nextSibling);
+    } else if (block) {
+      if (block.lastChild !== toggle) block.append(toggle);
+    } else toggle.remove();
   }
 }
 

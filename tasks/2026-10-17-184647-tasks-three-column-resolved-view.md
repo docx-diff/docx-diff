@@ -8,23 +8,23 @@ PRD: [`2026-10-17-184647-prd---three-column-resolved-view.md`](2026-10-17-184647
 New:
 - `src/model/resolved.ts` - `resolvedItemDecisions`: each item's resolved side (accept/reject) for the middle column, from `finalItemDecision` (the export's per-item rule) with formatting always accepted.
 - `src/model/resolved.test.ts` - Unit tests for `resolved.ts`.
-- `src/ui/resolvedView.ts` - DOM logic of the Resolved column: `prepareResolvedPanel` (element index, saved paragraph children, note references), `applyResolution` (hidden elements, undoable paragraph joins by run, rows, notes hidden or copied as `reconcileNotes` does), `applyRangeOrder` (the counterpart of `planRangeOrder`), `resolvedText` for tests; the HTML shapes it relies on in its header comment. Markers (`insertMarkers`, `resolved-marker--shown`) and decision marks (`applyResolvedDecisions`: decided classes, ✓/✗ on the last shown insertion/deletion and on shown markers).
-- `src/ui/resolvedView.test.ts` - Unit tests (jsdom) on small hand-written HTML: each markup kind × accept/reject, joins and un-joins (DOM equal to a fresh apply after every flip), notes (hidden, copied for a second reference), rows, range order and its undo; marker placement and visibility, decision marks.
+- `src/ui/resolvedView.ts` - DOM logic of the Resolved column: `prepareResolvedPanel` (element index, saved paragraph children, note references), `applyResolution` (hidden elements, undoable paragraph joins by run, rows, notes hidden or copied as `reconcileNotes` does), `applyRangeOrder` (the counterpart of `planRangeOrder`), `resolvedText` for tests; the HTML shapes it relies on in its header comment. Markers (`insertMarkers`, `resolved-marker--shown`) and decision marks (`applyResolvedDecisions`: decided classes, ✓/✗ on the last shown insertion/deletion and on shown markers). Comment icons (`applyCommentToggles`, `placeCommentToggles`: after the item as shown, moved only when their place changed, never copied into a note copy).
+- `src/ui/resolvedView.test.ts` - Unit tests (jsdom) on small hand-written HTML: each markup kind × accept/reject, joins and un-joins (DOM equal to a fresh apply after every flip), notes (hidden, copied for a second reference), rows, range order and its undo; marker placement and visibility, decision marks; comment icon placement (after ✓/✗, after a marker, a paragraph mark's text joined and back) and removal.
 - `test/parity.ts` - The decision states of the text parity checks (all accepted/rejected/undecided, alternating).
 - `src/ui/useViewSettings.test.ts` - Unit tests for the view settings: defaults, merge over stored values, storing a change, bad JSON.
 - `src/ui/useNarrowWindow.ts` - `matchMedia('(max-width: 1024px)')` hook for the two-column fallback.
 - `src/ui/useNarrowWindow.test.tsx` - Unit tests with a stubbed `matchMedia` (pattern: `src/ui/theme.test.tsx`).
 - `src/ui/ColumnsToggle.tsx` - Top-bar icon button switching two/three columns (inline SVG bars showing the target view; disabled with its own label in a narrow window).
-- `src/ui/CommentBubbles.tsx` - The comment bubbles of the Resolved column (slot in the panel's shadow root, positioning and stacking).
-- `src/ui/CommentBubbles.test.tsx` - Unit tests for bubble open/close state and stacking.
+- `src/ui/CommentBubbles.tsx` - The comment bubbles of the Resolved column: `BUBBLE_SLOT`, `CONTENT_CHANGED` (dispatched by the panel after it changed its text), placement written to the elements (below the comment icon, `belowIcon`; else `changeBox` + `GAP`), `stackBoxes`, × button.
+- `src/ui/CommentBubbles.test.tsx` - Unit tests (mocked `changeBox`): open by default, × closes, closed ones left out, edited text, placed again on `CONTENT_CHANGED`; `stackBoxes`.
 - `e2e/viewSettings.ts` - `pinView(page, settings)`: stores view settings before the page loads (`page.addInitScript`), only when none are stored; `TWO_COLUMNS` = the view the older specs were written for.
-- `e2e/resolved.spec.ts` - e2e: defaults, toggle (remembered after a reload), narrow window, text parity with the export, range divider and tail, click to select, three-way scroll sync and reveal, scroll anchoring; marks (yellow, ✓/✗, dotted), a clickable marker, legend entries; later comments.
+- `e2e/resolved.spec.ts` - e2e: defaults, toggle (remembered after a reload), narrow window, text parity with the export, range divider and tail, click to select, three-way scroll sync and reveal, scroll anchoring; marks (yellow, ✓/✗, dotted), a clickable marker, legend entries; comment bubbles (× and icon, keyboard, reload, removal).
 
 Changed:
 - `src/model/decisions.ts` - `finalItemDecision`: the per-item rule, shared by `finalRevisionDecisions` and `resolvedItemDecisions` (export behaviour unchanged).
 - `src/ui/useViewSettings.ts` - `threeColumns` setting; new defaults (outline and changes list collapsed).
-- `src/ui/DocumentPanel.tsx` - `side: 'resolved'`: `prepareResolvedPanel` instead of the per-side join, `applyRangeOrder` in the range effect (divider removed first, put back after), `applyResolution` and `applyResolvedDecisions` with only the changed items in one effect with the scroll anchoring (`topBlock`, `scrollQuietly` prop), no overview bar, `titleTooltip`; later comment toggle clicks, bubble slot.
-- `src/ui/panel.css` - Rules for `.doc[data-side='resolved']`: `resolved-hidden`, plain `ins`/`del`, out-of-range greying as the left panel; side padding from `--doc-padding-inline`; the decided opacity scoped to the side panels; yellow decided marks, ✓/✗ (shared with the side panels, also on markers), markers, dotted pending mark. Later: comment icon.
+- `src/ui/DocumentPanel.tsx` - `side: 'resolved'`: `prepareResolvedPanel` instead of the per-side join, `applyRangeOrder` in the range effect (divider removed first, put back after), `applyResolution` and `applyResolvedDecisions` with only the changed items in one effect with the scroll anchoring (`topBlock`, `scrollQuietly` prop), no overview bar, `titleTooltip`; comment icons (`commentToggles`, `onToggleComment`: click and Enter/Space toggle without selecting), the bubble slot and `bubbles` prop, `CONTENT_CHANGED` after the range and resolution effects.
+- `src/ui/panel.css` - Rules for `.doc[data-side='resolved']`: `resolved-hidden`, plain `ins`/`del`, out-of-range greying as the left panel; side padding from `--doc-padding-inline`; the decided opacity scoped to the side panels; yellow decided marks, ✓/✗ (shared with the side panels, also on markers), markers, dotted pending mark; the comment icon (masked SVG speech bubble, light blue when closed, strong blue when open).
 - `test/fixtures/make-fixtures.ts` - New fixture pair `paragraph-join-table` (a paragraph whose mark is removed, then one whose mark is inserted, right before a table).
 - `test/fixtures/paragraph-join-table.{original,edited}.docx` - Generated by `make-fixtures.ts`.
 - `src/ui/renderedDocument.ts` - `mergeJoinedParagraphs` joins only into a following paragraph (`PARAGRAPH_BLOCK`), never into a table (task 0.0); now a wrapper of `joinParagraphs(blocks, { losesMark, skipped })`, which also remembers where each merged block went (a long chain was quadratic: ~1 s on the sample's tail under jsdom).
@@ -33,12 +33,12 @@ Changed:
 - `src/engine/rangeOrder.ts` - Reference only: the export's range order, which the middle column must match.
 - `src/ui/scrollSync.ts` / `src/ui/scrollSync.test.ts` - `useScrollSync(panels[], enabled, contentKey)`: any number of panels, block offsets cached per panel and pairs per direction, dropped per panel on resize; hook tests with three mocked panels.
 - `src/ui/reveal.ts` - `revealItem` / `revealBlock` over any number of panels (`revealIn`: the others aligned with the first panel showing the target).
-- `src/ui/InlineChangeCard.tsx` - Reuse its positioning (`changeBox`, GAP, MARGIN) for bubbles; maybe export the constants.
+- `src/ui/InlineChangeCard.tsx` - Exports `GAP` and `MARGIN` for the bubbles.
 - `src/ui/Legend.tsx` - Decided / Undecided entries in three-column view (`threeColumns` prop).
 - `src/ui/HelpPopover.tsx` - Holds the legend: passes `threeColumns` on, and its note explains the Resolved column's marks in three-column view.
 - `src/ui/Toolbar.tsx` - Scroll lock tooltip says "the panels" (not "both"); passes the view (`threeColumns`) to the help popover's legend.
-- `src/App.tsx` - Third panel and ref (`panelRefs` per view), effective `threeColumns`, `ColumnsToggle`, `resolvedItemDecisions` memo, align the Resolved column with the left panel when shown, three-way scroll/reveal; later bubble state.
-- `src/index.css` - `.panels--three` grid and `--doc-padding-inline: 1rem`, the columns toggle beside the theme toggle, the collapsed sidebars' labels at the top of their strips; gray formatting group (new token `--group-bg`) and card edge (`--divider`), legend samples (and the legend wraps); later bubble styles.
+- `src/App.tsx` - Third panel and ref (`panelRefs` per view), effective `threeColumns`, `ColumnsToggle`, `resolvedItemDecisions` memo, align the Resolved column with the left panel when shown, three-way scroll/reveal; the comments shown as bubbles, `closedBubbles` (reset per comparison, forgotten when a comment goes), `commentToggles`.
+- `src/index.css` - `.panels--three` grid and `--doc-padding-inline: 1rem`, the columns toggle beside the theme toggle, the collapsed sidebars' labels at the top of their strips; gray formatting group (new token `--group-bg`) and card edge (`--divider`), legend samples (and the legend wraps); `.comment-bubble` styles.
 - `src/ui/ChangesList.test.tsx`, `src/ui/CompareSettingsDialog.test.tsx` - Adjust if they rely on the old view defaults.
 - `test/fixture-pairs.test.ts` - Text parity of the Resolved column with the export on every fixture: five decision states, full documents, detected range, full documents again, each applied incrementally from the previous state.
 - `test/sample-pair.test.ts` - Text parity on the sample (shares its one compare), detected range and none; logs `applyResolution` timings (jsdom).
@@ -380,15 +380,33 @@ are corrected accordingly (leave such a paragraph, don't hide it).
 
 **Depends on:** tasks 2.0, 3.0; `InlineChangeCard.tsx`, `reveal.ts` (`changeBox`), `src/model/comments.ts`.
 
-- [ ] 4.0 Comment bubbles in the Resolved column (PRD-20–27)
-  - [ ] 4.1 `closedBubbles` state and the list of shown comments in `App.tsx` (filter as in the specs; drop ids whose comment went away).
-  - [ ] 4.2 Comment toggle icons in the resolved panel: insert/move/remove them when comments, decisions or resolved sides change; their CSS (small, `--muted`, no change of line height); keyboard support. Unit tests in `resolvedView.test.ts` for placement (after ✓/✗, after a marker) and removal.
-  - [ ] 4.3 Click handling in `DocumentPanel`: `comment-toggle` toggles without selecting; new prop `onToggleComment`.
-  - [ ] 4.4 `CommentBubbles.tsx`: slot, positioning (reuse `changeBox`; export `GAP`/`MARGIN` from `InlineChangeCard.tsx` or move them to `reveal.ts`), × button, styles in `index.css` (`--raised`, `--border`, shadow, max ~20rem).
-  - [ ] 4.5 Stacking pass and its unit test (pure function over boxes, e.g. `stackBoxes`).
-  - [ ] 4.6 Unit tests in `CommentBubbles.test.tsx`: open by default, × closes, closed ones not rendered, text updates when the comment changes.
-  - [ ] 4.7 e2e in `e2e/resolved.spec.ts`: comment two changes via the card's "with comment" menu; both bubbles visible in the middle column without selecting; × hides one, its icon shows it again; clicking the icon doesn't change the current change; after a reload (review resumed) both are open; removing a comment removes its bubble and icon.
-  - [ ] 4.8 Run typecheck, `npm test`, `npm run test:e2e`.
+**Findings (2026-10-18):**
+- Undoing a join puts back a paragraph's saved children, which detaches an icon placed in it; so
+  every icon is placed again after each change of the column (`placeCommentToggles`, also after the
+  range order). An icon already in place is not moved, so it keeps the keyboard focus.
+- An item that is only a paragraph mark has no insertion, deletion or marker: its icon goes at the
+  end of its paragraph, or after its text where a join moved it.
+- The scroller's ref is attached only after the layout effects of its children (the bubbles), so
+  `CommentBubbles` listens for `CONTENT_CHANGED` in a passive effect and places the bubbles once
+  there. Places are written to the elements, not React state; a bubble stays hidden until placed
+  (`data-placed`).
+- Checked on screenshots in both themes (icons after ✓/✗, two bubbles stacked).
+- After the user's review (2026-10-18): bubbles are light blue (`--accent-bg`, `--accent-border`) to
+  stand out from the page, and placed from the comment icon, not the change: left edge at the
+  icon, top 0.6 of a line below the icon's line (`belowIcon`); below the change (`changeBox` +
+  `GAP`) only when the icon isn't shown. 40 px below the change was too far from it.
+- The icon is a filled speech bubble: light blue (`--accent-border`) while its comment is hidden,
+  strong blue (`--accent`) while shown.
+
+- [x] 4.0 Comment bubbles in the Resolved column (PRD-20–27)
+  - [x] 4.1 `closedBubbles` state and the list of shown comments in `App.tsx` (filter as in the specs; drop ids whose comment went away).
+  - [x] 4.2 Comment toggle icons in the resolved panel: insert/move/remove them when comments, decisions or resolved sides change; their CSS (small, `--muted`, no change of line height); keyboard support. Unit tests in `resolvedView.test.ts` for placement (after ✓/✗, after a marker) and removal.
+  - [x] 4.3 Click handling in `DocumentPanel`: `comment-toggle` toggles without selecting; new prop `onToggleComment`.
+  - [x] 4.4 `CommentBubbles.tsx`: slot, positioning (reuse `changeBox`; export `GAP`/`MARGIN` from `InlineChangeCard.tsx` or move them to `reveal.ts`), × button, styles in `index.css` (`--raised`, `--border`, shadow, max ~20rem).
+  - [x] 4.5 Stacking pass and its unit test (pure function over boxes, e.g. `stackBoxes`).
+  - [x] 4.6 Unit tests in `CommentBubbles.test.tsx`: open by default, × closes, closed ones not rendered, text updates when the comment changes.
+  - [x] 4.7 e2e in `e2e/resolved.spec.ts`: comment two changes via the card's "with comment" menu; both bubbles visible in the middle column without selecting; × hides one, its icon shows it again; clicking the icon doesn't change the current change; after a reload (review resumed) both are open; removing a comment removes its bubble and icon.
+  - [x] 4.8 Run typecheck, `npm test`, `npm run test:e2e`.
 
 ### 5.0 Documentation, measurements and final checks
 

@@ -30,6 +30,7 @@ import { buildReviewList, navigationOrder, nextUndecided, step } from './model/r
 import { savedFilesMatch, type ReviewState, type SavedReview } from './storage/reviewStore';
 import { ChangesList } from './ui/ChangesList';
 import { ColumnsToggle } from './ui/ColumnsToggle';
+import { CommentBubbles, type BubbleComment } from './ui/CommentBubbles';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
 import { DocumentPanel } from './ui/DocumentPanel';
@@ -118,6 +119,8 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
   const [picking, setPicking] = useState(false);
+  /** The comment bubbles the reviewer closed in the Resolved column; not saved (PRD-24). */
+  const [closedBubbles, setClosedBubbles] = useState<ReadonlySet<string>>(new Set());
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
@@ -145,6 +148,7 @@ export function App() {
     }
     setCurrentItemId(null);
     setPicking(false);
+    setClosedBubbles(new Set());
   }
 
   const reviewState = useMemo<ReviewState>(
@@ -285,6 +289,38 @@ export function App() {
   }, []);
 
   const setComment = useCallback((itemId: string, text: string | null) => dispatch({ type: 'setComment', itemId, text }), []);
+
+  // The comments shown in the Resolved column (PRD-20, 27): those the export writes.
+  const bubbleComments = useMemo<BubbleComment[]>(
+    () =>
+      (items ?? []).flatMap((item) => {
+        const text = review.comments[item.id];
+        if (!text?.trim() || item.kind === 'formatting' || range.get(item.id) === 'outOfRange') return [];
+        return [{ itemId: item.id, anchors: item.anchors, text }];
+      }),
+    [items, review.comments, range],
+  );
+  // A comment removed or blanked forgets that its bubble was closed: a new one opens (PRD-25).
+  useEffect(() => {
+    setClosedBubbles((closed) => {
+      const kept = [...closed].filter((id) => review.comments[id]?.trim());
+      return kept.length === closed.size ? closed : new Set(kept);
+    });
+  }, [review.comments]);
+  const commentToggles = useMemo(
+    () => new Map(bubbleComments.map(({ itemId }) => [itemId, !closedBubbles.has(itemId)])),
+    [bubbleComments, closedBubbles],
+  );
+  const toggleBubble = useCallback(
+    (itemId: string) =>
+      setClosedBubbles((closed) => {
+        const next = new Set(closed);
+        if (!next.delete(itemId)) next.add(itemId);
+        return next;
+      }),
+    [],
+  );
+  const closeBubble = useCallback((itemId: string) => setClosedBubbles((closed) => new Set(closed).add(itemId)), []);
 
   /** Decides the undecided reviewable items up to and including `itemId`; returns their ids. */
   const decideUntil = useCallback(
@@ -483,6 +519,13 @@ export function App() {
                 resolved={side === 'resolved' ? resolved : undefined}
                 scrollQuietly={scrollController.scrollQuietly}
                 onPickParagraph={side === 'left' && picking ? pickParagraph : undefined}
+                commentToggles={side === 'resolved' ? commentToggles : undefined}
+                onToggleComment={side === 'resolved' ? toggleBubble : undefined}
+                bubbles={
+                  side === 'resolved' ? (
+                    <CommentBubbles comments={bubbleComments} closed={closedBubbles} onClose={closeBubble} scrollerRef={middleRef} />
+                  ) : undefined
+                }
                 card={
                   side === 'right' && showCard ? (
                     <InlineChangeCard

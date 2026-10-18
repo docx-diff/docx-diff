@@ -4,12 +4,21 @@ import type { ChangeItem } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import type { CompareSettings } from '../model/equivalence';
 import { darkColors } from './darkColors';
+import { BUBBLE_SLOT, CONTENT_CHANGED } from './CommentBubbles';
 import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
-import { applyRangeOrder, applyResolution, applyResolvedDecisions, prepareResolvedPanel, type ResolvedPanel } from './resolvedView';
+import {
+  applyCommentToggles,
+  applyRangeOrder,
+  applyResolution,
+  applyResolvedDecisions,
+  placeCommentToggles,
+  prepareResolvedPanel,
+  type ResolvedPanel,
+} from './resolvedView';
 
 /** The Original, the Edited, or the Resolved column between them (the document as the export resolves it). */
 export type PanelSide = 'left' | 'right' | 'resolved';
@@ -53,11 +62,20 @@ interface Props {
   onPickParagraph?: (unids: string[]) => void;
   /** Shown over the text, scrolling with it (the current change's card, FR-28a). */
   card?: ReactNode;
+  /**
+   * The Resolved column only: the commented items, each with whether its bubble is open (a comment
+   * icon after each, PRD-23), what a click on an icon does, and the bubbles (`CommentBubbles`).
+   */
+  commentToggles?: ReadonlyMap<string, boolean>;
+  onToggleComment?: (itemId: string) => void;
+  bubbles?: ReactNode;
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
 const NO_SIDES: ReadonlyMap<string, ResolvedSide> = new Map();
 const NO_POSITIONS: ReadonlyMap<string, number> = new Map();
+const NO_TOGGLES: ReadonlyMap<string, boolean> = new Map();
+const COMMENT_TOGGLE = '.comment-toggle';
 const NOTE = 'li[id^="fn-"], li[id^="en-"]';
 
 /** Elements of each change in one panel, by item id. */
@@ -115,6 +133,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const resolvedSides = props.resolved?.sides ?? NO_SIDES;
   const positions = props.resolved?.positions ?? NO_POSITIONS;
   const endPoint = props.resolved?.endPoint ?? null;
+  const commentToggles = props.commentToggles ?? NO_TOGGLES;
   const scrollQuietly = useRef(props.scrollQuietly);
   scrollQuietly.current = props.scrollQuietly;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -129,6 +148,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   /** The Resolved column's state, and the resolved sides last applied (null: none yet). */
   const resolvedRef = useRef<ResolvedPanel | null>(null);
   const appliedSides = useRef<ReadonlyMap<string, ResolvedSide> | null>(null);
+  const appliedToggles = useRef<ReadonlyMap<string, boolean> | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
 
   useLayoutEffect(() => {
@@ -146,7 +166,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     else mergeJoinedParagraphs(wrapper, side);
     const cardSlot = owner.createElement('slot');
     cardSlot.name = CARD_SLOT;
-    root.replaceChildren(documentStyle, panelStyle, wrapper, cardSlot);
+    const bubbleSlot = owner.createElement('slot');
+    bubbleSlot.name = BUBBLE_SLOT;
+    root.replaceChildren(documentStyle, panelStyle, wrapper, cardSlot, bubbleSlot);
     host.scrollTop = 0;
     elementsRef.current = elementMap(wrapper);
     blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
@@ -155,6 +177,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     appliedDecisions.current = {};
     appliedCurrent.current = null;
     appliedSides.current = null;
+    appliedToggles.current = null;
     setContentVersion((version) => version + 1);
   }, [document, side]);
 
@@ -181,7 +204,10 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     wrapper.querySelector('.range-divider')?.remove();
     // In the Resolved column, in-range blocks the engine placed after the region outside the range
     // move before it, as the export places them.
-    if (resolvedRef.current) applyRangeOrder(resolvedRef.current, positions, endPoint, outOfRangeItems);
+    if (resolvedRef.current) {
+      applyRangeOrder(resolvedRef.current, positions, endPoint, outOfRangeItems);
+      placeCommentToggles(resolvedRef.current);
+    }
     let first: HTMLElement | null = null;
     for (const block of blocksRef.current) {
       const out = outOfRangeBlocks.has(block.dataset.anchor!);
@@ -199,15 +225,16 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       divider.textContent = 'End of the comparison · the rest is treated as unedited';
       first.before(divider);
     }
+    scrollerRef.current!.dispatchEvent(new Event(CONTENT_CHANGED));
   }, [document, outOfRangeItems, outOfRangeBlocks, positions, endPoint, contentVersion]);
 
   useLayoutEffect(() => {
     scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle('doc--picking', onPickParagraph !== undefined);
   }, [onPickParagraph, contentVersion]);
 
-  // The Resolved column's content and marks: only the items whose resolved side or decision
-  // changed are touched. The text at the top of the panel stays where it is when text above it
-  // appears or disappears (or a ✓ / ✗ rewraps a line).
+  // The Resolved column's content, marks and comment icons: only the items whose resolved side or
+  // decision changed are touched. The text at the top of the panel stays where it is when text
+  // above it appears or disappears (or a ✓ / ✗ or an icon rewraps a line).
   useLayoutEffect(() => {
     const handle = resolvedRef.current;
     const scroller = scrollerRef.current;
@@ -218,19 +245,25 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       : undefined;
     const previousDecisions = appliedDecisions.current;
     const decisionsChanged = [...new Set([...Object.keys(previousDecisions), ...Object.keys(decisions)])].filter((id) => previousDecisions[id] !== decisions[id]);
+    const appliedComments = appliedToggles.current;
+    const togglesChanged =
+      appliedComments?.size !== commentToggles.size || [...commentToggles].some(([id, open]) => appliedComments.get(id) !== open);
     appliedSides.current = resolvedSides;
     appliedDecisions.current = decisions;
-    if (sidesChanged?.length === 0 && decisionsChanged.length === 0) return;
+    appliedToggles.current = commentToggles;
+    if (sidesChanged?.length === 0 && decisionsChanged.length === 0 && !togglesChanged) return;
     const anchor = previous && scroller.scrollTop > 0 ? topBlock(scroller, handle.wrapper) : null;
     if (!sidesChanged || sidesChanged.length > 0) applyResolution(handle, resolvedSides, sidesChanged);
     applyResolvedDecisions(handle, decisions, decisionsChanged);
+    applyCommentToggles(handle, commentToggles);
     if (anchor && anchor.block.getClientRects().length > 0) {
       const offset = anchor.block.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
       const top = scroller.scrollTop + offset - anchor.offset;
       if (scrollQuietly.current) scrollQuietly.current(scroller, top);
       else scroller.scrollTop = top;
     }
-  }, [resolvedSides, decisions, contentVersion]);
+    scroller.dispatchEvent(new Event(CONTENT_CHANGED));
+  }, [resolvedSides, decisions, commentToggles, contentVersion]);
 
   // Decisions in the side panels: only the items whose decision changed are touched.
   useLayoutEffect(() => {
@@ -254,10 +287,24 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   clickHandler.current = onChangeClick;
   const pickHandler = useRef(onPickParagraph);
   pickHandler.current = onPickParagraph;
+  const toggleHandler = useRef(props.onToggleComment);
+  toggleHandler.current = props.onToggleComment;
   useEffect(() => {
     const root = scrollerRef.current?.shadowRoot;
     if (!root) return;
+    /** A comment icon shows or hides its bubble, and doesn't select the change (PRD-23). */
+    const toggleComment = (event: Event) => {
+      const toggle = event.target instanceof Element ? event.target.closest<HTMLElement>(COMMENT_TOGGLE) : null;
+      if (!toggle) return false;
+      event.preventDefault();
+      toggleHandler.current?.(toggle.dataset.commentFor!);
+      return true;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') toggleComment(event);
+    };
     const onClick = (event: Event) => {
+      if (toggleComment(event)) return;
       const pick = pickHandler.current;
       if (pick) {
         event.preventDefault();
@@ -276,7 +323,11 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       if (ids.length > 0) clickHandler.current(ids);
     };
     root.addEventListener('click', onClick);
-    return () => root.removeEventListener('click', onClick);
+    root.addEventListener('keydown', onKeyDown as EventListener);
+    return () => {
+      root.removeEventListener('click', onClick);
+      root.removeEventListener('keydown', onKeyDown as EventListener);
+    };
   }, [contentVersion]);
 
   // Overview bar marks: measured after the content or the listed items change, and on resize.
@@ -316,6 +367,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       <div className="document-panel__body">
         <div ref={scrollerRef} className="document-panel__scroller" data-testid={`panel-${side}`} tabIndex={0}>
           {props.card}
+          {props.bubbles}
         </div>
         {side !== 'resolved' && (
           <OverviewBar

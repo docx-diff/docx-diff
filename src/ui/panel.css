@@ -164,6 +164,35 @@
   border-radius: 2px;
 }
 
+/* The comment icon after a commented change in the Resolved column (PRD-23), which shows or hides
+   the comment: a speech bubble drawn with a mask, filled light blue while the comment is hidden
+   and strong blue while it is shown. It keeps the line's height. */
+.doc .comment-toggle {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.75em;
+  margin-left: 0.2em;
+  vertical-align: baseline;
+  background: var(--accent-border);
+  -webkit-mask: var(--comment-icon) center / contain no-repeat;
+  mask: var(--comment-icon) center / contain no-repeat;
+  cursor: pointer;
+  --comment-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 14'%3E%3Cpath d='M2 0h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7l-4 3v-3H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z'/%3E%3C/svg%3E");
+}
+
+.doc .comment-toggle[aria-expanded='true'] {
+  background: var(--accent);
+}
+
+.doc .comment-toggle:hover {
+  background: var(--fg);
+}
+
+.doc .comment-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Changes can be clicked to select them in the list. */
 .doc :is(ins, del)[data-change-id]:not(.change-ignored, .change-out-of-range) {
   cursor: pointer;

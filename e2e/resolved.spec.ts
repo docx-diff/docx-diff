@@ -235,3 +235,79 @@ test('the legend shows the Resolved column marks only in three-column view', asy
   await expect(legend.getByText('Deleted')).toBeVisible();
   await expect(legend.getByText('Decided', { exact: true })).toHaveCount(0);
 });
+
+/** The comments in the review saved in the page's IndexedDB (saved a moment after each change). */
+function savedComments(page: Page): Promise<Record<string, string>> {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('docx-diff');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const get = open.result.transaction('reviews').objectStore('reviews').get('current-review');
+          get.onsuccess = () => {
+            open.result.close();
+            resolve(get.result?.comments ?? {});
+          };
+        };
+      }),
+  );
+}
+
+test('comments show in bubbles in the Resolved column, hidden and shown again by their icon', async ({ page }) => {
+  await openAndCompare(page);
+  const middle = page.getByTestId('panel-resolved');
+  await page.getByRole('button', { name: /Changes · \d+ undecided/ }).click();
+  const cards = page.getByTestId('change-card');
+  const comment = async (card: number, verb: 'Accept' | 'Reject', text: string) => {
+    await cards.nth(card).getByRole('button', { name: `More ${verb} options` }).click();
+    await page.getByRole('menuitem', { name: `${verb} this with comment` }).click();
+    await cards.nth(card).getByRole('textbox').fill(text);
+  };
+  // The replacement (two → 2) accepted, the deleted paragraph rejected.
+  await comment(0, 'Accept', 'Digits are fine.');
+  await comment(2, 'Reject', 'Keep this paragraph.\nIt is needed.');
+  const bubbles = middle.getByTestId('comment-bubble');
+  const bubble = (text: string) => bubbles.filter({ hasText: text });
+  await expect(bubbles).toHaveCount(2);
+  await expect(bubble('Digits are fine.')).toBeVisible();
+  await expect(bubble('Keep this paragraph.')).toBeVisible();
+  await expect(bubble('Keep this paragraph.')).toContainText('It is needed.');
+  // Below its comment icon: at the icon's left, a little more than half a line lower.
+  const iconBox = (await middle.locator('.comment-toggle').first().boundingBox())!;
+  const below = (await bubble('Digits are fine.').boundingBox())!;
+  expect(Math.abs(below.x - iconBox.x)).toBeLessThan(1);
+  expect(below.y - (iconBox.y + iconBox.height)).toBeGreaterThan(5);
+  expect(below.y - (iconBox.y + iconBox.height)).toBeLessThan(25);
+
+  // × hides a bubble; its icon shows it again, without selecting the change.
+  await middle.locator('ins', { hasText: '11' }).click();
+  const current = () => middle.locator('.change-current').first().getAttribute('data-change-id');
+  const selected = await current();
+  await bubble('Digits are fine.').getByRole('button', { name: 'Hide comment' }).click();
+  await expect(bubbles).toHaveCount(1);
+  const icon = middle.getByRole('button', { name: 'Show comment' });
+  await expect(icon).toHaveAttribute('aria-expanded', 'false');
+  await icon.click();
+  await expect(bubbles).toHaveCount(2);
+  await expect(middle.getByRole('button', { name: 'Hide comment', exact: true }).and(middle.locator('.comment-toggle'))).toHaveCount(2);
+  expect(await current()).toBe(selected);
+  // The icon works from the keyboard too.
+  const toggles = middle.locator('.comment-toggle');
+  await toggles.first().focus();
+  await page.keyboard.press('Enter');
+  await expect(bubbles).toHaveCount(1);
+
+  // After a reload, every bubble is open again.
+  await expect.poll(() => savedComments(page).then((saved) => Object.keys(saved).length)).toBe(2);
+  await page.reload();
+  await page.getByRole('dialog', { name: /Resume review/ }).getByRole('button', { name: 'Resume' }).click();
+  await expect(bubbles).toHaveCount(2, { timeout: 60_000 });
+  await expect(bubble('Digits are fine.')).toBeVisible();
+
+  // Removing a comment removes its bubble and its icon.
+  await cards.nth(0).getByRole('button', { name: 'Remove comment' }).click();
+  await expect(bubbles).toHaveCount(1);
+  await expect(toggles).toHaveCount(1);
+  await expect(bubble('Keep this paragraph.')).toBeVisible();
+});
