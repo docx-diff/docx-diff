@@ -6,7 +6,9 @@
 // region outside the comparison range goes back before it (`rangeOrder.ts`). Reviewer comments are
 // anchored on their changes before the rewrite and added after the accept pass (`comments.ts`).
 // Revisions decided `track` stay tracked changes: they are parked before the accept pass and put
-// back after it (`trackedRevisions.ts`).
+// back after it (`trackedRevisions.ts`). Inline edits are patched into the redline before all of this
+// (`applyEdits.ts`), and every step gets the revisions as they are after the patch.
+import { applyEdits } from './applyEdits';
 import { addComments, anchorComments } from './comments';
 import { planConsistentLook, type FormattingChoice } from './consistentLook';
 import { acceptAll, listRevisions } from './docxodus';
@@ -15,7 +17,7 @@ import { unzipDocx, zipDocx } from './ooxml';
 import { planRangeOrder } from './rangeOrder';
 import { UnsupportedRevisionError, rejectRevisions, type PartHook } from './rejectRewrite';
 import { parkRevisions, presentDecision, restoreRevisions } from './trackedRevisions';
-import { DEFAULT_AUTHOR, type ExportComment, type FinalDecision, type RevisionListEntry } from './types';
+import { DEFAULT_AUTHOR, type BlockEditPatch, type ExportComment, type FinalDecision, type RevisionListEntry } from './types';
 
 export interface ExportOptions {
   /** Gives the export one look (FR-39a); without it, every text keeps its own version's formatting. */
@@ -28,16 +30,26 @@ export interface ExportOptions {
   date?: string;
   /** Who the comments and tracked changes are by (FR-38c); default `DEFAULT_AUTHOR`. */
   author?: string;
+  /** The reviewer's inline edits, patched into the redline before anything else (`applyEdits.ts`). */
+  edits?: readonly BlockEditPatch[];
   /** Told the revisions of comments placed at the end of the document, having lost their place. */
   onCommentsRelocated?: (revisionIds: string[][]) => void;
 }
 
 export async function exportDocx(
-  redline: Uint8Array,
-  revisions: readonly RevisionListEntry[],
+  engineRedline: Uint8Array,
+  allRevisions: readonly RevisionListEntry[],
   finalDecision: ReadonlyMap<string, FinalDecision>,
   options: ExportOptions = {},
 ): Promise<Uint8Array> {
+  // Every later step works on the patched redline and its revisions.
+  let redline = engineRedline;
+  let revisions = allRevisions;
+  if (options.edits?.length) {
+    const files = unzipDocx(engineRedline);
+    revisions = await applyEdits(files, allRevisions, options.edits);
+    redline = zipDocx(files);
+  }
   const missing = revisions.filter((revision) => !finalDecision.has(revision.id));
   if (missing.length > 0) {
     throw new Error(`No decision for ${missing.length} revisions (first: ${missing[0]!.id}).`);

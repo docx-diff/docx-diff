@@ -13,6 +13,7 @@ import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
 import type { FinalDecision, RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
+import { revisionTexts } from '../src/model/paragraphEdit';
 import { exportComments } from '../src/model/comments';
 import { INITIAL_DECISIONS, finalRevisionDecisions, reviewableItems } from '../src/model/decisions';
 import { buildOutline } from '../src/model/outline';
@@ -22,6 +23,7 @@ import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
 import { unmappedBlocks } from './block-mapping';
+import { SCENARIOS, editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, type RedlineParagraph, type ScriptedResult } from './edits';
 import { expectDeliverable, expectTrackedDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
 import { documentLook, lookDifference } from './look';
@@ -523,6 +525,81 @@ describeWithSamples('sample pair', () => {
       // The moves' sources sit between the deleted and the inserted versions of the list items 7.–/DN 16/.
       expect(body(exported)).toEqual([...editedBody.slice(0, -6), ...moved, ...editedBody.slice(-6, -3), editedBody.at(-1), ...originalBody.slice(tailStart)]);
       await expectDeliverable(exported, original);
+    });
+  });
+
+  describe('export with inline edits', () => {
+    let body: HTMLElement;
+    let paragraphs: Map<string, RedlineParagraph>;
+    let scripted: ScriptedResult;
+    let revisions: RevisionListEntry[];
+    /** Item id of each revision, the edits' new items included. */
+    const itemOf = new Map<string, string>();
+
+    beforeAll(async () => {
+      body = prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), (html) => new JSDOM(html).window.document).document.body;
+      paragraphs = await redlineParagraphs(result.redline);
+      const editable = editableBlocks(body, paragraphs);
+      // The sample has no editable heading: each of its `h*` blocks has a paragraph-mark change
+      // (headings: test/fixture-pairs.test.ts). Nor any table.
+      const inScope = (scope: string) => editable.filter((block) => scopeOfBlock(block) === scope);
+      const edits = [...pickScenarios(inScope('body')), ...pickScenarios(inScope('fn'), ['edit inside an insertion', 'insert a word', 'delete a word'])];
+      expect(edits.map((edit) => edit.label)).toEqual([...SCENARIOS, 'edit inside an insertion', 'insert a word', 'delete a word']);
+      scripted = scriptEdits(body, edits);
+      revisions = [...result.revisions, ...scripted.revisions];
+      for (const item of analysis.items) for (const id of item.revisionIds) itemOf.set(id, item.id);
+      for (const block of scripted.blocks) for (const [id, { itemId }] of revisionTexts(block.current)) itemOf.set(id, itemId);
+    });
+
+    /** Each item's decision (by its place among the items, the new ones last) for all its revisions. */
+    const byEditedItem = <D extends FinalDecision>(decision: (itemId: string, index: number) => D) => {
+      const itemIds = [...new Set([...analysis.items.map((item) => item.id), ...scripted.createdItemIds])];
+      const index = new Map(itemIds.map((id, i) => [id, i]));
+      return new Map(revisions.map((revision) => [revision.id, decision(itemOf.get(revision.id)!, index.get(itemOf.get(revision.id)!)!)]));
+    };
+    const exportEdited = async (decisions: Map<string, FinalDecision>, name: string, options?: ExportOptions) => {
+      const start = performance.now();
+      const exported = await exportDocx(result.redline, revisions, decisions, { ...options, edits: scripted.patches });
+      const ms = Math.round(performance.now() - start);
+      if (process.env.EXPORT_DIR) {
+        mkdirSync(process.env.EXPORT_DIR, { recursive: true });
+        writeFileSync(join(process.env.EXPORT_DIR, `sample-edits-${name}.docx`), exported);
+      }
+      return { exported, ms };
+    };
+
+    it('accept all, reject all and alternating decisions give the text the segments imply', async () => {
+      for (const [label, decisions] of [
+        ['accept-all', byEditedItem(() => 'accept')],
+        ['reject-all', byEditedItem(() => 'reject')],
+        ['alternating-from-accept', byEditedItem((_id, i) => (i % 2 === 0 ? 'accept' : 'reject'))],
+        ['alternating-from-reject', byEditedItem((_id, i) => (i % 2 === 0 ? 'reject' : 'accept'))],
+      ] as const) {
+        const { exported, ms } = await exportEdited(decisions, label);
+        console.log(`sample pair export with ${scripted.patches.length} edited paragraphs, ${label}: ${ms} ms`);
+        const text = docxText(exported);
+        expect(text, label).toEqual(expectedText(result.redline, result.revisions, decisions, editedOverrides(scripted, paragraphs, decisions)));
+        if (label === 'reject-all') expect(text).toEqual(docxText(readSamples().original));
+        if (label === 'accept-all') expect(text).not.toEqual(docxText(readSamples().edited));
+        await expectDeliverable(exported, readSamples().original);
+      }
+    });
+
+    it('keeps an undecided edited item as a tracked change (FR-38b): resolving it in Word gives the export deciding it so', async () => {
+      // The insertion edited inside, and every new item.
+      const insideEdit = scripted.blocks.flatMap((block) => block.current).find((segment) => segment.kind === 'ins' && !scripted.createdItemIds.includes(segment.itemId));
+      const tracked = new Set([...scripted.createdItemIds, (insideEdit as { itemId: string }).itemId]);
+      const withTracked = (decision: FinalDecision) => byEditedItem((id) => (tracked.has(id) ? decision : 'accept'));
+      const { exported } = await exportEdited(withTracked('track'), 'tracked', { author: 'Reviewer' });
+      expect((await listRevisions(exported)).length).toBeGreaterThan(0);
+      for (const [resolve, decision] of [
+        [acceptAll, 'accept'],
+        [docxDiffRejectRevisions, 'reject'],
+      ] as const) {
+        const { exported: expected } = await exportEdited(withTracked(decision), `tracked-${decision}`);
+        expect(docxText(reconcileNotes(await resolve(exported), exported)), decision).toEqual(docxText(expected));
+      }
+      await expectTrackedDeliverable(exported, readSamples().original, result.redline);
     });
   });
 

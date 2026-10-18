@@ -8,10 +8,13 @@ PRD: [`2026-10-18-151812-prd---inline-edits-in-edited-column.md`](2026-10-18-151
 New:
 - `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment`/`BlockEdit` types, `visibleText`/`originalText`, `editSpan`, `applyTextEdit` (old visible text → new visible text applied to the segments: ownership, whole-word widening, typed-back cancellation, new ids), `revertBlock`, `revisionTexts`, `blockItems`. Shared by the main thread and the worker.
 - `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`.
-- `src/ui/blockSegments.ts` - Reads a rendered block's segments from the DOM (`equal` / `del` / `ins` / inline objects, with item and revision ids), and renders segments back to block HTML in the converter's markup (`ins`/`del` with `data-author="rev:<id>"`, formatting source spans copied).
-- `src/ui/blockSegments.test.ts` - Round trip block → segments → HTML on fixture-shaped HTML (`test/small-html.ts`); editability checks (PRD-12).
-- `src/engine/applyEdits.ts` - Worker side: patch each edited block's `w:p` in the redline from its segments and return the updated revision list (new `w:ins`/`w:del`, fresh `w:id`s, updated `constituentKeys`).
-- `src/engine/applyEdits.test.ts` - Unit tests on hand-written redline XML: plain runs, run split, inside an engine `w:ins`, part of an engine `w:del` typed back, hyperlink, bookmark, field, footnote reference kept.
+- `src/ui/blockSegments.ts` - `readBlockSegments`: a rendered block's segments from the decorated HTML (`equal` / `del` / `ins` / inline objects: note references, tabs, breaks; item ids from `data-change-id`, revision ids from `data-author`) (task 2.6); task 3.1 adds rendering segments back to block HTML.
+- `src/ui/blockSegments.test.ts` - Reader tests on `test/small-html.ts` shapes (objects, back links/¶/list labels skipped, empty-paragraph and deleted-mark fillers, shared edges); task 3 adds the HTML round trip and editability checks (PRD-12).
+- `src/engine/applyEdits.ts` - The export's first step: patches each edited block's `w:p` to its final segments (Original-side characters aligned one to one, inserted ones matched per gap; only touched runs split, then joined again) and returns the updated revision list (new `w:ins`/`w:del`, `w:id`s above every id of the text parts, updated `constituentKeys`, emptied revisions dropped); `EditPatchError`.
+- `src/engine/applyEdits.test.ts` - Unit tests on hand-written redline XML: plain runs, formatting from the neighbour, ids, empty paragraph, inside an engine `w:ins` (one and several runs), engine `w:del` partly typed back, typed-back replacement dropped, `w:rPrChange` in split runs, hyperlink, bookmark/comment range, tab/break, note references (plain and inserted), refused content (field, `w:sdt`), unknown revision.
+- `test/edits.ts` - Test helpers for inline edits: `scriptEdits` (reader + `applyTextEdit` → patches and new revisions), the scenarios (`scenarioEdit`, `pickScenarios`), `editableBlocks`, `redlineParagraphs` (each `w:p`'s Original/Edited text by unid), `segmentsText` / `editedOverrides` for `expectedText`.
+- `test/engine-decide.ts` - `engineDecideOne` (a `DocxSession` decision) and `partsXml`, moved out of `src/engine/exportDocx.test.ts` to be shared with the inline-edit checks.
+- `test/fixtures/link-bookmark-tab.{original,edited}.docx` - Fixture with edits next to a hyperlink, a bookmark, a tab and a line break (the `field-hyperlink` link paragraph isn't editable: an inserted mark joins into it).
 - `src/engine/blockKey.ts` - `paragraphUnids`: the engine's Unid of every `w:p` of a part, i.e. the rendered blocks' `data-anchor` (task 0).
 - `src/engine/blockKey.test.ts` - The mapping checked on every fixture and on repeated/empty paragraphs, identical cells, headings and inline objects.
 - `test/block-mapping.ts` - `unmappedBlocks(redline, html)`: paragraph blocks whose `data-anchor` names no `w:p` (used by the blockKey, sample and big-pair tests).
@@ -24,9 +27,14 @@ New:
 - `e2e/editing.spec.ts` - e2e: toggle, typing and updates, blocked actions, shortcuts while typing, dead key, undo/revert, range warning, Swap confirmation, reload/resume, export round trip.
 
 Changed:
-- `src/engine/types.ts` - `ExportRequest.edits`; `CompareResult.uneditableBlocks`.
+- `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` (task 3.2).
 - `src/engine/pipeline.ts` - Reports the paragraphs with fields, content controls and other objects the HTML doesn't mark (`uneditableBlocks`, task 3.2).
-- `src/engine/exportDocx.ts` - Runs `applyEdits` first and passes the updated revisions to every later step.
+- `src/engine/exportDocx.ts` - `ExportOptions.edits`: runs `applyEdits` first and passes the patched redline and updated revisions to every later step (the decision check included).
+- `src/model/paragraphEdit.ts` - Also `PART_OF_SCOPE` and `editRevisions` (list entries for the revisions edits created) (task 2).
+- `src/ui/resolvedView.ts` - `resolvedText` (tests) reads tabs as spaces and drops the mark after a break (task 2: first fixture with them).
+- `src/engine/exportDocx.test.ts` - Uses `test/engine-decide.ts`.
+- `test/expectedText.ts` - `overrides`: the text of edited paragraphs (by part and `w:p` ordinal).
+- `docs/architecture.md`, `docs/measurements.md` - Task 2: "Inline edits" (reading a block, export patch), Export step 0, module map, Testing; export timings with edits.
 - `src/engine/engine.worker.ts` - Passes `edits` through.
 - `src/model/changes.ts` - Items from edited blocks keep their ids; `order` renumbered; helpers to rebuild the items of one block.
 - `src/model/docIndex.ts` - Index entries for one block replaced (`revisionsInHtml`, `adjacentRevisions`, `revisionTitles`, note references).
@@ -44,8 +52,8 @@ Changed:
 - `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState`.
 - `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
 - `src/index.css` - Toggle, Revert all and toast styles (tokens, light and dark).
-- `test/fixtures/make-fixtures.ts` - A fixture with a hyperlink + bookmark + field in one edited paragraph, if task 0/2 needs it.
-- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`, `test/expectedText.ts` - Round trips and mixed decisions with scripted edits; the sample's block mapping (task 0).
+- `test/fixtures/make-fixtures.ts` - Fixture `link-bookmark-tab` (task 2).
+- `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` - Inline edits: segments ≡ redline paragraph text on every fixture, self-patch is a no-op, scripted edits (accept/reject/alternating ≡ `expectedText` with overrides, `verifyDeliverable`, each engine revision of the patched redline ≡ `DocxSession`), a heading edit (small generated pair), on the sample body + footnote edits and an undecided edited item tracked (FR-38b); the sample's block mapping (task 0).
 - `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
 - `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1).
@@ -285,16 +293,33 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** task 0 (`blockKey`), task 1 (segments, ids), `src/ui/renderedDocument.ts` (prepared HTML, for the reader in 2.6); `src/engine/exportDocx.ts`, `rejectRewrite.ts`, `ooxml.ts` (`ElementIndex`, `parseConstituentKey`, `W_NS`), `trackedRevisions.ts`, `test/text.ts`, `test/deliverable.ts`, `test/expectedText.ts`.
 
 - [ ] 2.0 Export with edits
-  - [ ] 2.1 Add `edits` to `ExportRequest` and pass it through `engine.worker.ts` / `client.ts` (no behaviour yet); typecheck.
-  - [ ] 2.2 Write `applyEdits` for plain runs (no engine revisions in the paragraph): insert, delete, replace; unit tests on hand-written XML (`test/minimal-docx.ts` style).
-  - [ ] 2.3 Extend to paragraphs with engine `w:ins`/`w:del`: text changed inside, split elements with new ids and keys, removed elements; unit tests.
-  - [ ] 2.4 Keep non-run children in place (hyperlink, bookmark, comment range, field, footnote reference); unit tests, plus the `field-hyperlink` fixture.
-  - [ ] 2.5 Call `applyEdits` first in `exportDocx` and pass the updated revisions on.
-  - [ ] 2.6 The segment **reader** in `src/ui/blockSegments.ts`: a rendered block's segments (equal/del/ins/objects, item and revision ids from `data-change-id`/`data-author`). Skip `NOT_TEXT` as `DocIndex` does; the shared-edge pieces of replacements (`data-common-needs`) belong to their item. Tests on `test/small-html.ts` shapes and every fixture's blocks (the text of the segments equals the block's Original/Edited text). Then a test helper that applies scripted edits to a compared fixture/sample with it and `applyTextEdit`, returning `edits` + new revisions.
-  - [ ] 2.7 Round-trip checks in `test/fixture-pairs.test.ts`: per fixture, a few scripted edits (insert a word, delete a word, edit inside an insertion, edit between two changes, typing the Original back); accept-all / reject-all text, `verifyDeliverable`, single-revision decisions vs `DocxSession` on the patched redline.
-  - [ ] 2.8 Same on the sample in `test/sample-pair.test.ts` (shared compare): edits in body, table cell, footnote, heading; mixed decisions vs extended `expectedText`; FR-38b (`track`) export with an undecided edited item.
-  - [ ] 2.9 `scripts/check-libreoffice.sh` on exports written with `EXPORT_DIR`.
-  - [ ] 2.10 `npm run typecheck`, `npm test`; commit.
+  - [x] 2.1 Add `edits` to `ExportRequest` and pass it through `engine.worker.ts` / `client.ts` (no behaviour yet); typecheck.
+  - [x] 2.2 Write `applyEdits` for plain runs (no engine revisions in the paragraph): insert, delete, replace; unit tests on hand-written XML (`test/minimal-docx.ts` style).
+  - [x] 2.3 Extend to paragraphs with engine `w:ins`/`w:del`: text changed inside, split elements with new ids and keys, removed elements; unit tests.
+  - [x] 2.4 Keep non-run children in place (hyperlink, bookmark, comment range, field, footnote reference); unit tests, plus the `field-hyperlink` fixture.
+  - [x] 2.5 Call `applyEdits` first in `exportDocx` and pass the updated revisions on.
+  - [x] 2.6 The segment **reader** in `src/ui/blockSegments.ts`: a rendered block's segments (equal/del/ins/objects, item and revision ids from `data-change-id`/`data-author`). Skip `NOT_TEXT` as `DocIndex` does; the shared-edge pieces of replacements (`data-common-needs`) belong to their item. Tests on `test/small-html.ts` shapes and every fixture's blocks (the text of the segments equals the block's Original/Edited text). Then a test helper that applies scripted edits to a compared fixture/sample with it and `applyTextEdit`, returning `edits` + new revisions.
+  - [x] 2.7 Round-trip checks in `test/fixture-pairs.test.ts`: per fixture, a few scripted edits (insert a word, delete a word, edit inside an insertion, edit between two changes, typing the Original back); accept-all / reject-all text, `verifyDeliverable`, single-revision decisions vs `DocxSession` on the patched redline.
+  - [x] 2.8 Same on the sample in `test/sample-pair.test.ts` (shared compare): edits in body, table cell, footnote, heading; mixed decisions vs extended `expectedText`; FR-38b (`track`) export with an undecided edited item.
+  - [x] 2.9 `scripts/check-libreoffice.sh` on exports written with `EXPORT_DIR`.
+  - [x] 2.10 `npm run typecheck`, `npm test`; commit.
+
+**Notes** (task 2, for later tasks)
+
+- The export request carries `edits: { unid, scope, segments }[]` (the blocks' `current`
+  segments) and, in `revisions`, the engine's revisions plus `editRevisions(edit)` of every edited
+  block; decisions are needed for the revisions as they are **after** the patch (engine revisions the
+  edits emptied are dropped by `applyEdits` and need none; extra decisions are harmless). Comments
+  naming a dropped revision skip it (`anchorComments` ignores unknown ids).
+- `applyEdits` refuses (`EditPatchError`, reported as the worker error code) a paragraph with
+  content it can't keep in place: anything but runs of `w:t`/`w:delText`/tab/break/note
+  references/zero-width marks, `w:ins`/`w:del` (not nested), `w:hyperlink`/`w:smartTag`, bookmarks,
+  comment ranges, `w:proofErr`, `w:permStart/End`. Task 3.2's `uneditableBlocks` must cover at least
+  that (`test/edits.ts` `UNPATCHABLE` and `editableBlocks` are the test-side version of the rule).
+- The sample has no editable heading (every `h*` block has a paragraph-mark change) and no table:
+  those are covered by the fixtures and a small generated pair.
+- The reader works on the **decorated, unjoined** master document (`prepareRenderedDocument`); a
+  panel's joined copy would read wrong.
 
 ### 3.0 Live review state with edits
 

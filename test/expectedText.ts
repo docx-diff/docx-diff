@@ -5,6 +5,7 @@
 // as `docxText` (whitespace-normalized, empty ones dropped). A note appears once per reference
 // the body keeps (the export copies a note referenced twice), and not at all when the body lost
 // its references. Formatting and table rows are not modelled (the sample has no tables).
+// `overrides` give the text of paragraphs the reviewer edited (from their segments, `test/edits.ts`).
 import { DOMParser, type Document, type Element } from '@xmldom/xmldom';
 import { strFromU8, unzipSync } from 'fflate';
 import type { RevisionListEntry } from '../src/engine/types';
@@ -22,6 +23,8 @@ export function expectedText(
   redline: Uint8Array,
   revisions: readonly RevisionListEntry[],
   decisions: ReadonlyMap<string, 'accept' | 'reject'>,
+  /** Per part URI, paragraph ordinal (among the part's `w:p`) → its text. */
+  overrides?: ReadonlyMap<string, ReadonlyMap<number, string>>,
 ): string[] {
   const files = unzipSync(redline);
   const lines: string[] = [];
@@ -48,6 +51,8 @@ export function expectedText(
     };
 
     const document = new DOMParser().parseFromString(strFromU8(data), 'text/xml');
+    const partOverrides = overrides?.get(partUri);
+    const ordinals = new Map(elementsByName(document, 'p').map((paragraph, i) => [paragraph, i]));
     const onReference = (element: Element, isKept: boolean) => {
       const key = `${element.localName}:${element.getAttributeNS(W_NS, 'id')}`;
       redlineReferences.add(key);
@@ -61,7 +66,8 @@ export function expectedText(
       let pending = '';
       for (let i = 0; i < paragraphs.length; i++) {
         const paragraph = paragraphs.item(i)!;
-        pending += paragraphText(paragraph, kept, onReference);
+        const own = paragraphText(paragraph, kept, onReference);
+        pending += partOverrides?.get(ordinals.get(paragraph)!) ?? own;
         const mark = paragraphMark(paragraph);
         if (!mark || kept(mark)) {
           blockLines.push(pending);

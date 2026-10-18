@@ -517,7 +517,7 @@ function shownText(element: Element): string {
       if (child.nodeType !== ELEMENT_NODE) continue;
       const childElement = child as Element;
       if (childElement.classList.contains(RESOLVED_HIDDEN) || childElement.matches(NOT_TEXT)) continue;
-      if (childElement.localName === 'br') text += ' ';
+      if (childElement.localName === 'br' || childElement.matches('[data-docx-tab]')) text += ' ';
       // A nested paragraph (text box) is a line of its own.
       else if (!childElement.matches(PARAGRAPH_BLOCK)) walk(childElement);
     }
@@ -534,7 +534,8 @@ export function resolvedText(wrapper: Element): string[] {
   const lines: string[] = [];
   for (const block of wrapper.querySelectorAll(`${PARAGRAPH_BLOCK}, ${COPIED_PARAGRAPH}`)) {
     if (block.classList.contains(MERGED) || block.closest(`.${RESOLVED_HIDDEN}`)) continue;
-    const line = shownText(block).replace(/\s+/g, ' ').trim();
+    // The converter writes a left-to-right mark after each line break.
+    const line = shownText(block).replace(/\u200e/g, '').replace(/\s+/g, ' ').trim();
     if (line) lines.push(line);
   }
   return lines;

@@ -1,8 +1,16 @@
 // The paragraph edit model behind inline edits in the Edited panel: a block as a sequence of
 // segments, and how one text edit of its visible (Edited) text changes them. Rules:
 // docs/architecture.md, "Inline edits". Pure (no DOM): shared by the main thread and the worker.
+import type { RevisionListEntry } from '../engine/types';
 import type { BlockScope } from './docIndex';
 import { countWords, type ChangeItem } from './changes';
+
+/** The redline part that holds a block of each scope. */
+export const PART_OF_SCOPE: Record<BlockScope, string> = {
+  body: '/word/document.xml',
+  fn: '/word/footnotes.xml',
+  en: '/word/endnotes.xml',
+};
 
 /** Stands for an inline object (note reference, tab, break, …) in visible and Original text. */
 export const OBJECT_CHAR = '\uFFFC';
@@ -369,6 +377,28 @@ export function revisionTexts(segments: readonly Segment[]): Map<string, Revisio
     }
   }
   return texts;
+}
+
+/**
+ * Revision list entries for the revisions edits created in the block, as the engine lists its own
+ * (without `constituentKeys`: the export's patch gives them, `src/engine/applyEdits.ts`).
+ */
+export function editRevisions(edit: Pick<BlockEdit, 'unid' | 'scope' | 'current'>): RevisionListEntry[] {
+  const anchor = { id: `p:${edit.scope}:${edit.unid}`, kind: 'p', scope: edit.scope, unid: edit.unid };
+  return [...revisionTexts(edit.current)]
+    .filter(([revisionId]) => isEditIdOf(edit.unid, revisionId))
+    .map(([id, { type, text }]) => ({
+      id,
+      type,
+      family: type === 'insert' ? 'content_insert' : 'content_delete',
+      constituentKeys: [],
+      text,
+      partUri: PART_OF_SCOPE[edit.scope],
+      scope: edit.scope,
+      anchorId: anchor.id,
+      affectedAnchors: [anchor],
+      resolutionStatus: 'supported',
+    }));
 }
 
 export type BlockItem = Pick<ChangeItem, 'id' | 'kind' | 'revisionIds' | 'removedText' | 'addedText' | 'wordDelta'>;

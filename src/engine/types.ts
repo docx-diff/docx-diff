@@ -1,4 +1,6 @@
 // Types shared by the main thread and the engine worker.
+import type { BlockScope } from '../model/docIndex';
+import type { Segment } from '../model/paragraphEdit';
 
 export interface EngineVersion {
   /** Version of the `docxodus` npm package (revision ids and grouping depend on it). */
@@ -42,6 +44,7 @@ export type FormattingChoice = 'original' | 'edited';
 
 export interface ExportRequest {
   redline: ArrayBuffer;
+  /** The engine's revisions and those the edits created (whose `constituentKeys` `applyEdits` fills in). */
   revisions: RevisionListEntry[];
   decisions: FinalDecisions;
   /** One consistent look (FR-39a) in the formatting choice's version. */
@@ -52,6 +55,15 @@ export interface ExportRequest {
   comments?: ExportComment[];
   /** Author of the comments and the tracked changes (FR-38c); default `DEFAULT_AUTHOR`. */
   author?: string;
+  /** The reviewer's inline edits: the redline is patched with them first (`applyEdits.ts`). */
+  edits?: BlockEditPatch[];
+}
+
+/** An edited block for the export: its paragraph (by `data-anchor` and part) and its final segments. */
+export interface BlockEditPatch {
+  unid: string;
+  scope: BlockScope;
+  segments: Segment[];
 }
 
 /** Who the exported comments and tracked changes are by when the export names no author. */

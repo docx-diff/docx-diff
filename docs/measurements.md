@@ -87,7 +87,11 @@ accepted 0.6 s, all rejected 1.3 s, alternating 0.9–1.4 s; with the consistent
 0.05–0.21 s); with the look 0.84 s. With the detected range, the look and a comment on each of the
 sample's 234 in-range text changes 2.1–2.5 s (1.4–1.7 s for the same export without comments). Keeping
 undecided changes as tracked changes (FR-38b; parking + restoring): sample with every text change
-tracked 1.8 s, with every third tracked, the detected range, the look and comments on all 2.4 s. Snapshotting xmldom's live element lists took the look planning
+tracked 1.8 s, with every third tracked, the detected range, the look and comments on all 2.4 s. With
+inline edits (8 edited paragraphs in the body and the footnotes, `test/sample-pair.test.ts`): all
+accepted 1.0–1.3 s, all rejected 1.7–2.1 s, alternating 1.4–2.0 s; the patch (`applyEdits`) 0.4 s of
+it, mostly parsing and writing `document.xml` once more. The 87 exports with edits (fixtures and
+sample, `EXPORT_DIR`) convert with `scripts/check-libreoffice.sh`. Snapshotting xmldom's live element lists took the look planning
 from 3.6–35 s to 0.2 s on the sample.
 
 ## Browser

@@ -37,7 +37,7 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/author.ts` — the Edited's author, to pre-fill the export's (FR-38c).
 - `src/engine/tagRedline.ts` — `w:author` → `rev:<id>` before rendering; `unlinkHyperlinksWithChanges`.
 - `src/engine/blockKey.ts` — `paragraphUnids`: the redline `w:p` behind each rendered block, by its `data-anchor` ([Block mapping](#rendering-and-linking-html-to-revisions)).
-- `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `trackedRevisions.ts`, `notes.ts`, `comments.ts` — its steps.
+- `src/engine/exportDocx.ts` — the export pipeline; `applyEdits.ts` (inline edits patched into the redline, [Inline edits](#inline-edits)), `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `trackedRevisions.ts`, `notes.ts`, `comments.ts` — its steps.
 
 Model (pure TypeScript, main thread)
 - `src/model/docIndex.ts` — the `DocIndex` built from the rendered HTML.
@@ -50,10 +50,11 @@ Model (pure TypeScript, main thread)
 - `src/model/comments.ts` — the text of the exported comments (FR-27b).
 - `src/model/reviewList.ts` — list entries, navigation order, Previous/Next, next undecided.
 - `src/model/outline.ts` — the headings for the outline sidebar (FR-24a).
-- `src/model/paragraphEdit.ts` — the segment model of inline edits: one text edit applied to a block's segments, ids, the block's items ([Inline edits](#inline-edits)); also used by the worker.
+- `src/model/paragraphEdit.ts` — the segment model of inline edits: one text edit applied to a block's segments, ids, the block's items and new revisions ([Inline edits](#inline-edits)); also used by the worker.
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
+- `blockSegments.ts` — a rendered block read as segments of the edit model ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -381,7 +382,40 @@ segments leaves everything outside it as it was:
 - `blockItems` gives the block's items from its segments in `ChangeItem` shape (kind recomputed,
   texts, word counts); an existing item keeps the order of its revisions and those outside the
   block (a note's, for an item that inserts the reference), and a revision the edits left alone
-  keeps the engine's text.
+  keeps the engine's text. `editRevisions` gives the new revisions' list entries (as the engine's,
+  without keys).
+
+**Reading a block** (`readBlockSegments`, `src/ui/blockSegments.ts`): the decorated HTML's text in
+order, inside `ins`/`del` (revision from `data-author`, item from `data-change-id`) or not, skipping
+`NOT_TEXT` as `DocIndex` does. Note references (`a.footnote-ref`/`a.endnote-ref`), tabs
+(`[data-docx-tab]`) and line breaks are one object each; the U+200E the converter writes after a
+break, the space before a deleted mark's ¶ and an empty paragraph's no-break space aren't text. So
+the segments' Original and Edited text equal the redline paragraph's, objects as one placeholder
+(checked on every paragraph of every fixture, except those with fields, content controls, symbols,
+…, which the HTML doesn't mark); a no-break space counts as a space, as the converter renders some
+spaces as NBSP.
+
+**Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
+`w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,
+so the later steps find every revision's markup by its keys as usual. An edit never changes the
+Original text, so the paragraph's Original-side characters (unchanged and deleted) and the segments'
+line up one to one; each may only turn unchanged ↔ deleted. Inserted characters lie in the gaps
+between them: per gap, the paragraph's are matched with the segments' (same revision, longest
+common subsequence), the others are removed or typed in. The runs this touches are split into one
+run per character (each in its own `w:ins`/`w:del`, a copy with a new `w:id`; formatting markup
+such as `w:rPrChange` in a copied `w:rPr` gets a new id in its revision too), patched, and joined
+again: touching pieces of one revision into one element, touching text runs with the same
+properties into one run. New text takes the `w:rPr` of the visible character before it (else after
+it; a note reference's is never used), without its formatting markup; new `w:ins`/`w:del` get the
+engine's author and date, and `w:id`s above every id of the text parts (the engine numbers them
+across the parts). Bookmarks, comment ranges, `w:proofErr`, note references, tabs and breaks stay in
+place; runs inside `w:hyperlink`/`w:smartTag` stay inside. A paragraph with anything else (fields,
+`w:sdt`, `w:sym`, drawings, moves, …) fails the export (`EditPatchError`): such paragraphs are not
+editable. Afterwards a revision's keys are those outside the edited paragraphs plus its elements
+inside them; one left with none is dropped. The engine may group the patched markup into revisions
+differently (it splits a formatting change that new text interrupts), which doesn't matter: the
+export uses our list. The patch costs ~0.4 s on the sample (mostly parsing and writing
+`document.xml` once more).
 
 ## Export
 
@@ -391,6 +425,8 @@ every **rejected** revision into markup that *accepting* resolves to the Origina
 revisions to keep as tracked changes ([Tracked changes](#tracked-changes)), then accepts everything
 in one pass:
 
+0. With inline edits: `applyEdits` patches the redline and gives the revisions every later step
+   uses ([Inline edits](#inline-edits)).
 1. **Final decision per engine revision** (`finalRevisionDecisions` in `src/model/decisions.ts`), in
    this order: out of range → reject; formatting → the formatting choice (`edited` = accept); the
    item's explicit decision; ignored by the compare settings → accept; otherwise the export dialog's
@@ -626,7 +662,15 @@ marks storage unavailable without stopping later writes.
 - **Fixtures** (`test/fixtures/`, generated by `make-fixtures.ts` as hand-written OOXML, one pair per
   markup kind: insert, delete, replace, run/paragraph formatting, section, move, move with edit,
   paragraph split/join, table cell edit, table rows, restyled table, footnote edit/removed, endnote
-  added/edited, fields and hyperlink, restyle with edit, trailing deletion).
+  added/edited, fields and hyperlink, link/bookmark/tab/break next to edits, restyle with edit,
+  trailing deletion).
+- **Inline edits** (`test/edits.ts`): scripted edits (insert a word, delete a word, edit inside an
+  insertion, edit between two changes, type the Original back) applied with the reader and the edit
+  model to editable blocks of every fixture (body, table cells, notes, a heading) and the sample.
+  Accept all, reject all and alternating decisions ≡ `test/expectedText.ts` with the edited
+  paragraphs' text from their segments (reject all ≡ Original); on the fixtures, each engine revision
+  of the patched redline decided against the rest ≡ `DocxSession`'s decision (text and XML); an
+  undecided edited item exported as a tracked change resolves in Word as the export deciding it.
 - **Round trips** (`src/engine/exportDocx.test.ts`, `test/sample-pair.test.ts`): accept all ≡ Edited
   text, reject all ≡ Original text (`test/text.ts`, checked against `pandoc -t plain` in
   `test/text.test.ts`). Mixed decisions: on the fixtures, each single revision decided against the

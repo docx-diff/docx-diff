@@ -418,6 +418,26 @@ export const FIXTURES: FixturePair[] = [
     },
   },
   {
+    name: 'link-bookmark-tab',
+    description: 'edits next to a hyperlink, a bookmark, a tab and a line break (for inline edits)',
+    original: {
+      body: body(
+        p([r('More is on '), hyperlink(r('the website of the monastery')), r(', which lists the visiting hours.')]),
+        p([r('Hours:'), '<w:r><w:tab/></w:r>', r('from dawn to dusk, '), '<w:bookmarkStart w:id="0" w:name="hours"/>', r('every day'), '<w:bookmarkEnd w:id="0"/>', r(' of the week.')]),
+        p([r('Address:'), '<w:r><w:br/></w:r>', r('the old forest road, near the village well.')]),
+      ),
+      hyperlink: true,
+    },
+    edited: {
+      body: body(
+        p([r('More is on '), hyperlink(r('the home page of the monastery')), r(', which lists the visiting hours.')]),
+        p([r('Hours:'), '<w:r><w:tab/></w:r>', r('from dawn until dusk, '), '<w:bookmarkStart w:id="0" w:name="hours"/>', r('every day'), '<w:bookmarkEnd w:id="0"/>', r(' of the week.')]),
+        p([r('Address:'), '<w:r><w:br/></w:r>', r('the old cart road, near the village well.')]),
+      ),
+      hyperlink: true,
+    },
+  },
+  {
     name: 'endnote-edit',
     description: 'endnote text edited',
     original: {
