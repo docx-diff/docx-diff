@@ -450,7 +450,7 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Depends on:** task 3; `src/ui/DocumentPanel.tsx`, `src/ui/useKeyboardShortcuts.ts`, `src/App.tsx`, `src/ui/panel.css`, `src/index.css`.
 
-- [ ] 4.0 Editing in the Edited panel
+- [x] 4.0 Editing in the Edited panel
   - [x] 4.1 Fix `useKeyboardShortcuts` for events from inside shadow roots (`composedPath()[0]`); test with an editable element in a shadow root.
   - [x] 4.2 `EditableToggle` component and `App` state (reset per review); test.
   - [x] 4.3 Editing mode in `DocumentPanel` (class, contenteditable on/off by editability, no click-to-select, card hidden), CSS in `panel.css` / `index.css` for light and dark.
