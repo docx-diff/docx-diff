@@ -52,4 +52,24 @@ describe('useKeyboardShortcuts', () => {
     // `fireEvent` returns false when the default action (moving the radio selection) was prevented.
     expect(arrow).toBe(false);
   });
+
+  it('leaves alone keys typed into an editable element inside a shadow root', () => {
+    const onAction = vi.fn();
+    const { getByTestId } = render(<Harness onAction={onAction} />);
+    const root = getByTestId('panel').attachShadow({ mode: 'open' });
+    const paragraph = document.createElement('p');
+    paragraph.setAttribute('contenteditable', 'true');
+    const text = document.createElement('span');
+    paragraph.append(text);
+    root.append(paragraph);
+    for (const key of ['a', 'r', 'j', 'ArrowDown']) {
+      paragraph.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, composed: true, cancelable: true }));
+    }
+    expect(onAction).not.toHaveBeenCalled();
+    // Elsewhere in the shadow root, the shortcuts work.
+    text.remove();
+    root.append(text);
+    text.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true, composed: true, cancelable: true }));
+    expect(onAction).toHaveBeenCalledWith('accept');
+  });
 });

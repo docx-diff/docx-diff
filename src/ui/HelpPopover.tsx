@@ -61,6 +61,10 @@ export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
               </div>
             ))}
           </dl>
+          <p className="help__note">
+            <strong>Editable</strong>, in the Edited panel’s header, lets you edit its text within a paragraph. While the cursor is in the text, the
+            keys type and these shortcuts are off; Escape leaves the text.
+          </p>
           <h2>Colours</h2>
           <Legend threeColumns={threeColumns} />
           <p className="help__note">

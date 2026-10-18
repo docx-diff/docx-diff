@@ -239,3 +239,22 @@
   outline: 2px dashed var(--change-current);
   outline-offset: 2px;
 }
+
+/* Editable (inline edits): the text cursor over the paragraphs that can be edited, the arrow
+   elsewhere (a click doesn't select a change while editing). Set by a class and attributes, never by
+   new style text (that would restyle the whole document). */
+.doc.doc--editing,
+.doc.doc--editing :is(ins, del)[data-change-id],
+.doc.doc--editing [contenteditable='false'] {
+  cursor: default;
+}
+
+.doc.doc--editing [contenteditable='true'],
+.doc.doc--editing [contenteditable='true'] :is(ins, del)[data-change-id] {
+  cursor: text;
+}
+
+.doc.doc--editing [contenteditable='true']:focus {
+  outline: 1px dashed var(--accent-border);
+  outline-offset: 2px;
+}

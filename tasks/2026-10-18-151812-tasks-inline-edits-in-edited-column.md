@@ -22,11 +22,12 @@ New:
 - `src/ui/useEdits.test.tsx` - Session tests (PRD-16's example, typo inside an insertion, typed back, revert to the compared markup and items, ids never reused, restore and skipped records, heading) and a hook test.
 - `src/ui/DocumentPanel.test.tsx` - `replaceBlock` in the side panels (decisions, current, ignored, new items' elements known, dark colours) and the Resolved column; `showBlockUpdates` over three panels.
 - `test/small-comparison.ts` - A comparison built without the engine for UI tests of inline edits (`smallComparison`).
-- `src/ui/EditableToggle.tsx` - The Edited panel header's toggle and the Revert all edits button.
-- `src/ui/editing.ts` - The panel's editing behaviour: contenteditable on editable blocks, `beforeinput`/`keydown` rules (PRD-11–13), composition, debounce, cursor save/restore as text offsets, own undo stack, revert ↺ placement.
-- `src/ui/editing.test.ts` - Unit tests (jsdom) for the rules that don't need layout: blocked input types, plain-text paste, debounce/composition timing, cursor offsets, undo stack.
-- `src/ui/Toast.tsx` - The short status message near the Edited header (PRD-13).
-- `e2e/editing.spec.ts` - e2e: toggle, typing and updates, blocked actions, shortcuts while typing, dead key, undo/revert, range warning, Swap confirmation, reload/resume, export round trip.
+- `src/ui/EditableToggle.tsx` - The Edited panel header's toggle (task 4); the Revert all edits button (task 5).
+- `src/ui/EditableToggle.test.tsx` - The toggle's pressed state and tooltips; the toast's timer.
+- `src/ui/editing.ts` - `PanelEditing`, the Edited panel's editing behaviour: contenteditable on editable blocks (objects `false`), `beforeinput` rules (PRD-11–13, `EDIT_MESSAGES`), plain-text paste (`plainText`), `deletedSpan`, composition, debounce and flushes, input elsewhere than the pending span applied through the model (`applyNow`), cursor save/restore as text offsets (`blockSelection`, `selectInBlock`), Escape; own undo stack and revert ↺ placement (task 5).
+- `src/ui/editing.test.ts` - Unit tests (jsdom) for what doesn't need layout or a shadow-root selection: `plainText`, `deletedSpan`, contenteditable on/off and refresh, blocked input types, click messages, debounce, composition, flush on focus loss / Escape / detach, refused update.
+- `src/ui/Toast.tsx` - The short status message under the Edited header (PRD-13), `role="status"`, 4 s.
+- `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); undo/revert, range warning, Swap confirmation, reload/resume, export round trip (tasks 5, 6).
 
 Changed:
 - `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` and its `editable` timing (task 3.2).
@@ -44,25 +45,29 @@ Changed:
 - `src/model/equivalence.ts` - `collectItemTexts` over any root or a map of blocks.
 - `src/model/outline.ts` - `editedHeadingBlocks`, `withEditedHeadings`, `editedParagraphText` (outline from the edited headings).
 - `src/ui/renderedDocument.ts` - `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` scoped to a root/block (root included, `within`).
-- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `headerControls` for the Edited panel; editing mode (class, no click-to-select); card hidden while editing.
+- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `editing` prop: `PanelEditing` attached while it is set (flushed when turned off, not on a new document), replaced blocks prepared, refreshed when `reasonOf` changes, clicks don't select changes, `document-panel--editing` (task 4).
+- `src/ui/blockSegments.ts` - Task 4: `visibleOffset` / `visiblePoint` (cursor ↔ visible-text offset; char entries keep their text node), a `<br>` with no text after it (the browser's placeholder) is skipped.
+- `src/ui/useEdits.ts` - Task 4: `EditSession.blockElement(unid)`, `visibleText(unid)`.
 - `src/ui/resolvedView.ts` - `replaceResolvedBlock(handle, old, block)`: restore the run of joined paragraphs, swap, rebuild the items' elements/markers/children/note references/item notes, join again, apply the sides; `follows` without the `Node` global.
 - `src/ui/resolvedView.test.ts` - `replaceResolvedBlock` ≡ a panel prepared from the updated HTML (comment icon, joined run, note reference).
-- `src/ui/panel.css` - Editable styles (tint/outline, cursors, ↺ button), no style text written at run time.
+- `src/ui/panel.css` - Editable styles (cursors, focused block; ↺ button in task 5), no style text written at run time.
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
 - `src/ui/useKeyboardShortcuts.test.tsx` - A key from an editable element inside a shadow root is not a shortcut.
-- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), Escape handling, Swap confirmation, range warning, resume order, autosave of edits.
+- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); Swap confirmation, range warning, resume order, autosave of edits.
 - `src/ui/RangeControl.tsx` - Asks before an end point that leaves edited paragraphs outside the range (PRD-24a).
-- `src/ui/HelpPopover.tsx` - A line about Editable.
+- `src/ui/HelpPopover.tsx` - A line about Editable (shortcuts off while typing, Escape).
 - `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState`.
 - `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
-- `src/index.css` - Toggle, Revert all and toast styles (tokens, light and dark).
+- `src/index.css` - Toggle, toast and the editing panel's outline (task 4), Revert all (task 5); tokens, light and dark.
 - `test/fixtures/make-fixtures.ts` - Fixture `link-bookmark-tab` (task 2).
 - `test/edits.ts` - `editableBlocks` uses `uneditableReason` (task 3).
 - `src/ui/renderedDocument.test.ts`, `src/model/{changes,docIndex,equivalence,outline}.test.ts`, `src/ui/useComparison.test.tsx` - Block-scoped decoration, `replaceBlockItems`, `replaceIndexBlock`, `collectItemTexts` from a block, edited headings; `uneditableBlocks` in the fake result (task 3).
 - `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` - Inline edits: `uneditableBlocks` ≡ the paragraphs the patch refuses, rendering a block with its own / edited segments (task 3), the sample's update through `EditSession` with timings (task 3.10); segments ≡ redline paragraph text on every fixture, self-patch is a no-op, scripted edits (accept/reject/alternating ≡ `expectedText` with overrides, `verifyDeliverable`, each engine revision of the patched redline ≡ `DocxSession`), a heading edit (small generated pair), on the sample body + footnote edits and an undecided edited item tracked (FR-38b); the sample's block mapping (task 0).
 - `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3).
+- `src/ui/DocumentPanel.test.tsx` - Task 4: editing mode (editable blocks, no click-to-select, message, replaced block prepared, flush on turning off but not on a new document).
+- `src/ui/blockSegments.test.ts` - Task 4: the browser's placeholder `<br>`, `visibleOffset` / `visiblePoint`.
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4).
 
 ### Notes
 
@@ -442,17 +447,40 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** task 3; `src/ui/DocumentPanel.tsx`, `src/ui/useKeyboardShortcuts.ts`, `src/App.tsx`, `src/ui/panel.css`, `src/index.css`.
 
 - [ ] 4.0 Editing in the Edited panel
-  - [ ] 4.1 Fix `useKeyboardShortcuts` for events from inside shadow roots (`composedPath()[0]`); test with an editable element in a shadow root.
-  - [ ] 4.2 `EditableToggle` component and `App` state (reset per review); test.
-  - [ ] 4.3 Editing mode in `DocumentPanel` (class, contenteditable on/off by editability, no click-to-select, card hidden), CSS in `panel.css` / `index.css` for light and dark.
-  - [ ] 4.4 `src/ui/editing.ts`: `beforeinput` rules, plain-text paste, object protection, cross-block selection check; `Toast` with the PRD-13 messages. Typed and pasted text has U+FFFC (`OBJECT_CHAR`) removed: `applyTextEdit` throws on it. jsdom tests for the rules.
-  - [ ] 4.5 Debounce, blur and toggle-off flush, flush when the cursor leaves the pending edit's span (task 1 notes), composition handling; tests with fake timers.
-  - [ ] 4.6 Cursor/selection save and restore as text offsets around `replaceBlock`; tests in jsdom and an e2e check.
-  - [ ] 4.7 Wire the update: read visible text, `useEdits.update`, `replaceBlock` in all panels (the 3.6 path accepts the created items).
-  - [ ] 4.8 Escape blurs the editable block; App's Escape handler leaves it alone.
-  - [ ] 4.9 Help popover line about Editable.
-  - [ ] 4.10 `e2e/editing.spec.ts`: toggle and defaults; type a word → new accepted item in the list, Original/Resolved updated; fix a typo inside an insertion → same item, decision kept; PRD-16's example; blocked actions and messages (success metric 6); `a`/`r`/`j`/`u`/`?` typed as text (metric 7); dead key composition (Playwright `insertText`/IME events); both views.
-  - [ ] 4.11 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+  - [x] 4.1 Fix `useKeyboardShortcuts` for events from inside shadow roots (`composedPath()[0]`); test with an editable element in a shadow root.
+  - [x] 4.2 `EditableToggle` component and `App` state (reset per review); test.
+  - [x] 4.3 Editing mode in `DocumentPanel` (class, contenteditable on/off by editability, no click-to-select, card hidden), CSS in `panel.css` / `index.css` for light and dark.
+  - [x] 4.4 `src/ui/editing.ts`: `beforeinput` rules, plain-text paste, object protection, cross-block selection check; `Toast` with the PRD-13 messages. Typed and pasted text has U+FFFC (`OBJECT_CHAR`) removed: `applyTextEdit` throws on it. jsdom tests for the rules.
+  - [x] 4.5 Debounce, blur and toggle-off flush, flush when the cursor leaves the pending edit's span (task 1 notes), composition handling; tests with fake timers.
+  - [x] 4.6 Cursor/selection save and restore as text offsets around `replaceBlock`; tests in jsdom and an e2e check.
+  - [x] 4.7 Wire the update: read visible text, `useEdits.update`, `replaceBlock` in all panels (the 3.6 path accepts the created items).
+  - [x] 4.8 Escape blurs the editable block; App's Escape handler leaves it alone.
+  - [x] 4.9 Help popover line about Editable.
+  - [x] 4.10 `e2e/editing.spec.ts`: toggle and defaults; type a word → new accepted item in the list, Original/Resolved updated; fix a typo inside an insertion → same item, decision kept; PRD-16's example; blocked actions and messages (success metric 6); `a`/`r`/`j`/`u`/`?` typed as text (metric 7); dead key composition (Playwright `insertText`/IME events); both views.
+  - [x] 4.11 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+
+**Notes** (task 4, for later tasks)
+
+- The App's `applyEdit(unid, text, caret)` (`EditingOptions.onEdit`) is the one path from the panel
+  to the session: it calls `edits.update`, shows the update in all panels (`showBlockUpdates`,
+  created items accepted), and otherwise puts the master block back into the Edited panel
+  (`'unchanged'` / `'refused'`). Undo/redo (5.1) and revert (5.2) must not accept anything: use
+  `restore` / `revert` and `showBlockUpdates` (which accepts only `createdItemIds`, empty there),
+  then `PanelEditing` restores the cursor (`selectInBlock`).
+- The browser's `historyUndo`/`historyRedo` are cancelled silently for now; task 5.1 replaces that
+  with the own stack (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on `keydown`: Chromium sends no `historyRedo`
+  when it has nothing to redo, task 0).
+- `PanelEditing.flush()` returns the outcome; the pending edit's caret is the cursor **after the last
+  input**, not the cursor at flush time (it may have moved: passing that one placed the edit wrongly).
+  `selectionchange` is asynchronous: an input that arrives outside the pending span before it is
+  cancelled and applied through the model after the flush (`applyNow`).
+- Timings (built app, three columns, Chromium): sample: Editable on 15 ms, no long task while
+  typing or for the update; ~300-page pair: Editable on 228 ms (once), update tasks 51 and 68 ms,
+  none while typing. For `docs/measurements.md` (task 8).
+- e2e runs Chromium only; Firefox behaviour rests on the task 0 findings (no `ShadowRoot.getSelection`,
+  `insertCompositionText` not cancelable: the composition path doesn't cancel anything).
+- CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
+  caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 
 ### 5.0 Undo, revert and guards
 

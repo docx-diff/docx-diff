@@ -41,13 +41,17 @@ import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
 import { Outline } from './ui/Outline';
 import { CompareProgress, Progress } from './ui/Progress';
+import { EditableToggle } from './ui/EditableToggle';
+import { uneditableReason } from './ui/blockSegments';
+import type { EditOutcome, EditingOptions } from './ui/editing';
+import { Toast, type ToastMessage } from './ui/Toast';
 import { RangeControl } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
-import { useEdits } from './ui/useEdits';
+import { showBlockUpdates, useEdits, type BlockUpdate } from './ui/useEdits';
 import { useCompareSettings } from './ui/useCompareSettings';
 import { useExportSettings } from './ui/useExportSettings';
 import { useTheme } from './ui/theme';
@@ -127,6 +131,8 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
   const [picking, setPicking] = useState(false);
+  /** The Edited panel's text can be edited (its Editable toggle); off for every review shown. */
+  const [editing, setEditing] = useState(false);
   /** The comment bubbles the reviewer closed in the Resolved column; not saved (FR-27c). */
   const [closedBubbles, setClosedBubbles] = useState<ReadonlySet<string>>(new Set());
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
@@ -156,6 +162,7 @@ export function App() {
     }
     setCurrentItemId(null);
     setPicking(false);
+    setEditing(false);
     setClosedBubbles(new Set());
   }
 
@@ -229,6 +236,49 @@ export function App() {
     () => (comparison ? outOfRangeBlocks(comparison.analysis.index, rangeState.endPoint, positions) : new Set<string>()),
     [comparison, rangeState, positions],
   );
+  // Inline edits in the Edited panel (docs/architecture.md, "Inline edits").
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const showMessage = useCallback((text: string) => setToast((shown) => ({ text, id: (shown?.id ?? 0) + 1 })), []);
+  const hideToast = useCallback(() => setToast(null), []);
+  const editSession = edits.session;
+  const updateEdit = edits.update;
+  const reasonOf = useCallback(
+    (unid: string) => {
+      const block = editSession?.blockElement(unid);
+      return block && comparison ? uneditableReason(block, { outOfRange: outsideBlocks, uneditable: comparison.result.uneditableBlocks }) : 'not-a-paragraph';
+    },
+    [editSession, comparison, outsideBlocks],
+  );
+  const textOf = useCallback((unid: string) => editSession?.visibleText(unid) ?? '', [editSession]);
+  /** An update of a block the reviewer typed in: shown in every panel; the Edited panel gets the block back also when nothing changed. */
+  const applyEdit = useCallback(
+    (unid: string, text: string, caret: number | undefined): EditOutcome => {
+      let update: BlockUpdate | null;
+      try {
+        update = updateEdit(unid, text, caret);
+      } catch {
+        // An edit the model can't apply (an object deleted): the block as it was.
+        const block = editSession?.blockElement(unid);
+        if (block) rightControl.current?.replaceBlock(unid, block);
+        return 'refused';
+      }
+      if (update) {
+        showBlockUpdates([update], [leftControl.current, middleControl.current, rightControl.current], (itemIds) =>
+          dispatch({ type: 'acceptAllUndecided', itemIds }),
+        );
+        return 'updated';
+      }
+      const block = editSession?.blockElement(unid);
+      if (block) rightControl.current?.replaceBlock(unid, block);
+      return 'unchanged';
+    },
+    [updateEdit, editSession],
+  );
+  const editingOptions = useMemo<EditingOptions | undefined>(
+    () => (editing ? { reasonOf, textOf, onEdit: applyEdit, onMessage: showMessage } : undefined),
+    [editing, reasonOf, textOf, applyEdit, showMessage],
+  );
+
   const paragraphIndex = useMemo(() => new Map((comparison?.analysis.index.bodyParagraphs ?? []).map((unid, i) => [unid, i])), [comparison]);
   /**
    * A click on a paragraph of the Original while picking: it becomes the last paragraph in range.
@@ -386,7 +436,8 @@ export function App() {
   // picking the end point.
   const cardItem = currentItemId === null ? undefined : itemById.get(currentItemId);
   const cardLabel = cardItem && labelById.get(cardItem.id);
-  const showCard = view.inlineCard && !cardClosed && !picking && cardItem !== undefined && cardLabel !== undefined;
+  // Hidden while editing: it would cover the text being edited.
+  const showCard = view.inlineCard && !cardClosed && !picking && !editing && cardItem !== undefined && cardLabel !== undefined;
   useEffect(() => {
     if (!showCard) return;
     const onKey = (event: KeyboardEvent) => {
@@ -536,8 +587,16 @@ export function App() {
                 title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
                 titleTooltip={side === 'resolved' ? 'Shows the resolved text; formatting as in the Edited document' : undefined}
                 headerControls={
-                  side === 'resolved' ? <CommentsToggle comments={bubbleComments} closed={closedBubbles} onToggleAll={toggleAllBubbles} /> : undefined
+                  side === 'resolved' ? (
+                    <CommentsToggle comments={bubbleComments} closed={closedBubbles} onToggleAll={toggleAllBubbles} />
+                  ) : side === 'right' ? (
+                    <>
+                      <EditableToggle editing={editing} onToggle={() => setEditing((on) => !on)} />
+                      <Toast message={toast} onHide={hideToast} />
+                    </>
+                  ) : undefined
                 }
+                editing={side === 'right' ? editingOptions : undefined}
                 document={comparison.document}
                 ignored={ignored}
                 settings={settings}

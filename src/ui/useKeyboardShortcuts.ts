@@ -45,7 +45,9 @@ export function useKeyboardShortcuts(onAction: (action: ShortcutAction) => void,
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
       const action = ACTION_BY_KEY.get(event.key);
-      if (!action || isTypingTarget(event.target, event.key)) return;
+      // A key from inside a panel's shadow root reaches `window` retargeted to the panel: its own
+      // target (e.g. an editable paragraph) is the first of the composed path.
+      if (!action || isTypingTarget(event.composedPath()[0] ?? event.target, event.key)) return;
       // A modal dialog (e.g. a confirmation) has its own keys.
       if (document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();

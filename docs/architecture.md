@@ -54,7 +54,7 @@ Model (pure TypeScript, main thread)
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
-- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`) ([Inline edits](#inline-edits)).
+- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx`, `Toast.tsx` ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -447,6 +447,35 @@ order, markers, saved children, note references, item notes), joins again and sh
 the sides last applied; a panel built from the updated HTML is the same DOM. The App keeps the
 `ignored` and out-of-range sets by content (`useSameSet`), so an update doesn't make every panel
 re-mark the whole document or the Resolved column redo its range order.
+
+**Editing in the panel** (`PanelEditing`, `src/ui/editing.ts`; the **Editable** toggle in the Edited
+panel's header, off for every review shown). While it is on, the Edited panel's `.doc` has
+`doc--editing` (cursors in `panel.css`; the panel's outline in `index.css`: no style text is written
+at run time) and each block `uneditableReason` allows gets `contenteditable` (and `spellcheck=false`),
+its note references, tabs and `NOT_TEXT` elements `contenteditable=false`; a block an update puts in
+is prepared again (`replaceBlock`), and all of them when the range changes. A click doesn't select a
+change there; in a block that can't be edited it shows why. The current change's card is hidden.
+- The browser edits the panel's copy of the block. An update reads its visible text
+  (`readBlockSegments` + `visibleText`: hidden deletions don't count, whatever the browser did to
+  them; a `<br>` with no text after it is the browser's placeholder, not the converter's) and calls
+  the App, which applies it to the session and shows it in every panel (`showBlockUpdates`), or puts
+  the block back as it was when nothing changed or the model refuses it. The cursor goes back by
+  its offsets in the visible text (`visibleOffset`/`visiblePoint`, `src/ui/blockSegments.ts`: after
+  the visible character before it, never inside a hidden deletion).
+- An update runs 400 ms after the last input in a block, never during a composition (dead keys,
+  input methods: 400 ms after `compositionend`), and at once when the block loses focus, on Escape,
+  when Editable is turned off (not when a new comparison replaces the document), and when the cursor
+  leaves the span typed since the last update: an edit is one contiguous span.
+- `beforeinput` enforces the rules: paragraph and line breaks, deletes at a paragraph's start or end
+  (they would join paragraphs), selections beyond one block, and deletes or replacements that include
+  an object are cancelled with a message (`EDIT_MESSAGES`, shown by `Toast`); the browser's undo/redo,
+  formatting and drops silently. A paste inserts its plain text (`plainText`: line breaks and tabs as
+  spaces) through the model at once, like typed text the browser can't be left to insert.
+- Selection in the shadow root: `getSelection().getComposedRanges({ shadowRoots })` (fallback
+  `ShadowRoot.getSelection`, then the document's), never `document.getSelection()` alone (Chromium
+  reports a cursor in a shadow root at the host). A key event reaches `window` retargeted to the
+  panel, so `useKeyboardShortcuts` checks `composedPath()[0]`: keys typed into the text are not
+  shortcuts. Escape takes the cursor out of the text (to the panel, whose arrow keys scroll it).
 
 **Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
 `w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,

@@ -1,10 +1,12 @@
 import { cleanup, render } from '@testing-library/react';
 import { createRef } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { smallComparison } from '../../test/small-comparison';
 import { DEFAULT_COMPARE_SETTINGS } from '../model/equivalence';
 import type { Decision } from '../model/decisions';
 import { DocumentPanel, type PanelControl, type PanelSide } from './DocumentPanel';
+import type { EditingOptions } from './editing';
+import type { RenderedDocument } from './renderedDocument';
 import { EditSession, showBlockUpdates } from './useEdits';
 
 /** One panel of the small comparison, and a way to render it again with other decisions. */
@@ -90,5 +92,87 @@ describe('showBlockUpdates', () => {
     showBlockUpdates(session.revertAll(), panels.map((p) => p.control.current), accept);
     for (const { root } of panels) expect(blockIn(root, 'p').outerHTML).not.toContain('ep.1');
     expect(accepted).toEqual([['ep.1']]);
+  });
+});
+
+describe('DocumentPanel editing', () => {
+  afterEach(cleanup);
+
+  function editablePanel(session: EditSession) {
+    const control = createRef<PanelControl>();
+    const onChangeClick = vi.fn();
+    const options: EditingOptions = {
+      reasonOf: (unid) => (unid === 'p' ? undefined : 'move'),
+      textOf: (unid) => session.visibleText(unid),
+      onEdit: vi.fn(() => 'unchanged' as const),
+      onMessage: vi.fn(),
+    };
+    const element = (editing: EditingOptions | undefined, document: RenderedDocument = session.comparison.document) => (
+      <DocumentPanel
+        side="right"
+        theme="light"
+        title="t"
+        document={document}
+        ignored={new Set()}
+        settings={DEFAULT_COMPARE_SETTINGS}
+        decisions={{}}
+        currentItemId={null}
+        onChangeClick={onChangeClick}
+        overviewItems={[]}
+        outOfRangeItems={new Set()}
+        controlRef={control}
+        editing={editing}
+      />
+    );
+    const view = render(element(options));
+    const root = view.getByTestId('panel-right').shadowRoot!;
+    return { control, root, options, onChangeClick, view, rerender: (editing: EditingOptions | undefined, document?: RenderedDocument) => view.rerender(element(editing, document)) };
+  }
+
+  /** Text typed into the block, and its `input` event. */
+  const type = (block: HTMLElement, text: string) => {
+    block.querySelector('ins')!.append(text);
+    block.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: text, bubbles: true, composed: true }));
+  };
+
+  it('makes the editable blocks editable, and a click there doesn’t select a change', () => {
+    const session = new EditSession(smallComparison());
+    const { root, onChangeClick, options, view, rerender } = editablePanel(session);
+    expect(view.container.querySelector('.document-panel--editing')).not.toBeNull();
+    expect(root.querySelector('.doc')!.classList.contains('doc--editing')).toBe(true);
+    expect(blockIn(root, 'p').getAttribute('contenteditable')).toBe('true');
+    expect(blockIn(root, 'q').hasAttribute('contenteditable')).toBe(false);
+    blockIn(root, 'p').querySelector('ins')!.click();
+    expect(onChangeClick).not.toHaveBeenCalled();
+    blockIn(root, 'q').querySelector('ins')!.click();
+    expect(options.onMessage).toHaveBeenCalledWith('This paragraph can’t be edited here: it contains a moved passage.');
+    expect(onChangeClick).not.toHaveBeenCalled();
+
+    rerender(undefined);
+    expect(root.querySelector('[contenteditable]')).toBeNull();
+    expect(view.container.querySelector('.document-panel--editing')).toBeNull();
+    blockIn(root, 'p').querySelector('ins')!.click();
+    expect(onChangeClick).toHaveBeenCalled();
+  });
+
+  it('makes a replaced block editable again', () => {
+    const session = new EditSession(smallComparison());
+    const { control, root } = editablePanel(session);
+    control.current!.replaceBlock('p', session.update('p', 'the big blue house', 'the big blue'.length)!.block);
+    expect(blockIn(root, 'p').getAttribute('contenteditable')).toBe('true');
+  });
+
+  it('applies what was typed when editing is turned off, not when the document changes', () => {
+    const session = new EditSession(smallComparison());
+    const { root, options, rerender } = editablePanel(session);
+    type(blockIn(root, 'p'), 'x');
+    rerender(undefined);
+    expect(options.onEdit).toHaveBeenCalledOnce();
+    expect(vi.mocked(options.onEdit).mock.calls[0]![1]).toContain('x');
+
+    rerender(options);
+    type(blockIn(root, 'p'), 'y');
+    rerender(undefined, smallComparison().document);
+    expect(options.onEdit).toHaveBeenCalledOnce();
   });
 });

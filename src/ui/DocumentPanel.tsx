@@ -5,6 +5,7 @@ import type { Decision } from '../model/decisions';
 import type { CompareSettings } from '../model/equivalence';
 import { darkColors } from './darkColors';
 import { BUBBLE_SLOT, CONTENT_CHANGED } from './CommentBubbles';
+import { PanelEditing, type EditingOptions } from './editing';
 import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import type { ResolvedSide } from '../model/resolved';
@@ -84,6 +85,11 @@ interface Props {
   bubbles?: ReactNode;
   /** Receives the panel's `PanelControl`. */
   controlRef?: Ref<PanelControl>;
+  /**
+   * The Edited panel while Editable is on: its paragraphs can be edited, and a click doesn't
+   * select a change (`editing.ts`).
+   */
+  editing?: EditingOptions;
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
@@ -175,6 +181,13 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   /** The props a block replacement reads (it runs outside rendering). */
   const latest = useRef({ ignored, settings, outOfRangeItems });
   latest.current = { ignored, settings, outOfRangeItems };
+  const documentRef = useRef(document);
+  documentRef.current = document;
+  /** Editing while Editable is on; the options are the last given (turning it off applies the waiting input with them). */
+  const editingRef = useRef<PanelEditing | null>(null);
+  const editingOptions = useRef(props.editing);
+  if (props.editing) editingOptions.current = props.editing;
+  const editingOn = props.editing !== undefined;
 
   useImperativeHandle(
     props.controlRef,
@@ -201,6 +214,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
         else old.replaceWith(block);
         blocksRef.current = blocksRef.current.with(at, block);
         elementsRef.current = elementMap(wrapper);
+        editingRef.current?.prepareBlock(block);
 
         const ids = new Set(within(block, '[data-change-id]').map((element) => element.dataset.changeId!));
         if (side !== 'resolved') for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
@@ -310,6 +324,28 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle('doc--picking', onPickParagraph !== undefined);
   }, [onPickParagraph, contentVersion]);
 
+  useLayoutEffect(() => {
+    const root = scrollerRef.current?.shadowRoot;
+    const wrapper = root?.querySelector<HTMLElement>('.doc');
+    if (!editingOn || !root || !wrapper) return;
+    const findBlock = (unid: string) => blocksRef.current.find((block) => block.dataset.anchor === unid);
+    const editing = new PanelEditing(root, wrapper, () => editingOptions.current!, findBlock);
+    editing.attach();
+    editingRef.current = editing;
+    const attachedTo = documentRef.current;
+    return () => {
+      editingRef.current = null;
+      // A new document is a new review: what was typed in the old one is dropped.
+      editing.detach(documentRef.current === attachedTo);
+    };
+  }, [editingOn, contentVersion]);
+
+  // Which blocks can be edited changes with the comparison range.
+  const reasonOf = props.editing?.reasonOf;
+  useLayoutEffect(() => {
+    if (reasonOf) editingRef.current?.refresh();
+  }, [reasonOf]);
+
   // The Resolved column's content, marks and comment icons: only the items whose resolved side or
   // decision changed are touched. The text at the top of the panel stays where it is when text
   // above it appears or disappears (or a ✓ / ✗ or an icon rewraps a line).
@@ -383,6 +419,11 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     };
     const onClick = (event: Event) => {
       if (toggleComment(event)) return;
+      // While editing, a click places the cursor (or says why the paragraph can't be edited).
+      if (editingRef.current) {
+        editingRef.current.click(event);
+        return;
+      }
       const pick = pickHandler.current;
       if (pick) {
         event.preventDefault();
@@ -438,7 +479,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   }, [measure, side, contentVersion]);
 
   return (
-    <section className={`document-panel document-panel--${side}`} aria-label={side === 'resolved' ? title : `${SIDE_NAMES[side]}: ${title}`}>
+    <section className={`document-panel document-panel--${side}${editingOn ? ' document-panel--editing' : ''}`} aria-label={side === 'resolved' ? title : `${SIDE_NAMES[side]}: ${title}`}>
       <div className="document-panel__header">
         <h2 className="document-panel__title" title={props.titleTooltip ?? title}>
           {title}

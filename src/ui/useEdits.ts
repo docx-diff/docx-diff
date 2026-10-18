@@ -14,6 +14,7 @@ import {
   blockItems,
   editRevisions,
   revisionTexts,
+  visibleText,
   type BlockEdit,
   type RevisionText,
   type Segment,
@@ -92,6 +93,16 @@ export class EditSession {
     const element = this.blockElements.get(unid);
     if (!element) throw new Error(`No block ${unid}`);
     return element;
+  }
+
+  /** The block's element in the master document, kept up to date with the edits. */
+  blockElement(unid: string): HTMLElement | undefined {
+    return this.blockElements.get(unid);
+  }
+
+  /** The block's visible text (as the Edited panel shows it) after the last update. */
+  visibleText(unid: string): string {
+    return visibleText(this.edit(unid).current);
   }
 
   /** The block's edit, or a new one from its markup. */

@@ -856,6 +856,7 @@ body {
 }
 
 .document-panel__header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -901,6 +902,45 @@ body {
 
 .comments-toggle__icon {
   display: block;
+}
+
+/* The Edited panel's Editable toggle (inline edits), and its panel while editing: an outline in the
+   accent colour. */
+.editable-toggle {
+  flex: none;
+  margin-block: -0.25rem;
+}
+
+.editable-toggle__icon {
+  display: block;
+}
+
+.document-panel--editing .document-panel__scroller {
+  outline: 2px solid var(--accent-border);
+  outline-offset: -2px;
+}
+
+/* A short message under the panel's header (a blocked edit); the empty live region stays in place. */
+.toast {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 1rem;
+  z-index: 2;
+  max-width: min(28rem, calc(100% - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--raised);
+  box-shadow: 0 4px 12px var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.toast:empty {
+  padding: 0;
+  border: none;
+  box-shadow: none;
 }
 
 /* Overview bar */

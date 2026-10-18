@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
 import { applyTextEdit, originalText, visibleText, OBJECT_CHAR, type Segment } from '../model/paragraphEdit';
-import { readBlockSegments, renderBlockSegments, uneditableReason } from './blockSegments';
+import { readBlockSegments, renderBlockSegments, uneditableReason, visibleOffset, visiblePoint } from './blockSegments';
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
 const block = (document: Document, unid: string) => document.querySelector(`[data-anchor="${unid}"]`)!;
@@ -71,6 +71,56 @@ describe('readBlockSegments', () => {
       { kind: 'del', text: '„szövegek', itemId: 'r1', revisionId: 'r1' },
       { kind: 'ins', text: 'szutták', itemId: 'r1', revisionId: 'r2' },
     ]);
+  });
+});
+
+describe('reading a block a browser edited', () => {
+  it('ignores the line break a browser puts in a paragraph it emptied, not the converter’s', () => {
+    const document = parse(
+      '<p data-anchor="x"><span>Text</span><br></p><p data-anchor="y"><span>A<br>\u200eB</span><del data-author="rev:r9"><br></del></p>',
+    );
+    expect(readBlockSegments(block(document, 'x'))).toEqual([{ kind: 'equal', text: 'Text' }]);
+    expect(readBlockSegments(block(document, 'y'))).toEqual([
+      { kind: 'equal', text: 'A' },
+      { kind: 'object', key: 'br' },
+      { kind: 'equal', text: 'B' },
+      { kind: 'object', key: 'br', owner: { change: 'del', itemId: 'r9', revisionId: 'r9' } },
+    ]);
+  });
+});
+
+describe('visibleOffset and visiblePoint', () => {
+  const small = parse(SMALL_HTML);
+  const a = block(small, 'a');
+  const text = (element: Element, i = 0) => [...element.childNodes].filter((node) => node.nodeType === 3)[i]!;
+
+  it('map cursor positions to offsets in the visible text and back, objects as one', () => {
+    expect(visibleText(readBlockSegments(a))).toBe(`Kept new text${OBJECT_CHAR}`);
+    for (let offset = 0; offset <= 14; offset++) {
+      const point = visiblePoint(a, offset);
+      expect(visibleOffset(a, point.node, point.offset)).toBe(offset);
+    }
+  });
+
+  it('put the cursor after the character before it, never in a hidden deletion', () => {
+    expect(visiblePoint(a, 0)).toEqual({ node: text(a), offset: 0 });
+    expect(visiblePoint(a, 5)).toEqual({ node: text(a), offset: 5 });
+    expect(visiblePoint(a, 6)).toEqual({ node: a.querySelector('ins')!.firstChild, offset: 1 });
+    expect(visiblePoint(a, 14)).toEqual({ node: a, offset: 5 });
+    expect(visiblePoint(a, 99)).toEqual({ node: a, offset: 5 });
+    // A point inside the deletion counts the visible text before it.
+    expect(visibleOffset(a, a.querySelector('del')!.firstChild!, 2)).toBe(5);
+  });
+
+  it('count from after a list label, and place the cursor in an empty paragraph', () => {
+    const document = parse('<p data-anchor="l"><span data-list-marker="true">1.</span><span>Item</span></p><p data-anchor="e"><span>\u00a0</span></p>');
+    const item = block(document, 'l');
+    expect(visibleOffset(item, item, 0)).toBe(0);
+    expect(visibleOffset(item, item, 1)).toBe(0);
+    expect(visiblePoint(item, 0)).toEqual({ node: item.lastChild!.firstChild, offset: 0 });
+    const empty = block(document, 'e');
+    expect(visiblePoint(empty, 0)).toEqual({ node: empty.firstChild!.firstChild, offset: 0 });
+    expect(visiblePoint(block(small, 'e'), 0)).toEqual({ node: block(small, 'e'), offset: 0 });
   });
 });
 

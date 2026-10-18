@@ -26,7 +26,7 @@ interface Change {
  * back links, bookmarks, the mark after a break, fillers), which a rendering keeps in place.
  */
 type Entry =
-  | { kind: 'char'; ch: string; chain: Element[]; change?: Change }
+  | { kind: 'char'; ch: string; chain: Element[]; change?: Change; node: Text; at: number }
   | { kind: 'object'; key: string; element: Element; chain: Element[]; change?: Change }
   | { kind: 'keep'; node: Node; chain: Element[]; filler?: boolean };
 
@@ -49,9 +49,11 @@ function blockEntries(block: Element): Entry[] {
     for (let node = parent.firstChild; node; node = node.nextSibling) {
       if (node.nodeType === TEXT_NODE) {
         let text = node.textContent ?? '';
+        let at = 0;
         if (afterBreak && text.startsWith(BREAK_MARK)) {
           entries.push({ kind: 'keep', node: node.ownerDocument!.createTextNode(BREAK_MARK), chain });
           text = text.slice(1);
+          at = 1;
         }
         afterBreak = false;
         if (isMarkFiller(node)) {
@@ -59,7 +61,10 @@ function blockEntries(block: Element): Entry[] {
           continue;
         }
         const change = changeOf(chain);
-        for (const ch of Array.from(text)) entries.push({ kind: 'char', ch, chain, change });
+        for (const ch of Array.from(text)) {
+          entries.push({ kind: 'char', ch, chain, change, node: node as Text, at });
+          at += ch.length;
+        }
         continue;
       }
       if (node.nodeType !== ELEMENT_NODE) {
@@ -71,6 +76,8 @@ function blockEntries(block: Element): Entry[] {
         entries.push({ kind: 'keep', node, chain });
         continue;
       }
+      // A browser editing the panel's block puts a line break in a paragraph it emptied.
+      if (element.localName === 'br' && !chain.some((frame) => frame.localName === 'del') && !followedByText(element, block)) continue;
       const key = objectKey(element);
       if (key) {
         entries.push({ kind: 'object', key, element, chain, change: changeOf(chain) });
@@ -115,6 +122,84 @@ export function readBlockSegments(block: Element): Segment[] {
     }
   }
   return segments;
+}
+
+const isVisible = (entry: Entry): entry is Extract<Entry, { kind: 'char' | 'object' }> => entry.kind !== 'keep' && entry.change?.change !== 'del';
+
+/** Where an entry starts in the DOM. */
+function startOf(entry: Extract<Entry, { kind: 'char' | 'object' }>): { node: Node; offset: number } {
+  if (entry.kind === 'char') return { node: entry.node, offset: entry.at };
+  const parent = entry.element.parentNode!;
+  return { node: parent, offset: Array.prototype.indexOf.call(parent.childNodes, entry.element) };
+}
+
+/**
+ * The offset in the block's visible text (`visibleText(readBlockSegments(block))`) of a DOM point
+ * inside it (a cursor): the number of visible characters, objects as one, before it.
+ */
+export function visibleOffset(block: Element, node: Node, offset: number): number {
+  const point = block.ownerDocument.createRange();
+  point.setStart(node, offset);
+  let count = 0;
+  for (const entry of blockEntries(block)) {
+    if (!isVisible(entry)) continue;
+    const start = startOf(entry);
+    if (point.comparePoint(start.node, start.offset) >= 0) break;
+    count += entry.kind === 'char' ? entry.ch.length : 1;
+  }
+  return count;
+}
+
+/**
+ * The DOM point for an offset in the block's visible text: right after the visible character or
+ * object before it (so that typing there continues that character's element), or before the first
+ * one for offset 0. Offsets past the end give the end.
+ */
+export function visiblePoint(block: Element, offset: number): { node: Node; offset: number } {
+  let count = 0;
+  let first: Extract<Entry, { kind: 'char' | 'object' }> | undefined;
+  let last: typeof first;
+  for (const entry of blockEntries(block)) {
+    if (!isVisible(entry)) continue;
+    first ??= entry;
+    last = entry;
+    const length = entry.kind === 'char' ? entry.ch.length : 1;
+    if (offset > 0 && count + length >= offset) return pointAfter(entry, offset - count);
+    count += length;
+  }
+  if (offset > 0 && last) return pointAfter(last, Infinity);
+  if (first) return startOf(first);
+  const text = firstText(block);
+  return text ? { node: text, offset: 0 } : { node: block, offset: 0 };
+}
+
+function pointAfter(entry: Extract<Entry, { kind: 'char' | 'object' }>, units: number): { node: Node; offset: number } {
+  if (entry.kind === 'char') return { node: entry.node, offset: entry.at + Math.min(units, entry.ch.length) };
+  const start = startOf(entry);
+  return { node: start.node, offset: start.offset + 1 };
+}
+
+function firstText(node: Node): Text | null {
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType === TEXT_NODE) return child as Text;
+    const text = firstText(child);
+    if (text) return text;
+  }
+  return null;
+}
+
+/** Whether text that isn't deleted follows the element in the block (the converter writes a mark after each line break). */
+function followedByText(element: Element, block: Element): boolean {
+  const hasText = (node: Node): boolean => {
+    if (node.nodeType === TEXT_NODE) return (node.textContent ?? '') !== '';
+    if (node.nodeType !== ELEMENT_NODE || (node as Element).localName === 'del') return false;
+    for (let child = node.firstChild; child; child = child.nextSibling) if (hasText(child)) return true;
+    return false;
+  };
+  for (let node: Node | null = element; node && node !== block; node = node.parentNode) {
+    for (let next = node.nextSibling; next; next = next.nextSibling) if (hasText(next)) return true;
+  }
+  return false;
 }
 
 /** A new `ins`/`del` of a revision in a rendering; one object per revision, so that its pieces group. */
