@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 # Builds the site and commits it into the local clone of the GitHub Pages repository
 # (github.com/docx-diff/docx-diff.github.io, served at https://docx-diff.github.io/). There is no CI:
-# this script is the deployment. It does not push; it prints the command to do so.
-#   scripts/publish.sh
-# PAGES_DIR sets the clone (default: ../docx-diff.github.io next to this repo). SKIP_TESTS=1 skips
-# the checks, for publishing again a commit that has just passed them.
+# this script is the deployment. After committing it asks whether to push.
+#   scripts/publish.sh [--skip-tests] [--no-push]
+# --skip-tests skips typecheck, unit and e2e tests, for publishing again a commit that has just
+# passed them (`npm run publish` passes it). --no-push commits without asking and prints the push
+# command instead. PAGES_DIR sets the clone (default: ../docx-diff.github.io next to this repo).
 set -euo pipefail
+
+skip_tests=0
+push=1
+for arg in "$@"; do
+  case $arg in
+    --skip-tests) skip_tests=1 ;;
+    --no-push) push=0 ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
+  esac
+done
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 pages=${PAGES_DIR:-$repo/../docx-diff.github.io}
@@ -43,7 +55,7 @@ if [ "$installed" != "$pinned" ]; then
   exit 1
 fi
 
-if [ "${SKIP_TESTS:-}" != 1 ]; then
+if [ "$skip_tests" != 1 ]; then
   npm run typecheck
   npm test
   npm run test:e2e
@@ -66,5 +78,12 @@ fi
 git -C "$pages" commit -q -m "Publish docx-diff $source_commit"
 git -C "$pages" log --oneline -1
 echo
+# No terminal to ask on (e.g. piped input): leave the push to the user, as with --no-push.
+if [ "$push" = 1 ] && [ -t 0 ]; then
+  read -r -p "Push to origin/$pages_branch? [y/N] " answer
+  case $answer in
+    [yY]|[yY][eE][sS]) git -C "$pages" push; exit 0 ;;
+  esac
+fi
 echo "Committed in $pages. To publish:"
 echo "  git -C $pages push"
