@@ -15,6 +15,8 @@
   --surface: #f6f8fa;
   --surface-hover: #eaeef2;
   --raised: #ffffff;
+  /* The formatting group in the changes list: gray, set apart from the list's `--surface`. */
+  --group-bg: #e6eaef;
   /* The rendered document (also read inside the panels' shadow roots). */
   --page-fg: #1f2328;
   --page-bg: #ffffff;
@@ -79,6 +81,7 @@
   --surface: #161b22;
   --surface-hover: #21262d;
   --raised: #1c2128;
+  --group-bg: #262c36;
   --page-fg: #e6edf3;
   --page-bg: #0d1117;
   --divider: #6e7681;
@@ -1053,7 +1056,7 @@ body {
 }
 
 .change-card--formatting {
-  border-left-color: var(--warning);
+  border-left-color: var(--divider);
 }
 
 .change-card--current {
@@ -1221,7 +1224,7 @@ body {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--warning-bg);
+  background: var(--group-bg);
   font-size: 0.8125rem;
 }
 
@@ -1339,6 +1342,7 @@ kbd {
 
 .legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0;
   padding: 0;
@@ -1365,6 +1369,24 @@ kbd {
 .legend__sample--move {
   background: var(--change-move-bg);
   box-shadow: inset 0 -2px 0 var(--change-move-line);
+}
+
+/* The Resolved column's marks (panel.css). */
+.legend__sample--decided {
+  background: var(--warning-bg);
+}
+
+.legend__sample--decided::after {
+  content: '✓';
+  margin-left: 0.15em;
+  color: var(--success);
+  font-size: 0.75em;
+  font-weight: 700;
+}
+
+.legend__sample--pending {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 0.2em;
 }
 
 /* Modal dialog */

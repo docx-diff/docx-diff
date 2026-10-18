@@ -8,8 +8,8 @@ PRD: [`2026-10-17-184647-prd---three-column-resolved-view.md`](2026-10-17-184647
 New:
 - `src/model/resolved.ts` - `resolvedItemDecisions`: each item's resolved side (accept/reject) for the middle column, from `finalItemDecision` (the export's per-item rule) with formatting always accepted.
 - `src/model/resolved.test.ts` - Unit tests for `resolved.ts`.
-- `src/ui/resolvedView.ts` - DOM logic of the Resolved column: `prepareResolvedPanel` (element index, saved paragraph children, note references), `applyResolution` (hidden elements, undoable paragraph joins by run, rows, notes hidden or copied as `reconcileNotes` does), `applyRangeOrder` (the counterpart of `planRangeOrder`), `resolvedText` for tests; the HTML shapes it relies on in its header comment. Marks come in task 3.
-- `src/ui/resolvedView.test.ts` - Unit tests (jsdom) on small hand-written HTML: each markup kind × accept/reject, joins and un-joins (DOM equal to a fresh apply after every flip), notes (hidden, copied for a second reference), rows, range order and its undo.
+- `src/ui/resolvedView.ts` - DOM logic of the Resolved column: `prepareResolvedPanel` (element index, saved paragraph children, note references), `applyResolution` (hidden elements, undoable paragraph joins by run, rows, notes hidden or copied as `reconcileNotes` does), `applyRangeOrder` (the counterpart of `planRangeOrder`), `resolvedText` for tests; the HTML shapes it relies on in its header comment. Markers (`insertMarkers`, `resolved-marker--shown`) and decision marks (`applyResolvedDecisions`: decided classes, ✓/✗ on the last shown insertion/deletion and on shown markers).
+- `src/ui/resolvedView.test.ts` - Unit tests (jsdom) on small hand-written HTML: each markup kind × accept/reject, joins and un-joins (DOM equal to a fresh apply after every flip), notes (hidden, copied for a second reference), rows, range order and its undo; marker placement and visibility, decision marks.
 - `test/parity.ts` - The decision states of the text parity checks (all accepted/rejected/undecided, alternating).
 - `src/ui/useViewSettings.test.ts` - Unit tests for the view settings: defaults, merge over stored values, storing a change, bad JSON.
 - `src/ui/useNarrowWindow.ts` - `matchMedia('(max-width: 1024px)')` hook for the two-column fallback.
@@ -18,13 +18,13 @@ New:
 - `src/ui/CommentBubbles.tsx` - The comment bubbles of the Resolved column (slot in the panel's shadow root, positioning and stacking).
 - `src/ui/CommentBubbles.test.tsx` - Unit tests for bubble open/close state and stacking.
 - `e2e/viewSettings.ts` - `pinView(page, settings)`: stores view settings before the page loads (`page.addInitScript`), only when none are stored; `TWO_COLUMNS` = the view the older specs were written for.
-- `e2e/resolved.spec.ts` - e2e: defaults, toggle (remembered after a reload), narrow window, text parity with the export, range divider and tail, click to select, three-way scroll sync and reveal, scroll anchoring; later marks and comments.
+- `e2e/resolved.spec.ts` - e2e: defaults, toggle (remembered after a reload), narrow window, text parity with the export, range divider and tail, click to select, three-way scroll sync and reveal, scroll anchoring; marks (yellow, ✓/✗, dotted), a clickable marker, legend entries; later comments.
 
 Changed:
 - `src/model/decisions.ts` - `finalItemDecision`: the per-item rule, shared by `finalRevisionDecisions` and `resolvedItemDecisions` (export behaviour unchanged).
 - `src/ui/useViewSettings.ts` - `threeColumns` setting; new defaults (outline and changes list collapsed).
-- `src/ui/DocumentPanel.tsx` - `side: 'resolved'`: `prepareResolvedPanel` instead of the per-side join, `applyRangeOrder` in the range effect (divider removed first, put back after), `applyResolution` with only the changed items plus scroll anchoring (`topBlock`, `scrollQuietly` prop), no `applyDecision` yet (task 3), no overview bar, `titleTooltip`; later comment toggle clicks, bubble slot.
-- `src/ui/panel.css` - Rules for `.doc[data-side='resolved']`: `resolved-hidden`, plain `ins`/`del`, out-of-range greying as the left panel; side padding from `--doc-padding-inline`; the decided opacity and ✓/✗ scoped to the side panels. Later: yellow decided marks, ✓/✗, markers, dotted pending mark, comment icon.
+- `src/ui/DocumentPanel.tsx` - `side: 'resolved'`: `prepareResolvedPanel` instead of the per-side join, `applyRangeOrder` in the range effect (divider removed first, put back after), `applyResolution` and `applyResolvedDecisions` with only the changed items in one effect with the scroll anchoring (`topBlock`, `scrollQuietly` prop), no overview bar, `titleTooltip`; later comment toggle clicks, bubble slot.
+- `src/ui/panel.css` - Rules for `.doc[data-side='resolved']`: `resolved-hidden`, plain `ins`/`del`, out-of-range greying as the left panel; side padding from `--doc-padding-inline`; the decided opacity scoped to the side panels; yellow decided marks, ✓/✗ (shared with the side panels, also on markers), markers, dotted pending mark. Later: comment icon.
 - `test/fixtures/make-fixtures.ts` - New fixture pair `paragraph-join-table` (a paragraph whose mark is removed, then one whose mark is inserted, right before a table).
 - `test/fixtures/paragraph-join-table.{original,edited}.docx` - Generated by `make-fixtures.ts`.
 - `src/ui/renderedDocument.ts` - `mergeJoinedParagraphs` joins only into a following paragraph (`PARAGRAPH_BLOCK`), never into a table (task 0.0); now a wrapper of `joinParagraphs(blocks, { losesMark, skipped })`, which also remembers where each merged block went (a long chain was quadratic: ~1 s on the sample's tail under jsdom).
@@ -34,10 +34,11 @@ Changed:
 - `src/ui/scrollSync.ts` / `src/ui/scrollSync.test.ts` - `useScrollSync(panels[], enabled, contentKey)`: any number of panels, block offsets cached per panel and pairs per direction, dropped per panel on resize; hook tests with three mocked panels.
 - `src/ui/reveal.ts` - `revealItem` / `revealBlock` over any number of panels (`revealIn`: the others aligned with the first panel showing the target).
 - `src/ui/InlineChangeCard.tsx` - Reuse its positioning (`changeBox`, GAP, MARGIN) for bubbles; maybe export the constants.
-- `src/ui/Legend.tsx` - Decided / Undecided entries in three-column view.
-- `src/ui/Toolbar.tsx` - Scroll lock tooltip says "the panels" (not "both"); later passes the view to the legend.
+- `src/ui/Legend.tsx` - Decided / Undecided entries in three-column view (`threeColumns` prop).
+- `src/ui/HelpPopover.tsx` - Holds the legend: passes `threeColumns` on, and its note explains the Resolved column's marks in three-column view.
+- `src/ui/Toolbar.tsx` - Scroll lock tooltip says "the panels" (not "both"); passes the view (`threeColumns`) to the help popover's legend.
 - `src/App.tsx` - Third panel and ref (`panelRefs` per view), effective `threeColumns`, `ColumnsToggle`, `resolvedItemDecisions` memo, align the Resolved column with the left panel when shown, three-way scroll/reveal; later bubble state.
-- `src/index.css` - `.panels--three` grid and `--doc-padding-inline: 1rem`, the columns toggle beside the theme toggle, the collapsed sidebars' labels at the top of their strips; later gray formatting group and card edge, legend samples, bubble styles.
+- `src/index.css` - `.panels--three` grid and `--doc-padding-inline: 1rem`, the columns toggle beside the theme toggle, the collapsed sidebars' labels at the top of their strips; gray formatting group (new token `--group-bg`) and card edge (`--divider`), legend samples (and the legend wraps); later bubble styles.
 - `src/ui/ChangesList.test.tsx`, `src/ui/CompareSettingsDialog.test.tsx` - Adjust if they rely on the old view defaults.
 - `test/fixture-pairs.test.ts` - Text parity of the Resolved column with the export on every fixture: five decision states, full documents, detected range, full documents again, each applied incrementally from the previous state.
 - `test/sample-pair.test.ts` - Text parity on the sample (shares its one compare), detected range and none; logs `applyResolution` timings (jsdom).
@@ -322,15 +323,31 @@ are corrected accordingly (leave such a paragraph, don't hide it).
 
 **Depends on:** tasks 1.0, 2.0; `panel.css` decided rules (FR-25), `src/index.css` tokens, `Legend.tsx`, `Toolbar.tsx`.
 
-- [ ] 3.0 Marks and selection in the Resolved column (PRD-11–17, 28, 28a, 28b)
-  - [ ] 3.1 Insert the markers in `prepareResolvedPanel` and set `resolved-marker--shown` in `applyResolution`; extend the unit tests from 1.8 (accepted deletion, rejected insertion, both ends of a move, replacement shows no marker); make sure `resolvedText` and the parity tests still pass.
-  - [ ] 3.2 Resolved `applyDecision`: decided classes plus `change-decided-end` on the last shown element or shown marker; recompute for an item when its decision **or** its resolved side changes. Unit tests.
-  - [ ] 3.3 CSS in `panel.css` for `.doc[data-side='resolved']`: yellow decided background, ✓/✗ (reuse the existing `::after` rules, scoped so the side panels' opacity rule doesn't apply in the middle), markers, dotted pending mark, `change-current` outline on markers. Check both themes.
-  - [ ] 3.4 Make clicks on a shown marker select its item (it has `data-change-id`, so the existing handler should work: verify) and include markers in `firstShownElement`/`changeBox` so reveal and positioning find them.
-  - [ ] 3.5 Legend: `threeColumns` prop through `Toolbar`, the two new entries and their CSS samples.
-  - [ ] 3.6 Gray formatting group and formatting card edge in `src/index.css`, light and dark.
-  - [ ] 3.7 e2e in `e2e/resolved.spec.ts`: accepting/rejecting a change gives the yellow mark and ✓/✗ in the middle column; an accepted deletion leaves a clickable marker that selects the item; undecided changes have no yellow; the legend shows the new entries only in three-column view.
-  - [ ] 3.8 Run typecheck, `npm test`, `npm run test:e2e`.
+**Findings (2026-10-18):**
+- The ✓/✗ goes on the item's last shown insertion or deletion **and** on each shown marker: a
+  decided move shows its text (yellow, ✓/✗) at one end and a marker at the other.
+- A row insertion/deletion's marker goes after its table (as the last child of the table's wrapper
+  `div`): inside the row it would be hidden with the row.
+- Marks don't count a hidden note as hiding an item's elements (the note's visibility is settled
+  after the marks); a note's copies are made again when a decision of an item in them changes.
+- The decision marks are applied in the same effect as the resolution, inside the scroll anchoring:
+  a ✓/✗ can change a line's height (the anchoring e2e check was 1 px off when they were separate).
+- `--surface` is the changes list's own background, so the formatting group got a token of its own
+  (`--group-bg`: `#e6eaef` light, `#262c36` dark). Checked on screenshots in both themes.
+- The legend is in the help popover (`HelpPopover`), so `threeColumns` goes Toolbar → HelpPopover →
+  Legend; the legend now wraps (five entries overflowed the popover).
+- 3.4 needed no code: markers carry `data-change-id`, so the click handler, `firstShownElement`,
+  `changeBox` and the `change-current` outline find them (e2e: clicking a marker selects its item).
+
+- [x] 3.0 Marks and selection in the Resolved column (PRD-11–17, 28, 28a, 28b)
+  - [x] 3.1 Insert the markers in `prepareResolvedPanel` and set `resolved-marker--shown` in `applyResolution`; extend the unit tests from 1.8 (accepted deletion, rejected insertion, both ends of a move, replacement shows no marker); make sure `resolvedText` and the parity tests still pass.
+  - [x] 3.2 Resolved `applyDecision`: decided classes plus `change-decided-end` on the last shown element or shown marker; recompute for an item when its decision **or** its resolved side changes. Unit tests.
+  - [x] 3.3 CSS in `panel.css` for `.doc[data-side='resolved']`: yellow decided background, ✓/✗ (reuse the existing `::after` rules, scoped so the side panels' opacity rule doesn't apply in the middle), markers, dotted pending mark, `change-current` outline on markers. Check both themes.
+  - [x] 3.4 Make clicks on a shown marker select its item (it has `data-change-id`, so the existing handler should work: verify) and include markers in `firstShownElement`/`changeBox` so reveal and positioning find them.
+  - [x] 3.5 Legend: `threeColumns` prop through `Toolbar`, the two new entries and their CSS samples.
+  - [x] 3.6 Gray formatting group and formatting card edge in `src/index.css`, light and dark.
+  - [x] 3.7 e2e in `e2e/resolved.spec.ts`: accepting/rejecting a change gives the yellow mark and ✓/✗ in the middle column; an accepted deletion leaves a clickable marker that selects the item; undecided changes have no yellow; the legend shows the new entries only in three-column view.
+  - [x] 3.8 Run typecheck, `npm test`, `npm run test:e2e`.
 
 ### 4.0 Comment bubbles in the Resolved column
 

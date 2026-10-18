@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ResolvedSide } from '../model/resolved';
-import { RESOLVED_HIDDEN, applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from './resolvedView';
+import type { Decision } from '../model/decisions';
+import { MARKER_SHOWN, RESOLVED_HIDDEN, applyRangeOrder, applyResolution, applyResolvedDecisions, prepareResolvedPanel, resolvedText } from './resolvedView';
 
 // Decorated redline HTML in the shapes of the fixtures (src/ui/resolvedView.ts): r a replacement
 // with shared edges, i an insertion, d a deletion, j a removed paragraph mark (the next paragraph
@@ -138,6 +139,76 @@ describe('applyResolution', () => {
     expect(resolved.wrapper.querySelectorAll('[data-anchor="n"]')).toHaveLength(1);
     expect(text([['o', 'accept'], ['p', 'reject']], ['o', 'p'])).toEqual(['One.', 'Two.']);
     expect(text([['o', 'accept'], ['p', 'accept']], ['p'])).toEqual(['One.', 'Two.', 'The note.']);
+  });
+});
+
+/** The shown markers, as `item:side`. */
+const shownMarkers = (resolved: ReturnType<typeof panel>) =>
+  [...resolved.wrapper.querySelectorAll<HTMLElement>(`.${MARKER_SHOWN}`)].map((marker) => `${marker.dataset.changeId}:${marker.dataset.for}`);
+
+describe('markers', () => {
+  it('follows the last deletion and the last insertion of each item, the note deletion in the body', () => {
+    const resolved = panel();
+    const markers = (id: string) => resolved.markers.get(id)!.map((marker) => `${marker.dataset.for} after ${marker.previousElementSibling?.localName ?? marker.parentElement!.localName}`);
+    expect(markers('r')).toEqual(['del after del', 'ins after ins']);
+    expect(markers('m')).toEqual(['del after del', 'ins after ins']);
+    expect(markers('d')).toEqual(['del after del']);
+    // In the body, after the reference.
+    expect(resolved.markers.get('n')).toHaveLength(1);
+    expect(resolved.markers.get('n')![0]!.closest('section')).toBeNull();
+    // A row's after its table.
+    expect(resolved.markers.get('ri')![0]!.previousElementSibling!.localName).toBe('table');
+    expect(resolved.markers.has('j')).toBe(false);
+  });
+
+  it('is shown where a decision leaves no text, and at the end a move leaves', () => {
+    const resolved = panel();
+    applyResolution(resolved, all('accept'));
+    expect(shownMarkers(resolved)).toEqual(['d:del', 'm:del', 'w:del', 'rd:del', 'n:del']);
+    applyResolution(resolved, all('reject'), ITEMS);
+    expect(shownMarkers(resolved)).toEqual(['i:ins', 'm:ins', 'v:ins', 'ri:ins']);
+    // The marker of an accepted whole-paragraph deletion moves with the paragraph's content.
+    applyResolution(resolved, new Map(all('reject')).set('w', 'accept'), ['w']);
+    const marker = resolved.markers.get('w')![0]!;
+    expect(marker.classList.contains(MARKER_SHOWN)).toBe(true);
+    expect(marker.closest('[data-anchor]')!.getAttribute('data-anchor')).toBe('v');
+  });
+
+  it('adds no text', () => {
+    const resolved = panel();
+    applyResolution(resolved, all('accept'));
+    expect(resolvedText(resolved.wrapper)).toContain('A word.');
+  });
+});
+
+describe('applyResolvedDecisions', () => {
+  const ends = (resolved: ReturnType<typeof panel>) =>
+    [...resolved.wrapper.querySelectorAll<HTMLElement>('.change-decided-end')].map((element) =>
+      `${element.dataset.changeId}:${element.classList.contains('resolved-marker') ? 'marker' : element.localName}`,
+    );
+
+  it('marks decided items, with the ✓/✗ on the last shown element and on shown markers', () => {
+    const resolved = panel();
+    const decisions: Record<string, Decision> = { r: 'accepted', d: 'accepted', i: 'rejected', m: 'rejected' };
+    applyResolution(resolved, new Map([['i', 'reject'], ['m', 'reject']]));
+    applyResolvedDecisions(resolved, decisions);
+    expect(ends(resolved)).toEqual(['r:ins', 'i:marker', 'd:marker', 'm:del', 'm:marker']);
+    expect([...resolved.wrapper.querySelectorAll('[data-change-id="r"]')].every((element) => element.classList.contains('change-accepted'))).toBe(true);
+    expect(resolved.wrapper.querySelectorAll('.change-accepted:not([data-change-id="r"], [data-change-id="d"])')).toHaveLength(0);
+  });
+
+  it('moves the ✓/✗ when the resolved side changes, and drops it with the decision', () => {
+    const resolved = panel();
+    applyResolution(resolved, all('accept'));
+    applyResolvedDecisions(resolved, { d: 'accepted' }, ['d']);
+    expect(ends(resolved)).toEqual(['d:marker']);
+    applyResolution(resolved, new Map(all('accept')).set('d', 'reject'), ['d']);
+    applyResolvedDecisions(resolved, { d: 'rejected' }, ['d']);
+    expect(ends(resolved)).toEqual(['d:del']);
+    expect(shownMarkers(resolved)).not.toContain('d:del');
+    applyResolvedDecisions(resolved, {}, ['d']);
+    expect(ends(resolved)).toEqual([]);
+    expect(resolved.wrapper.querySelectorAll('.change-rejected')).toHaveLength(0);
   });
 });
 

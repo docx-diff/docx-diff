@@ -410,6 +410,7 @@ export function App() {
             navigationDisabled={order.length === 0}
             helpOpen={helpOpen}
             onHelpOpenChange={setHelpOpen}
+            threeColumns={threeColumns}
           />
         )}
         <button

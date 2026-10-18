@@ -18,6 +18,8 @@ interface Props {
   navigationDisabled: boolean;
   helpOpen: boolean;
   onHelpOpenChange: (open: boolean) => void;
+  /** The view shown (two or three columns), for the legend. */
+  threeColumns: boolean;
 }
 
 /** The toolbar above the panels once a comparison is shown. */
@@ -53,7 +55,7 @@ export function Toolbar(props: Props) {
         ✕ Close review
       </button>
       <span className="toolbar__separator" />
-      <HelpPopover open={props.helpOpen} onOpenChange={props.onHelpOpenChange} />
+      <HelpPopover open={props.helpOpen} onOpenChange={props.onHelpOpenChange} threeColumns={props.threeColumns} />
     </div>
   );
 }

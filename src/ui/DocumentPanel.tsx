@@ -9,7 +9,7 @@ import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './O
 import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
 import { markCommon, markItems, mergeJoinedParagraphs, type RenderedDocument } from './renderedDocument';
-import { applyRangeOrder, applyResolution, prepareResolvedPanel, type ResolvedPanel } from './resolvedView';
+import { applyRangeOrder, applyResolution, applyResolvedDecisions, prepareResolvedPanel, type ResolvedPanel } from './resolvedView';
 
 /** The Original, the Edited, or the Resolved column between them (the document as the export resolves it). */
 export type PanelSide = 'left' | 'right' | 'resolved';
@@ -205,33 +205,34 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle('doc--picking', onPickParagraph !== undefined);
   }, [onPickParagraph, contentVersion]);
 
-  // The Resolved column's content: only the items whose resolved side changed are touched. The
-  // text at the top of the panel stays where it is when text above it appears or disappears.
+  // The Resolved column's content and marks: only the items whose resolved side or decision
+  // changed are touched. The text at the top of the panel stays where it is when text above it
+  // appears or disappears (or a ✓ / ✗ rewraps a line).
   useLayoutEffect(() => {
     const handle = resolvedRef.current;
     const scroller = scrollerRef.current;
     if (!handle || !scroller) return;
     const previous = appliedSides.current;
-    let changed: string[] | undefined;
-    if (previous) {
-      changed = [...new Set([...previous.keys(), ...resolvedSides.keys()])].filter((id) => (previous.get(id) ?? 'accept') !== (resolvedSides.get(id) ?? 'accept'));
-      if (changed.length === 0) {
-        appliedSides.current = resolvedSides;
-        return;
-      }
-    }
-    const anchor = previous && scroller.scrollTop > 0 ? topBlock(scroller, handle.wrapper) : null;
-    applyResolution(handle, resolvedSides, changed);
+    const sidesChanged = previous
+      ? [...new Set([...previous.keys(), ...resolvedSides.keys()])].filter((id) => (previous.get(id) ?? 'accept') !== (resolvedSides.get(id) ?? 'accept'))
+      : undefined;
+    const previousDecisions = appliedDecisions.current;
+    const decisionsChanged = [...new Set([...Object.keys(previousDecisions), ...Object.keys(decisions)])].filter((id) => previousDecisions[id] !== decisions[id]);
     appliedSides.current = resolvedSides;
+    appliedDecisions.current = decisions;
+    if (sidesChanged?.length === 0 && decisionsChanged.length === 0) return;
+    const anchor = previous && scroller.scrollTop > 0 ? topBlock(scroller, handle.wrapper) : null;
+    if (!sidesChanged || sidesChanged.length > 0) applyResolution(handle, resolvedSides, sidesChanged);
+    applyResolvedDecisions(handle, decisions, decisionsChanged);
     if (anchor && anchor.block.getClientRects().length > 0) {
       const offset = anchor.block.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
       const top = scroller.scrollTop + offset - anchor.offset;
       if (scrollQuietly.current) scrollQuietly.current(scroller, top);
       else scroller.scrollTop = top;
     }
-  }, [resolvedSides, contentVersion]);
+  }, [resolvedSides, decisions, contentVersion]);
 
-  // Decisions: only the items whose decision changed are touched.
+  // Decisions in the side panels: only the items whose decision changed are touched.
   useLayoutEffect(() => {
     if (side === 'resolved') return;
     const previous = appliedDecisions.current;

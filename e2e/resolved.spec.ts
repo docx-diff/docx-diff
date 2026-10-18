@@ -172,3 +172,66 @@ test("the collapsed sidebars' labels sit at the top of their strips", async ({ p
     expect(label).toBeLessThan(20);
   }
 });
+
+/** An element's background colour, and the content of its `::after` (the ✓/✗). */
+const marks = (element: Element) => ({
+  background: getComputedStyle(element).backgroundColor,
+  after: getComputedStyle(element, '::after').content,
+  decoration: getComputedStyle(element).textDecorationStyle,
+});
+
+const YELLOW = 'rgb(255, 248, 197)';
+const NONE = 'rgba(0, 0, 0, 0)';
+
+test('decided changes are yellow in the Resolved column, with ✓ or ✗; undecided ones are dotted', async ({ page }) => {
+  await openAndCompare(page);
+  const middle = page.getByTestId('panel-resolved');
+  await page.getByRole('button', { name: /Changes · \d+ undecided/ }).click();
+  // Accept the replacement (two → 2), reject the insertion ("Added.").
+  await page.keyboard.press('j');
+  await page.keyboard.press('a');
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('changes-totals')).toContainText('1 accepted, 1 rejected, 3 undecided');
+
+  const accepted = middle.locator('ins.change-accepted', { hasText: '2' });
+  expect(await accepted.evaluate(marks)).toMatchObject({ background: YELLOW, after: '"✓"' });
+  // The rejected insertion leaves no text: its marker shows the ✗.
+  await expect(middle.locator('ins', { hasText: 'Added.' })).toBeHidden();
+  const marker = middle.locator('.resolved-marker.change-rejected');
+  await expect(marker).toBeVisible();
+  expect(await marker.evaluate(marks)).toMatchObject({ background: YELLOW, after: '"✗"' });
+  // Undecided: no yellow, no icon, a dotted underline.
+  expect(await middle.locator('ins', { hasText: '11' }).evaluate(marks)).toEqual({ background: NONE, after: 'none', decoration: 'dotted' });
+  // The side panels keep their marks.
+  expect(await page.getByTestId('panel-right').locator('ins.change-accepted', { hasText: '2' }).evaluate((element) => getComputedStyle(element).opacity)).toBe('0.5');
+});
+
+test('a deletion leaves a marker in the Resolved column that selects it when clicked', async ({ page }) => {
+  await openAndCompare(page);
+  const middle = page.getByTestId('panel-resolved');
+  // The deleted paragraph is undecided (shown as accepted): a dotted placeholder where it was.
+  await expect(middle.getByText('Seven eight nine.')).toBeHidden();
+  const marker = middle.locator('.resolved-marker--shown');
+  await expect(marker).toHaveCount(1);
+  expect(await marker.evaluate(marks)).toMatchObject({ background: NONE, after: '""' });
+  await marker.click();
+  await expect(marker).toHaveClass(/change-current/);
+  await expect(page.getByTestId('panel-right').getByTestId('inline-change-card')).toContainText('Seven eight nine.');
+  await page.keyboard.press('a');
+  expect(await marker.evaluate(marks)).toMatchObject({ background: YELLOW, after: '"✓"' });
+});
+
+test('the legend shows the Resolved column marks only in three-column view', async ({ page }) => {
+  await openAndCompare(page);
+  const help = page.getByRole('button', { name: 'Help' });
+  const legend = page.getByRole('list', { name: 'Legend' });
+  await help.click();
+  await expect(legend.getByText('Decided', { exact: true })).toBeVisible();
+  await expect(legend.getByText('Undecided')).toBeVisible();
+  await expect(legend.getByRole('listitem').filter({ hasText: /^Decided$/ })).toHaveAttribute('title', 'In the Resolved column');
+  await help.click();
+  await page.getByRole('button', { name: 'Show two columns' }).click();
+  await help.click();
+  await expect(legend.getByText('Deleted')).toBeVisible();
+  await expect(legend.getByText('Decided', { exact: true })).toHaveCount(0);
+});

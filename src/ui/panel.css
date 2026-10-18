@@ -107,13 +107,14 @@
   border-radius: 2px;
 }
 
-/* Decided changes in the side panels (FR-25): dimmed, with ✓ or ✗ after the last insertion or
-   deletion the panel shows. Ignored changes are plain text whatever their decision. */
+/* Decided changes (FR-25): ✓ or ✗ after the last insertion or deletion the panel shows (and on the
+   Resolved column's shown markers). The side panels dim them; the Resolved column shows the result
+   at full strength, on yellow (below). Ignored changes are plain text whatever their decision. */
 .doc:is([data-side='left'], [data-side='right']) :is(ins, del):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range) {
   opacity: 0.5;
 }
 
-.doc:is([data-side='left'], [data-side='right']) :is(ins, del).change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc :is(ins, del, .resolved-marker).change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   display: inline-block;
   margin-left: 0.15em;
   font-size: 0.75em;
@@ -121,14 +122,46 @@
   text-decoration: none;
 }
 
-.doc:is([data-side='left'], [data-side='right']) .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc .change-accepted.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✓';
   color: var(--success);
 }
 
-.doc:is([data-side='left'], [data-side='right']) .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
+.doc .change-rejected.change-decided-end:not(.change-ignored, .change-as-formatting, .change-out-of-range)::after {
   content: '✗';
   color: var(--danger);
+}
+
+/* The Resolved column's marks (PRD-11–14), only on changes offered for decision. Decided: yellow.
+   Undecided: a dotted underline. A marker stands where a decision left no text: its ✓/✗ on
+   yellow, or a small dotted box while undecided. */
+.doc[data-side='resolved'] :is(ins, del, .resolved-marker):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range, .change-common) {
+  background: var(--warning-bg);
+}
+
+.doc[data-side='resolved'] :is(ins, del)[data-change-id]:not(.change-accepted, .change-rejected, .change-ignored, .change-as-formatting, .change-out-of-range, .change-common) {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 0.2em;
+}
+
+.doc .resolved-marker {
+  display: none;
+}
+
+.doc[data-side='resolved'] .resolved-marker--shown:not(.change-ignored, .change-as-formatting, .change-out-of-range) {
+  display: inline;
+  padding: 0 0.1em;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.doc[data-side='resolved'] .resolved-marker--shown:not(.change-accepted, .change-rejected)::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.75em;
+  border: 1px dotted var(--muted);
+  border-radius: 2px;
 }
 
 /* Changes can be clicked to select them in the list. */

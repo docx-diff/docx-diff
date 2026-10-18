@@ -7,10 +7,12 @@ const KEY_NAMES: Record<string, string> = { ArrowDown: '↓', ArrowUp: '↑' };
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The view shown: the legend has the Resolved column's marks in three-column view. */
+  threeColumns: boolean;
 }
 
 /** Help button with a popover listing the keyboard shortcuts and the legend (FR-34). */
-export function HelpPopover({ open, onOpenChange }: Props) {
+export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -60,10 +62,11 @@ export function HelpPopover({ open, onOpenChange }: Props) {
             ))}
           </dl>
           <h2>Colours</h2>
-          <Legend />
+          <Legend threeColumns={threeColumns} />
           <p className="help__note">
             Formatting changes are not marked in the panels; review them in the formatting group of the changes list (its Fmt button shows it). Accepted
             changes are dimmed with ✓, rejected ones with ✗.
+            {threeColumns && ' The Resolved column shows the result: decided changes on yellow with ✓ or ✗, undecided ones dotted.'}
           </p>
         </div>
       )}

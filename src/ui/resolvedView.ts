@@ -28,12 +28,23 @@
 //   wrapped in a `div` without `data-anchor`. Notes follow in `section.footnotes` and
 //   `section.endnotes`.
 // - `.rev-del-marker`/`.rev-move-from-marker` appear on no fixture nor the sample.
+//
+// Marks (PRD-11–14): decided items get `change-accepted`/`change-rejected` (yellow in panel.css) and
+// `change-decided-end` (✓/✗) on their last shown insertion or deletion and on their shown markers. A marker
+// (`span.resolved-marker`, no text) follows each item's last deletion and last insertion; it is shown
+// where the result drops that side and nothing of the item is left to see, and for moves at the end
+// the decision removed.
+import type { Decision } from '../model/decisions';
 import type { ResolvedSide } from '../model/resolved';
 import { PARAGRAPH_BLOCK, joinParagraphs } from './renderedDocument';
 
 export const RESOLVED_HIDDEN = 'resolved-hidden';
 const MERGED = 'merged-into-next';
 const NOTE = 'li[id^="fn-"], li[id^="en-"]';
+const NOTES = 'section.footnotes, section.endnotes';
+const MARKER = 'resolved-marker';
+export const MARKER_SHOWN = 'resolved-marker--shown';
+const DECIDED_END = 'change-decided-end';
 const DIVIDER = 'range-divider';
 const DEL_MARKER = '.rev-del-marker, .rev-move-from-marker';
 /** Not text of the document: list labels, back links, Word's reference marks (no `w:t`), our own additions. */
@@ -47,8 +58,14 @@ const TEXT_NODE = 3;
 
 export interface ResolvedPanel {
   wrapper: HTMLElement;
-  /** Elements of each change, by item id. */
+  /** Elements of each change, by item id (without the markers). */
   elements: Map<string, HTMLElement[]>;
+  /** Each item's markers: after its last deletion and its last insertion. */
+  markers: Map<string, HTMLElement[]>;
+  /** The items that are moves. */
+  moves: Set<string>;
+  /** The decisions last applied (`applyResolvedDecisions`). */
+  decisions: Readonly<Record<string, Decision>>;
   /** Each paragraph block's own children, to undo joins. */
   children: Map<HTMLElement, Node[]>;
   /** The resolved sides last applied (an absent item is accepted). */
@@ -66,9 +83,54 @@ export interface ResolvedPanel {
   itemNotes: Map<string, Set<Element>>;
 }
 
+const isChange = (element: Element) => element.localName === 'ins' || element.localName === 'del';
+
 /**
- * Prepares a panel copy of the rendered document: indexes the elements by item and saves each
- * paragraph's children. The ¶ glyphs are hidden for good.
+ * Puts a marker after the item's element; for a row insertion or deletion after its table, since
+ * the row itself is hidden when the marker is needed.
+ */
+function placeMarker(element: HTMLElement, marker: HTMLElement, itemId: string): void {
+  const row = element.closest<HTMLElement>('tr.rev-row-ins, tr.rev-row-del');
+  if (row?.dataset.changeId !== itemId) {
+    element.after(marker);
+    return;
+  }
+  const table = row.closest('table')!;
+  const wrapper = table.parentElement;
+  if (wrapper?.localName === 'div' && !wrapper.hasAttribute('data-anchor')) wrapper.append(marker);
+  else table.after(marker);
+}
+
+/**
+ * The markers of each item that has insertions or deletions. An item in the body and a note (a
+ * whole-note deletion) gets them in the body: the note is hidden when it goes.
+ */
+function insertMarkers(elements: ReadonlyMap<string, HTMLElement[]>): Map<string, HTMLElement[]> {
+  const markers = new Map<string, HTMLElement[]>();
+  for (const [id, list] of elements) {
+    const changes = list.filter(isChange);
+    const inBody = changes.filter((element) => !element.closest(NOTES));
+    const where = inBody.length > 0 ? inBody : changes;
+    const own: HTMLElement[] = [];
+    for (const kind of ['del', 'ins'] as const) {
+      const last = where.filter((element) => element.localName === kind).pop();
+      if (!last) continue;
+      const marker = last.ownerDocument.createElement('span');
+      marker.className = MARKER;
+      marker.dataset.changeId = id;
+      marker.dataset.for = kind;
+      placeMarker(last, marker, id);
+      own.push(marker);
+    }
+    if (own.length > 0) markers.set(id, own);
+  }
+  return markers;
+}
+
+/**
+ * Prepares a panel copy of the rendered document: indexes the elements by item, inserts the
+ * markers and saves each paragraph's children (with the markers, so that they move with joins and
+ * come back with them). The ¶ glyphs are hidden for good.
  */
 export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
   const elements = new Map<string, HTMLElement[]>();
@@ -85,6 +147,9 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
     if (owner) elements.get(owner.dataset.changeId!)!.push(element);
     else element.classList.add(RESOLVED_HIDDEN);
   }
+  const markers = insertMarkers(elements);
+  const moves = new Set<string>();
+  for (const [id, list] of elements) if (list.some((element) => element.matches('.rev-move-from, .rev-move-to'))) moves.add(id);
   const children = new Map<HTMLElement, Node[]>();
   for (const block of wrapper.querySelectorAll<HTMLElement>(PARAGRAPH_BLOCK)) children.set(block, [...block.childNodes]);
   const noteReferences = new Map<Element, Element[]>();
@@ -105,7 +170,7 @@ export function prepareResolvedPanel(wrapper: HTMLElement): ResolvedPanel {
     // Every change around the reference.
     for (let around = reference.parentElement?.closest('[data-change-id]'); around; around = around.parentElement?.closest('[data-change-id]')) addNote(around, note);
   }
-  return { wrapper, elements, children, sides: new Map(), moved: [], pulledMarks: new Map(), noteReferences, itemNotes };
+  return { wrapper, elements, markers, moves, decisions: {}, children, sides: new Map(), moved: [], pulledMarks: new Map(), noteReferences, itemNotes };
 }
 
 /** Whether the element is hidden when its item resolves to `side`; decided by the element alone. */
@@ -233,11 +298,66 @@ export function applyResolution(handle: ResolvedPanel, sides: ReadonlyMap<string
   const runs = runsOf(handle, blocks);
   restore(handle, runs);
   join(handle, runs);
+  updateMarks(handle, ids);
   for (const run of runs) for (const block of run) {
     const note = block.closest(NOTE);
     if (note) notes.add(note);
   }
   for (const note of notes) showNote(handle, note);
+}
+
+/**
+ * Shows the decisions (PRD-11, 12): `change-accepted`/`change-rejected` on the items' elements and
+ * markers, and `change-decided-end` (✓/✗) on the last insertion or deletion shown and on the shown
+ * markers. With `changed`, only those
+ * items are updated; without, all. `applyResolution` keeps the marks of the items it changes.
+ */
+export function applyResolvedDecisions(handle: ResolvedPanel, decisions: Readonly<Record<string, Decision>>, changed?: Iterable<string>): void {
+  handle.decisions = decisions;
+  const ids = changed ? [...changed] : [...handle.elements.keys()];
+  updateMarks(handle, ids);
+  // A note's copy shows the note's marks as they were copied.
+  const notes = new Set<Element>();
+  for (const id of ids) for (const note of handle.itemNotes.get(id) ?? []) if (note.nextElementSibling?.classList.contains(NOTE_COPY)) notes.add(note);
+  for (const note of notes) showNote(handle, note);
+}
+
+/**
+ * Whether the element is shown, as far as its item's marks go: a hidden note doesn't count (its
+ * marks are hidden with it, and the note's visibility comes after the marks).
+ */
+function shownForMarks(element: Element): boolean {
+  const hidden = element.closest(`.${RESOLVED_HIDDEN}`);
+  return !hidden || hidden.matches(NOTE);
+}
+
+const follows = (element: Node, other: Node) => (other.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+/** The items' markers and decision marks, for the sides and decisions last applied. */
+function updateMarks(handle: ResolvedPanel, ids: Iterable<string>): void {
+  for (const id of ids) {
+    const elements = handle.elements.get(id) ?? [];
+    const markers = handle.markers.get(id) ?? [];
+    const side = sideOf(handle, id);
+    const changes = elements.filter((element) => isChange(element) && shownForMarks(element));
+    for (const marker of markers) {
+      const sideHidden = marker.dataset.for === 'del' ? side === 'accept' : side === 'reject';
+      marker.classList.toggle(MARKER_SHOWN, sideHidden && (handle.moves.has(id) || changes.length === 0));
+    }
+    const decision = handle.decisions[id];
+    for (const element of [...elements, ...markers]) {
+      element.classList.toggle('change-accepted', decision === 'accepted');
+      element.classList.toggle('change-rejected', decision === 'rejected');
+      element.classList.remove(DECIDED_END);
+    }
+    if (!decision) continue;
+    // The ✓/✗ after the item's text, and on each shown marker (a move shows both: its text at one
+    // end, a marker at the other).
+    let last: HTMLElement | null = null;
+    for (const element of changes) if (!last || follows(element, last)) last = element;
+    last?.classList.add(DECIDED_END);
+    for (const marker of markers) if (marker.classList.contains(MARKER_SHOWN)) marker.classList.add(DECIDED_END);
+  }
 }
 
 /**
