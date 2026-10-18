@@ -584,6 +584,7 @@ export function App() {
                 controlRef={side === 'left' ? leftControl : side === 'right' ? rightControl : middleControl}
                 side={side}
                 theme={theme}
+                leftAligned={view.leftAligned}
                 title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
                 titleTooltip={side === 'resolved' ? 'Shows the resolved text; formatting as in the Edited document' : undefined}
                 headerControls={

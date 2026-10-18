@@ -118,6 +118,10 @@ to ~300 pages; no backend.
 
 20. The documents as **continuous text** (no page boxes), with readable formatting: headings,
     paragraph styles, bold/italic, lists, tables, footnotes (at the end).
+20a. A **Display** option in Compare settings, on by default: the text in every column is shown
+    aligned to the left (the start of the line), never justified, as justified text reads poorly in
+    narrow columns. Centred and right-aligned text keep their alignment. Kept in the browser with
+    the other view settings.
 21. Left panel: deleted text red, struck through; right panel: inserted text blue, underlined; moves
     their own colour; a small legend. Changes are marked within the text only, with no rules at the
     paragraph edge. Formatting changes have **no mark** in the panels (in a restyled document nearly

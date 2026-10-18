@@ -300,7 +300,13 @@ test.describe('two columns', () => {
     test.skip(!samplesAvailable, 'sample documents not present');
     const { original, edited } = readSamples();
     await openAndCompare(page, original, edited);
+    // The Display setting (on by default): no justified text, also once the joined paragraphs are shown one by one.
+    const justified = (side: 'left' | 'right') =>
+      page.getByTestId(`panel-${side}`).evaluate((host) => [...host.shadowRoot!.querySelectorAll('p, h1, h2, h3')].filter((block) => getComputedStyle(block).textAlign === 'justify').length);
+    expect(await justified('left')).toBe(0);
+    expect(await justified('right')).toBe(0);
     await startEditing(page);
+    expect(await justified('right')).toBe(0);
     const right = page.getByTestId('panel-right');
     // The empty paragraph it was joined into is hidden while editing.
     await expect(right.locator('p.unjoined-empty').first()).toBeHidden();

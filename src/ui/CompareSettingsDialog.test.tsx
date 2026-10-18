@@ -22,12 +22,14 @@ describe('CompareSettingsDialog', () => {
     );
     expect(screen.getByRole('dialog', { name: 'Compare settings' })).toBeTruthy();
     const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    expect(boxes.map((box) => box.checked)).toEqual([true, true, true, true]);
+    expect(boxes.map((box) => box.checked)).toEqual([true, true, true, true, true]);
 
     fireEvent.click(screen.getByLabelText(/Ignore dash changes/));
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_COMPARE_SETTINGS, ignoreDashes: false });
     fireEvent.click(screen.getByLabelText(/Show the change card/));
     expect(onViewChange).toHaveBeenCalledWith({ inlineCard: false });
+    fireEvent.click(screen.getByLabelText(/Align the text to the left/));
+    expect(onViewChange).toHaveBeenCalledWith({ leftAligned: false });
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.keyDown(window, { key: 'Escape' });

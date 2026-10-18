@@ -239,6 +239,13 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   into 0.72–0.95 and backgrounds lighter than 0.38 darkened into 0.2–0.38, hue kept, vivid ones less;
   so text stays apart from the shading behind it). Switching only swaps the style text: the panel's
   content is not rebuilt.
+- **Left-aligned text** (FR-20a, a Display setting, on by default): the converter writes Word's
+  justified alignment as `text-align: justify` (stylesheet or `style` attribute); `documentLook` in
+  `DocumentPanel` rewrites it to `text-align: start` together with the dark-mode colours, in every
+  panel, before the content goes into the shadow root (centred and right-aligned text are left as
+  they are). Toggling it swaps the style text like the theme. Without it, the Edited panel's
+  alignment changed when Editable showed joined paragraphs one by one: a joined paragraph takes the
+  alignment of the paragraph it joins into, and the sample's are styled differently.
 - The panel and list scrollers have `contain: strict`: without it, every list change laid out the long
   panel documents again.
 

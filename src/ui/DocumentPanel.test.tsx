@@ -176,3 +176,39 @@ describe('DocumentPanel editing', () => {
     expect(options.onEdit).toHaveBeenCalledOnce();
   });
 });
+
+describe('DocumentPanel alignment', () => {
+  afterEach(cleanup);
+
+  it('shows justified paragraphs aligned to the start while leftAligned, keeping centred ones', () => {
+    const comparison = smallComparison();
+    const body = comparison.document.body.cloneNode(true) as HTMLElement;
+    body.querySelector('[data-anchor="p"]')!.setAttribute('style', 'text-align: justify; color: #000000');
+    body.querySelector('[data-anchor="q"]')!.setAttribute('style', 'text-align:center');
+    const document: RenderedDocument = { ...comparison.document, body, css: '.docx-Normal { text-align: justify; }' };
+    const element = (leftAligned: boolean) => (
+      <DocumentPanel
+        side="left"
+        theme="light"
+        leftAligned={leftAligned}
+        title="t"
+        document={document}
+        ignored={new Set()}
+        settings={DEFAULT_COMPARE_SETTINGS}
+        decisions={{}}
+        currentItemId={null}
+        onChangeClick={() => {}}
+        overviewItems={[]}
+        outOfRangeItems={new Set()}
+      />
+    );
+    const view = render(element(true));
+    const root = view.getByTestId('panel-left').shadowRoot!;
+    expect(root.querySelector('style')!.textContent).toBe('.docx-Normal { text-align: start; }');
+    expect(blockIn(root, 'p').getAttribute('style')).toBe('text-align: start; color: #000000');
+    expect(blockIn(root, 'q').getAttribute('style')).toBe('text-align:center');
+    view.rerender(element(false));
+    expect(root.querySelector('style')!.textContent).toBe('.docx-Normal { text-align: justify; }');
+    expect(blockIn(root, 'p').getAttribute('style')).toBe('text-align: justify; color: #000000');
+  });
+});

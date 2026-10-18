@@ -10,9 +10,11 @@ export interface ViewSettings {
   outline: boolean;
   /** The Resolved column is shown between the Original and the Edited (FR-25c). */
   threeColumns: boolean;
+  /** Justified paragraphs are shown aligned to the start, in every panel (FR-20a). */
+  leftAligned: boolean;
 }
 
-export const DEFAULT_VIEW_SETTINGS: ViewSettings = { inlineCard: true, changesList: false, outline: false, threeColumns: true };
+export const DEFAULT_VIEW_SETTINGS: ViewSettings = { inlineCard: true, changesList: false, outline: false, threeColumns: true, leftAligned: true };
 
 const STORAGE_KEY = 'docx-diff:view-settings';
 

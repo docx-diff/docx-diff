@@ -74,6 +74,13 @@ export function CompareSettingsDialog({ settings, onChange, view, onViewChange, 
             <small>The selected change's card, with Accept and Reject, appears under the change in the right panel.</small>
           </span>
         </label>
+        <label className="modal__option">
+          <input type="checkbox" checked={view.leftAligned} onChange={(event) => onViewChange({ leftAligned: event.target.checked })} />
+          <span>
+            Align the text to the left, never justified
+            <small>In all columns. Justified text reads poorly in narrow columns; centred and right-aligned text stays so.</small>
+          </span>
+        </label>
         <div className="modal__actions">
           <button type="button" className="button" onClick={onClose}>
             Close

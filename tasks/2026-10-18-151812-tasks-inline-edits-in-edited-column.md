@@ -491,6 +491,12 @@ Update the file after completing each sub-task, not just after completing an ent
   and joins it again; `replaceResolvedBlock` assigns id-less ¶ glyphs / deletion markers as
   `prepareResolvedPanel` does and uses `wrapper.contains` instead of `isConnected`. Wholly deleted
   paragraphs and moves stay uneditable. Task 5's revert/undo go through the same `replaceBlock`.
+- **Display setting "left-aligned" (FR-20a, user request, 2026-10-18):** the Edited panel's
+  alignment changed when Editable unjoined paragraphs (a joined paragraph takes its target's
+  alignment). `ViewSettings.leftAligned` (default on, checkbox in Compare settings → Display);
+  `documentLook` in `DocumentPanel.tsx` rewrites `text-align: justify` to `start` with the dark-mode
+  colours, in all panels. Files: `useViewSettings.ts`, `CompareSettingsDialog.tsx`, `App.tsx`,
+  `DocumentPanel.tsx` (+ their tests), `docs/requirements.md` (FR-20a), `docs/architecture.md`.
 - CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
   caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 

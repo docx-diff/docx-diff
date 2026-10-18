@@ -43,6 +43,8 @@ interface Props {
   side: PanelSide;
   /** In dark mode the document's own colours are made dark too (darkColors.ts). */
   theme: Theme;
+  /** Justified paragraphs are shown aligned to the start (the Display setting). */
+  leftAligned?: boolean;
   title: string;
   /** The title's tooltip, when not the title itself. */
   titleTooltip?: string;
@@ -95,9 +97,16 @@ interface Props {
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
-/** The document's own colours (CSS or a `style` attribute) for the theme (darkColors.ts). */
-function themedColors(css: string, theme: Theme): string {
-  return theme === 'dark' ? darkColors(css) : css;
+const JUSTIFIED = /text-align\s*:\s*justify/gi;
+
+/**
+ * The document's own look (CSS or a `style` attribute) as the panel shows it: its colours for the
+ * theme (darkColors.ts), and justified paragraphs aligned to the start when `leftAligned` (narrow
+ * columns read better without justification; centred and right-aligned text stays so).
+ */
+function documentLook(css: string, theme: Theme, leftAligned: boolean): string {
+  const aligned = leftAligned ? css.replace(JUSTIFIED, 'text-align: start') : css;
+  return theme === 'dark' ? darkColors(aligned) : aligned;
 }
 
 const NO_SIDES: ReadonlyMap<string, ResolvedSide> = new Map();
@@ -193,6 +202,10 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const [contentVersion, setContentVersion] = useState(0);
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  const leftAligned = props.leftAligned ?? false;
+  const leftAlignedRef = useRef(leftAligned);
+  leftAlignedRef.current = leftAligned;
+  const look = (css: string) => documentLook(css, themeRef.current, leftAlignedRef.current);
   /** The props a block replacement reads (it runs outside rendering). */
   const latest = useRef({ ignored, settings, outOfRangeItems });
   latest.current = { ignored, settings, outOfRangeItems };
@@ -236,7 +249,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     if (swapped.length === 0) return false;
 
     const styled = swapped.flatMap((block) => Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]));
-    if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+    for (const [element, style] of styled) element.setAttribute('style', look(style));
     styledRef.current = [...styledRef.current, ...styled];
     const { ignored, settings, outOfRangeItems } = latest.current;
     for (const block of swapped) {
@@ -305,7 +318,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
           const block = wrapper.ownerDocument.importNode(source, true) as HTMLElement;
           block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
           const styled = Array.from(within(block, '[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
-          if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+          for (const [element, style] of styled) element.setAttribute('style', look(style));
           styledRef.current = [...styledRef.current.filter(([element]) => !old.contains(element)), ...styled];
           const { ignored, settings, outOfRangeItems } = latest.current;
           markItems(block, ignored, 'change-ignored');
@@ -337,11 +350,15 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     wrapper.append(...Array.from(document.body.childNodes, (node) => owner.importNode(node, true)));
     if (side === 'resolved') resolvedRef.current = prepareResolvedPanel(wrapper);
     else mergeJoinedParagraphs(wrapper, side);
-    // The document's colours for the theme go in with the content: changing its style sheet once
-    // the content is in makes the browser restyle the whole document (0.7 s on the ~300-page pair).
+    // The document's look (colours for the theme, alignment) goes in with the content: changing its
+    // style sheet once the content is in makes the browser restyle the whole document (0.7 s on the
+    // ~300-page pair).
     const styled = Array.from(wrapper.querySelectorAll<HTMLElement>('[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
-    documentStyle.textContent = themedColors(document.css, themeRef.current);
-    if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
+    documentStyle.textContent = look(document.css);
+    for (const [element, style] of styled) {
+      const shown = look(style);
+      if (shown !== style) element.setAttribute('style', shown);
+    }
     const cardSlot = owner.createElement('slot');
     cardSlot.name = CARD_SLOT;
     const bubbleSlot = owner.createElement('slot');
@@ -361,13 +378,13 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
 
   useLayoutEffect(() => {
     const documentStyle = documentStyleRef.current!;
-    const css = themedColors(document.css, theme);
+    const css = documentLook(document.css, theme, leftAligned);
     if (documentStyle.textContent !== css) documentStyle.textContent = css;
     for (const [element, style] of styledRef.current) {
-      const themed = themedColors(style, theme);
-      if (element.getAttribute('style') !== themed) element.setAttribute('style', themed);
+      const shown = documentLook(style, theme, leftAligned);
+      if (element.getAttribute('style') !== shown) element.setAttribute('style', shown);
     }
-  }, [document, side, theme]);
+  }, [document, side, theme, leftAligned]);
 
   useLayoutEffect(() => {
     const root = scrollerRef.current?.shadowRoot;
