@@ -198,9 +198,10 @@ to ~300 pages; no backend.
     27b. **Accept/Reject this with comment** (in the same menu) decides the item and opens a comment
     box under its card; the comment can be edited there or removed, and is kept when the decision is
     reset or changed. The export adds each non-blank comment of an in-range item as a Word comment
-    (author "Reviewer") on the change's text, or where the text was when the decision removes it:
+    (by the export's author, FR-38c) on the change's text, or where the text was when the decision
+    removes it:
 
-        Accepted:            (or Rejected:, the item's final decision)
+        Accepted:            (or Rejected:, the item's final decision; Undecided: when kept as a tracked change, FR-38b)
 
         Changed from
         <the Original's text, or (nothing)>
@@ -222,6 +223,10 @@ to ~300 pages; no backend.
     "Show comment" / "Hide comment"; Enter and Space work too). All bubbles are open when a review
     is shown, after a reload or on resuming; closing one is not remembered. A new comment's bubble
     opens; a removed or blanked comment takes its bubble and icon away.
+
+    27d. **Undecided with comment** (in both menus) leaves the item undecided, resetting a decision
+    it has, and opens its comment box as in FR-27b: a comment for the change the export keeps as a
+    tracked change (FR-38b), or that the undecided choice decides.
 28. Clicking an item scrolls **all** panels to it and marks it as current.
 
     28a. The current change's **card** (as in the list: text, Accept/Reject with their menus,
@@ -251,10 +256,26 @@ to ~300 pages; no backend.
 ### Export
 
 37. **Download…** produces a new `.docx`.
-38. A dialog asks how to treat undecided changes: **Accept** (default) or **Reject**, showing how many
-    are undecided, and the formatting choice (FR-30). Out-of-range changes are not affected (FR-17).
-39. The export is **clean**: no tracked-change markup. Accepted changes take the Edited version,
-    rejected changes keep the Original.
+38. A dialog asks how to treat undecided changes: **Accept** (default), **Reject** or **Keep as tracked
+    changes** (FR-38b), showing how many are undecided, and the formatting choice (FR-30).
+    Out-of-range changes are not affected (FR-17). The dialog starts from the choice of the last
+    download (remembered in the browser).
+
+    38b. **Keep undecided changes as tracked changes:** every undecided in-range text change stays
+    a Word tracked change (insertion, deletion, move, paragraph mark, table row), for a second
+    reviewer to decide in Word; everything else is resolved as usual (decided changes, formatting
+    by the formatting choice, ignored changes accepted, out-of-range changes rejected). Accepting all
+    in Word gives the export with the undecided changes accepted, rejecting all the one with them
+    rejected.
+
+    38c. **Author** of the export's comments (FR-27b) and tracked changes (FR-38b), a text field in
+    the dialog; their date is the export's time. It is pre-filled with the Edited's author: the
+    author of most of its own tracked changes, else its document properties' last author, else
+    their creator; when the Edited names none, with the last author typed for a download (an Edited's own author
+    is not remembered). Empty means
+    "Reviewer". After a download in a review, that review's dialog starts from the author used.
+39. The export is **clean**: no tracked-change markup, except the undecided changes with FR-38b.
+    Accepted changes take the Edited version, rejected changes keep the Original.
 
     39a. **One consistent look:** decisions on text changes never mix formatting. All formatting
     follows the formatting choice. Text from the other version — an accepted insertion when the
@@ -297,7 +318,7 @@ to ~300 pages; no backend.
 - Comparing headers/footers, images and comments (preserved, not diffed).
 - Paginated (print-layout) rendering; character-level diff; search; filtering the list by type (the
   formatting group is the only grouping); an option to ignore formatting changes entirely.
-- Exporting a `.docx` that still contains tracked changes.
+- Exporting a `.docx` that still contains tracked changes, other than the undecided ones (FR-38b).
 - Editing text in the tool; exporting/importing a review as a file; sharing or collaboration.
 - More than two documents, or formats other than `.docx`.
 - Editing text or comments in the Resolved column; the current change's card there; an overview
@@ -344,7 +365,7 @@ All six were met at the end of the initial build (2026-10-17); details in
    trailing unedited region is supported.
 2. Is the first-load download (~7.9 MB gzipped) acceptable, or is there a size budget?
 3. Should the export offer a version with the undecided changes kept as tracked changes, for a second
-   reviewer? (Currently a non-goal.)
+   reviewer? Decided 2026-10-18: yes, FR-38b.
 4. **False moves at the end of the edited part.** With a long deleted tail (more than ~416
    paragraphs), the engine reports the last edited paragraphs before it as moves to after the tail.
    Review and export are correct (moves count by their source, the export puts them back), but the

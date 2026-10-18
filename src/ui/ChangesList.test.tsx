@@ -150,9 +150,10 @@ describe('ChangesList', () => {
     const [first, second] = screen.getAllByTestId('change-card');
     fireEvent.click(within(second!).getByRole('button', { name: 'More Accept options' }));
     const menu = screen.getByRole('menu', { name: 'Accept options' });
-    const [thisItem, withComment, untilItem] = within(menu).getAllByRole('menuitem');
+    const [thisItem, withComment, undecidedItem, untilItem] = within(menu).getAllByRole('menuitem');
     expect(thisItem!.textContent).toBe('Accept this a');
     expect(withComment!.textContent).toBe('Accept this with comment');
+    expect(undecidedItem!.textContent).toBe('Undecided with comment');
     expect(untilItem!.textContent).toBe('Accept all undecided until here A');
     expect(document.activeElement).toBe(thisItem);
     fireEvent.click(untilItem!);
@@ -205,6 +206,23 @@ describe('ChangesList', () => {
     expect(next.onSelect).not.toHaveBeenCalled();
     fireEvent.click(within(card()).getByRole('button', { name: 'Remove comment' }));
     expect(next.onComment).toHaveBeenCalledWith('a', null);
+  });
+
+  it('leaves a change undecided with a comment, resetting its decision', () => {
+    const props = renderList(false, { decisions: { a: 'accepted' } });
+    const card = screen.getAllByTestId('change-card')[0]!;
+    fireEvent.click(within(card).getByRole('button', { name: 'More Accept options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Undecided with comment' }));
+    expect(props.onDecide).toHaveBeenCalledWith('a', null);
+    expect(props.onComment).toHaveBeenCalledWith('a', '');
+
+    // An undecided change stays so.
+    cleanup();
+    const next = renderList(false);
+    fireEvent.click(within(screen.getAllByTestId('change-card')[0]!).getByRole('button', { name: 'More Reject options' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Undecided with comment' }));
+    expect(next.onDecide).not.toHaveBeenCalled();
+    expect(next.onComment).toHaveBeenCalledWith('a', '');
   });
 
   it('hides itself with the » button', () => {

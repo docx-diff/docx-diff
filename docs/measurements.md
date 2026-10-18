@@ -85,7 +85,9 @@ item building stays on the main thread.
 accepted 0.6 s, all rejected 1.3 s, alternating 0.9–1.4 s; with the consistent look 1.2–1.6 s.
 ~300-page pair: all accepted 0.59 s, all rejected 0.78 s, alternating 0.76 s (the rewrite itself
 0.05–0.21 s); with the look 0.84 s. With the detected range, the look and a comment on each of the
-sample's 234 in-range text changes 2.1–2.5 s (1.4–1.7 s for the same export without comments). Snapshotting xmldom's live element lists took the look planning
+sample's 234 in-range text changes 2.1–2.5 s (1.4–1.7 s for the same export without comments). Keeping
+undecided changes as tracked changes (FR-38b; parking + restoring): sample with every text change
+tracked 1.8 s, with every third tracked, the detected range, the look and comments on all 2.4 s. Snapshotting xmldom's live element lists took the look planning
 from 3.6–35 s to 0.2 s on the sample.
 
 ## Browser

@@ -48,6 +48,7 @@ import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
 import { useCompareSettings } from './ui/useCompareSettings';
+import { useExportSettings } from './ui/useExportSettings';
 import { useTheme } from './ui/theme';
 import { useNarrowWindow } from './ui/useNarrowWindow';
 import { useViewSettings } from './ui/useViewSettings';
@@ -382,6 +383,9 @@ export function App() {
   }, [showCard, helpOpen]);
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportSettings, setExportSettings] = useExportSettings();
+  // The author last downloaded with, for this comparison: it wins over the Edited's own.
+  const [usedAuthor, setUsedAuthor] = useState<{ comparison: Comparison; author: string } | null>(null);
   const [exportState, setExportState] = useState<ExportStatus>({ status: 'idle' });
   const openExport = useCallback(() => {
     setExportState({ status: 'idle' });
@@ -402,8 +406,11 @@ export function App() {
   }, []);
   const swap = useCallback(() => setFiles(({ original, edited }) => ({ original: edited, edited: original })), []);
 
-  const download = async (current: Comparison, state: DecisionState, undecided: UndecidedChoice) => {
+  const download = async (current: Comparison, state: DecisionState, { undecided, author }: { undecided: UndecidedChoice; author: string }) => {
     if (!engine) return;
+    // The Edited's own author is not remembered: it would pre-fill other documents' exports.
+    setExportSettings({ undecided, author: author === current.result.editedAuthor ? exportSettings.author : author });
+    setUsedAuthor({ comparison: current, author });
     setExportState({ status: 'running', startedAt: performance.now() });
     try {
       const final = finalRevisionDecisions(current.analysis.items, state, range, undecided, ignored);
@@ -415,6 +422,7 @@ export function App() {
         formattingChoice: state.formattingChoice,
         outOfRange: current.analysis.items.filter((item) => outOfRange.has(item.id)).flatMap((item) => item.revisionIds),
         comments: exportComments(current.analysis.items, state, range, final),
+        author,
       });
       saveDocx(bytes, reviewedFileName(current.editedName));
       setExportState({ status: 'idle' });
@@ -595,7 +603,12 @@ export function App() {
           ignored={exportCounts.ignored}
           outOfRange={rangeState.endPoint === null ? null : { endPoint: rangeState.endPoint, count: exportCounts.outOfRange }}
           status={exportState}
-          onDownload={(undecided) => void download(comparison, review, undecided)}
+          initialUndecided={exportSettings.undecided}
+          initialAuthor={
+            usedAuthor?.comparison === comparison ? usedAuthor.author : (comparison.result.editedAuthor ?? exportSettings.author)
+          }
+          editedAuthor={comparison.result.editedAuthor}
+          onDownload={(choices) => void download(comparison, review, choices)}
           onCancel={closeExport}
         />
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { EngineError } from '../engine/client';
+import { DEFAULT_AUTHOR } from '../engine/types';
 import type { ChangeItem } from '../model/changes';
 import type { FormattingChoice, UndecidedChoice } from '../model/decisions';
 import { KIND_LABELS, excerpt } from './ChangeCard';
@@ -51,18 +52,28 @@ interface Props {
   /** The comparison range, when one is set: the end point and the changes outside it. */
   outOfRange: { endPoint: number; count: number } | null;
   status: ExportStatus;
-  onDownload: (undecided: UndecidedChoice) => void;
+  /** What to do with undecided changes, as chosen last time. */
+  initialUndecided: UndecidedChoice;
+  /** The author to start with: the Edited's (`editedAuthor`), else the one used last time. */
+  initialAuthor: string;
+  /** Who made the Edited's changes, as the Edited says (FR-38c). */
+  editedAuthor: string | null;
+  onDownload: (choices: { undecided: UndecidedChoice; author: string }) => void;
   onCancel: () => void;
 }
 
 /**
- * The export dialog (FR-38): how to treat undecided changes, the formatting choice, what happens
- * to ignored and out-of-range changes; progress and errors of the export. Stays open on error.
+ * The export dialog (FR-38): how to treat undecided changes (accept, reject, or keep as tracked
+ * changes, FR-38b), the formatting choice, the author of comments and tracked changes (FR-38c),
+ * what happens to ignored and out-of-range changes; progress and errors of the export. Stays open
+ * on error.
  */
 export function ExportDialog(props: Props) {
-  const { undecided, formattingCount, ignored, outOfRange, status, onCancel } = props;
+  const { undecided, formattingCount, ignored, outOfRange, status, editedAuthor, onCancel } = props;
   const titleId = useId();
-  const [choice, setChoice] = useState<UndecidedChoice>('accept');
+  const authorId = useId();
+  const [choice, setChoice] = useState<UndecidedChoice>(props.initialUndecided);
+  const [author, setAuthor] = useState(props.initialAuthor);
   const running = status.status === 'running';
   const downloadButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -91,6 +102,7 @@ export function ExportDialog(props: Props) {
             [
               ['accept', 'Accept undecided changes', 'They take the Edited text.'],
               ['reject', 'Reject undecided changes', "They keep the Original's text."],
+              ['track', 'Keep undecided changes as tracked changes', 'Word shows them as tracked changes, to accept or reject there.'],
             ] as const
           ).map(([value, label, hint]) => (
             <label key={value} className="modal__option">
@@ -126,6 +138,18 @@ export function ExportDialog(props: Props) {
             ))}
           </fieldset>
         )}
+        <div className="export-dialog__author">
+          <label htmlFor={authorId}>Author of the comments and tracked changes</label>
+          <input
+            id={authorId}
+            type="text"
+            value={author}
+            placeholder={DEFAULT_AUTHOR}
+            disabled={running}
+            onChange={(event) => setAuthor(event.target.value)}
+          />
+          {editedAuthor !== null && author.trim() === editedAuthor && <small>As in the Edited document.</small>}
+        </div>
         <ul className="export-dialog__notes">
           {ignored.count > 0 && (
             <li data-testid="export-ignored">
@@ -167,7 +191,7 @@ export function ExportDialog(props: Props) {
             ref={downloadButton}
             type="button"
             className="button button--primary"
-            onClick={() => props.onDownload(choice)}
+            onClick={() => props.onDownload({ undecided: choice, author: author.trim() })}
             disabled={running}
           >
             Download

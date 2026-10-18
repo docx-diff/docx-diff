@@ -4,7 +4,7 @@
 // them; `addComments` adds the reference runs and the comments part to the result.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import { ElementIndex, W_NS, parseConstituentKey, parseXml, readPart, serializeXml, unzipDocx, writePart, zipDocx, type DocxFiles } from './ooxml';
-import type { ExportComment, RevisionListEntry } from './types';
+import { DEFAULT_AUTHOR, type ExportComment, type RevisionListEntry } from './types';
 
 const DOCUMENT_PART = '/word/document.xml';
 export const COMMENTS_PART = 'word/comments.xml';
@@ -18,9 +18,18 @@ const NOTES = [
   { part: '/word/endnotes.xml', note: 'endnote', reference: 'endnoteReference' },
 ] as const;
 
-/** Who the exported comments are by. */
-export const COMMENT_AUTHOR = { name: 'Reviewer', initials: 'R' };
+/** Word's comment initials for an author: the first letter of each word, at most three. */
+export function authorInitials(author: string): string {
+  const initials = author
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => [...word][0]!.toUpperCase())
+    .slice(0, 3)
+    .join('');
+  return initials || 'R';
+}
 
+/** As the export plans with it: a tracked revision has the decision that keeps its content (`presentDecision`). */
 type FinalDecision = 'accept' | 'reject';
 
 /** A comment with the `w:id` it has in the export. */
@@ -295,7 +304,7 @@ function insert(position: Position, element: Element): void {
  * package has none). A comment whose markers the export no longer has (its change left nothing to
  * anchor on) goes at the end of the document; returns those.
  */
-export function addComments(files: DocxFiles, comments: readonly NumberedComment[], date: string): NumberedComment[] {
+export function addComments(files: DocxFiles, comments: readonly NumberedComment[], date: string, author = DEFAULT_AUTHOR): NumberedComment[] {
   if (comments.length === 0) return [];
   const document = readPart(files, DOCUMENT_PART)!;
   const ends = new Map(elements(document, 'commentRangeEnd').map((end) => [end.getAttributeNS(W_NS, 'id'), end]));
@@ -319,9 +328,9 @@ export function addComments(files: DocxFiles, comments: readonly NumberedComment
   for (const comment of comments) {
     const element = part.createElementNS(W_NS, 'w:comment');
     element.setAttributeNS(W_NS, 'w:id', comment.commentId);
-    element.setAttributeNS(W_NS, 'w:author', COMMENT_AUTHOR.name);
+    element.setAttributeNS(W_NS, 'w:author', author);
     element.setAttributeNS(W_NS, 'w:date', date);
-    element.setAttributeNS(W_NS, 'w:initials', COMMENT_AUTHOR.initials);
+    element.setAttributeNS(W_NS, 'w:initials', authorInitials(author));
     comment.paragraphs.forEach((text, i) => element.appendChild(commentParagraph(part, text, i === 0)));
     part.documentElement!.appendChild(element);
   }

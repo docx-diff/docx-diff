@@ -31,8 +31,11 @@ export interface WorkerRequests {
   export: { payload: ExportRequest; result: ArrayBuffer };
 }
 
+/** What the export does with a revision: `track` keeps it as a Word tracked change (FR-38b). */
+export type FinalDecision = 'accept' | 'reject' | 'track';
+
 /** Final decision per engine revision id; every revision of the redline must have one. */
-export type FinalDecisions = Record<string, 'accept' | 'reject'>;
+export type FinalDecisions = Record<string, FinalDecision>;
 
 /** Whose formatting the export uses: the Original's (formatting changes rejected) or the Edited's (accepted). */
 export type FormattingChoice = 'original' | 'edited';
@@ -47,7 +50,12 @@ export interface ExportRequest {
   outOfRange?: string[];
   /** Reviewer comments, added as Word comments (FR-27b). */
   comments?: ExportComment[];
+  /** Author of the comments and the tracked changes (FR-38c); default `DEFAULT_AUTHOR`. */
+  author?: string;
 }
+
+/** Who the exported comments and tracked changes are by when the export names no author. */
+export const DEFAULT_AUTHOR = 'Reviewer';
 
 /** A reviewer comment for the export: anchored on its change's revisions, one string per paragraph. */
 export interface ExportComment {
@@ -117,10 +125,12 @@ export interface CompareResult {
   html: string;
   /** Either input already contained tracked changes; the engine compared their accepted view (FR-13). */
   inputsHadRevisions: boolean;
+  /** Who made the Edited's changes, as the Edited says (FR-38c); `null` when it does not say. */
+  editedAuthor: string | null;
   /** Each input's headings, for the outline (FR-24a). */
   headings: { original: DocumentHeading[]; edited: DocumentHeading[] };
   /** Milliseconds per stage. */
-  timings: { normalize: number; checkInputs: number; headings: number; compare: number; list: number; tag: number; render: number };
+  timings: { normalize: number; checkInputs: number; headings: number; author: number; compare: number; list: number; tag: number; render: number };
 }
 
 /** A heading of an input document: a body paragraph with an outline level. */

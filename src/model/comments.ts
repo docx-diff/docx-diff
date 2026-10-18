@@ -2,7 +2,7 @@
 // change, saying what the decision was, what the change was, and the reviewer's words.
 import type { ExportComment } from '../engine/types';
 import type { ChangeItem } from './changes';
-import type { DecisionState } from './decisions';
+import type { DecisionState, FinalDecision } from './decisions';
 import type { RangeClass } from './range';
 
 /** One side of a change as comment paragraphs (`¶` separates paragraphs in the item texts). */
@@ -13,10 +13,12 @@ function sideParagraphs(text: string): string[] {
   return paragraphs.every((paragraph) => paragraph.trim() === '') ? ['(paragraph break)'] : paragraphs;
 }
 
+const DECISION_HEADINGS: Record<FinalDecision, string> = { accept: 'Accepted:', reject: 'Rejected:', track: 'Undecided:' };
+
 /**
  * The comment's paragraphs:
  *
- *     Accepted:
+ *     Accepted:            (Rejected:, or Undecided: for a change kept as a tracked change)
  *
  *     Changed from
  *     <the Original's text>
@@ -26,14 +28,14 @@ function sideParagraphs(text: string): string[] {
  *     Comment:
  *     <the reviewer's comment>
  */
-export function commentParagraphs(item: ChangeItem, decision: 'accept' | 'reject', comment: string): string[] {
+export function commentParagraphs(item: ChangeItem, decision: FinalDecision, comment: string): string[] {
   const [from, to] = item.moveEdit
     ? [item.moveEdit.from, item.moveEdit.to]
     : item.kind === 'moved'
       ? [item.text ?? '', item.text ?? '']
       : [item.removedText, item.addedText];
   return [
-    decision === 'accept' ? 'Accepted:' : 'Rejected:',
+    DECISION_HEADINGS[decision],
     '',
     'Changed from',
     ...sideParagraphs(from),
@@ -53,7 +55,7 @@ export function exportComments(
   items: readonly ChangeItem[],
   state: DecisionState,
   range: ReadonlyMap<string, RangeClass>,
-  finalDecisions: ReadonlyMap<string, 'accept' | 'reject'>,
+  finalDecisions: ReadonlyMap<string, FinalDecision>,
 ): ExportComment[] {
   return items.flatMap((item) => {
     const comment = state.comments[item.id];

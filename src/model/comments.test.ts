@@ -59,4 +59,10 @@ describe('exportComments', () => {
     expect(comments[0]!.paragraphs[0]).toBe('Rejected:');
     expect(comments[0]!.paragraphs.at(-1)).toBe('First');
   });
+
+  it('heads the comment of a change kept as a tracked change "Undecided:"', () => {
+    const state = { ...INITIAL_DECISIONS, comments: { a: 'Ask the author' } };
+    const comments = exportComments([item('a', 'deleted', { removedText: 'x' })], state, new Map(), new Map([['a', 'track' as const]]));
+    expect(comments[0]!.paragraphs[0]).toBe('Undecided:');
+  });
 });

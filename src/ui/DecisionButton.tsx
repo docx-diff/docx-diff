@@ -10,6 +10,8 @@ interface Props {
   onThis: () => void;
   /** Decides the card's item and opens its comment (FR-27b). */
   onWithComment: () => void;
+  /** Leaves the card's item undecided (resetting its decision) and opens its comment (FR-27b). */
+  onUndecidedWithComment: () => void;
   /** Decides every undecided item from the start of the list up to and including the card's. */
   onUntilHere: () => void;
 }
@@ -21,14 +23,15 @@ const LABELS: Record<Decision, { verb: string; key: string }> = {
 
 /**
  * Accept or Reject on a change card (FR-27), with a joined arrow opening a menu: decide this change
- * (the button's own action), decide it with a comment (FR-27b), or decide every undecided change up
- * to here (FR-27a). The menu items name their shortcut keys, which also pick them while the menu is
+ * (the button's own action), decide it with a comment (FR-27b), leave it undecided with a comment
+ * (e.g. for a change exported as a tracked change, FR-38b), or decide every undecided change up to
+ * here (FR-27a). The menu items name their shortcut keys, which also pick them while the menu is
  * open.
  *
  * The menu is portalled to `body` with fixed positioning: the list rows are transformed and the
  * list scrolls, which would clip it or let the next row cover it.
  */
-export function DecisionButton({ decision, pressed, onThis, onWithComment, onUntilHere }: Props) {
+export function DecisionButton({ decision, pressed, onThis, onWithComment, onUndecidedWithComment, onUntilHere }: Props) {
   const { verb, key } = LABELS[decision];
   const [open, setOpen] = useState(false);
   const arrowRef = useRef<HTMLButtonElement>(null);
@@ -139,6 +142,9 @@ export function DecisionButton({ decision, pressed, onThis, onWithComment, onUnt
             </button>
             <button type="button" role="menuitem" tabIndex={-1} className="split-button__item" onClick={() => choose(onWithComment)}>
               {verb} this with comment
+            </button>
+            <button type="button" role="menuitem" tabIndex={-1} className="split-button__item" onClick={() => choose(onUndecidedWithComment)}>
+              Undecided with comment
             </button>
             <button type="button" role="menuitem" tabIndex={-1} className="split-button__item" onClick={() => choose(onUntilHere)}>
               {verb} all undecided until here <kbd>{key.toUpperCase()}</kbd>

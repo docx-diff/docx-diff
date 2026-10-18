@@ -29,13 +29,14 @@ Engine (runs in the worker; also in Node tests)
 - `src/engine/types.ts` — `ComparisonEngine`, worker message types, `RevisionListEntry` (our copy of the engine's shape), `CompareResult`, `ExportRequest`.
 - `src/engine/settings.ts` — the one `docxDiffCompare` settings object.
 - `src/engine/docxodus.ts` — thin wrapper over `docxodus/core`: initialize from `<base>wasm/`, warm-up, version, compare, list, render, `acceptAll` (`docxDiffAcceptRevisions`); `engineVersion()` from `__DOCXODUS_VERSION__`.
-- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → read each input's headings → compare → list → tag → render, with stage timings.
+- `src/engine/pipeline.ts` — `runCompare`: check inputs for revisions → NFC normalize → read each input's headings and the Edited's author → compare → list → tag → render, with stage timings.
 - `src/engine/engine.worker.ts` / `src/engine/client.ts` — the worker and its main-thread client.
 - `src/engine/ooxml.ts` — zip/XML helpers, `parseConstituentKey`, `ElementIndex` (element name + `w:id` lookup).
 - `src/engine/normalizeText.ts` — text runs to NFC before comparing (FR-13a).
 - `src/engine/headings.ts` — each input's headings, for the outline (FR-24a).
+- `src/engine/author.ts` — the Edited's author, to pre-fill the export's (FR-38c).
 - `src/engine/tagRedline.ts` — `w:author` → `rev:<id>` before rendering; `unlinkHyperlinksWithChanges`.
-- `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `notes.ts`, `comments.ts` — its steps.
+- `src/engine/exportDocx.ts` — the export pipeline; `rejectRewrite.ts`, `consistentLook.ts`, `rangeOrder.ts`, `trackedRevisions.ts`, `notes.ts`, `comments.ts` — its steps.
 
 Model (pure TypeScript, main thread)
 - `src/model/docIndex.ts` — the `DocIndex` built from the rendered HTML.
@@ -50,7 +51,7 @@ Model (pure TypeScript, main thread)
 - `src/model/outline.ts` — the headings for the outline sidebar (FR-24a).
 
 UI (`src/ui/`, entry `src/App.tsx`)
-- `useEngine`, `useComparison`, `useCompareSettings`, `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
+- `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -324,23 +325,31 @@ it relies on (which element carries which id) are listed at the top of `src/ui/r
 
 `src/engine/exportDocx.ts`. The engine's stateless `docxDiffAcceptRevisions` resolves a whole
 document correctly and fast (~1 s), including paragraph-mark merges and moves. So the export rewrites
-every **rejected** revision into markup that *accepting* resolves to the Original version, then
-accepts everything in one pass:
+every **rejected** revision into markup that *accepting* resolves to the Original version, parks the
+revisions to keep as tracked changes ([Tracked changes](#tracked-changes)), then accepts everything
+in one pass:
 
 1. **Final decision per engine revision** (`finalRevisionDecisions` in `src/model/decisions.ts`), in
    this order: out of range → reject; formatting → the formatting choice (`edited` = accept); the
    item's explicit decision; ignored by the compare settings → accept; otherwise the export dialog's
-   undecided choice. Every revision must have one; a revision whose `resolutionStatus` is not
+   undecided choice (`accept`, `reject` or `track`). Every revision must have one; a revision whose `resolutionStatus` is not
    `supported` makes the export fail naming the change (`UnsupportedRevisionError`).
 2. With reviewer comments: `anchorComments` puts their range markers into the redline
    ([Comments](#comments)).
 3. Unzip the redline; parse `document.xml`, `footnotes.xml`, `endnotes.xml` (per the revision's part).
 4. Per part, plan `planConsistentLook` and `planRangeOrder` (before the rewrite, which discards the
    information they need), run `rejectRevisions`, then apply both plans.
-5. Re-zip; `docxDiffAcceptRevisions` once.
-6. `reconcileNotes` ([Notes](#notes)).
-7. With comments: `addComments`.
-8. `getRevisions(result)` must return `[]`, else throw.
+5. With tracked revisions: `parkRevisions`.
+6. Re-zip; `docxDiffAcceptRevisions` once.
+7. `reconcileNotes` ([Notes](#notes)).
+8. `getRevisions` of that must return `[]`, else throw (before step 9, so it also covers an
+   export with tracked revisions).
+9. With tracked revisions: `restoreRevisions`, with the export's author and date.
+10. With comments: `addComments` (same author and date).
+
+The steps that plan with decisions (comment anchors, the look, the range order) see a tracked
+revision as the decision that keeps its content (`presentDecision`: accept an insertion or a move,
+reject a deletion), since Word shows both sides; only `reject` revisions are rewritten.
 
 ### Reject rewrite
 
@@ -458,10 +467,48 @@ Where a comment is anchored:
   A range starting there becomes a point at the end of the last kept paragraph before them.
 
 `addComments` adds the reference runs and the comments part (creating `word/comments.xml`, its
-relationship and its content type if needed). A comment whose markers are gone anyway is placed at
+relationship and its content type if needed), by the export's author (FR-38c; initials from its
+words; default "Reviewer"). A comment whose markers are gone anyway is placed at
 the end of the document rather than lost (`onCommentsRelocated` tells the tests; none on the fixtures
 or the sample, with a comment on every text revision under all-accept, all-reject and alternating
 decisions). LibreOffice imports them as annotations on the commented text.
+
+### Tracked changes
+
+`src/engine/trackedRevisions.ts`, FR-38b. The accept pass resolves every revision it finds and
+throws on run-level elements it does not know (`Internal error 20`, `AllParaContentIsDeleted` in the
+engine's `RevisionProcessor.cs`), so renaming the markup out of its way fails. Instead
+`parkRevisions` turns each tracked revision's markup (located by its keys, like the reject rewrite)
+into bookmarks named `_DDK<n>`, which the accept pass keeps, and remembers the element's name and
+attributes:
+
+| Markup | Parked as |
+|---|---|
+| `w:ins`/`w:moveTo` around runs | unwrapped, between a bookmark pair |
+| `w:del`/`w:moveFrom` around runs | unwrapped, `w:delText` → `w:t`, `w:delInstrText` → `w:instrText`, between a bookmark pair |
+| paragraph mark `w:pPr/w:rPr/w:ins\|del\|moveFrom\|moveTo` | removed; an empty bookmark pair at the end of the paragraph |
+| `w:trPr/w:ins\|del` | removed; an empty bookmark pair in the row's first paragraph |
+| move range markers | an empty bookmark pair in their place |
+| anything else (cell markers, property changes) | `UnsupportedRevisionError` |
+
+Parked content is plain text the accept pass keeps (both sides, as Word's markup view), and a
+parked mark is an ordinary one, so the paragraph is neither joined nor dropped. After the accept
+pass and `reconcileNotes`, `restoreRevisions` wraps what lies between each pair again (the text
+turned back into deleted text for deletions), or puts the marker back into the paragraph's
+`w:pPr/w:rPr` or the row's `w:trPr` in schema order (creating them if needed), with the export's
+`w:author` and `w:date`; the ids stay the redline's. A note that `reconcileNotes` copied (a moved
+reference kept as deletion + insertion of the same note) has the bookmarks twice: the copy's markup
+gets new ids. Bookmarks gone with what held them (a note whose reference another decision removed)
+leave nothing to track. A bookmark pair whose end is no longer a later sibling of its start fails
+the export (`RevisionMarkupError`).
+
+Checked by: on the fixtures, every text revision tracked (accept in Word ≡ Edited, reject ≡ the
+export with text rejected), and each revision tracked against the rest accepted or rejected
+(accepting/rejecting it ≡ the export deciding it so); on the sample, every third text change tracked
+with comments on all. `verifyDeliverable` reads tracked markup as Word's markup view, so a tracked
+deleted field has "no instruction text" and a moved note reference counts twice: the engine's own
+redline has the same findings, and the tests (`expectTrackedDeliverable`) allow only codes the
+redline has. LibreOffice opens the exports with their tracked changes.
 
 ### Why not DocxSession
 

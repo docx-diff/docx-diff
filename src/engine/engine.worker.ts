@@ -44,9 +44,9 @@ const handlers: Handlers = {
     const result = await runCompare(new Uint8Array(original), new Uint8Array(edited), (stage) => progress(stage));
     return { ...result, redline: ownBuffer(result.redline) };
   },
-  async export({ redline, revisions, decisions, formattingChoice, outOfRange, comments }, progress) {
+  async export({ redline, revisions, decisions, formattingChoice, outOfRange, comments, author }, progress) {
     progress('exporting');
-    const options = { formattingChoice, outOfRange: new Set(outOfRange), comments };
+    const options = { formattingChoice, outOfRange: new Set(outOfRange), comments, author };
     return ownBuffer(await exportDocx(new Uint8Array(redline), revisions, new Map(Object.entries(decisions)), options));
   },
 };

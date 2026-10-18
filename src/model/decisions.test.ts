@@ -9,6 +9,7 @@ import {
   idsUntil,
   reviewableItems,
   type DecisionState,
+  type UndecidedChoice,
 } from './decisions';
 import type { RangeClass } from './range';
 
@@ -109,12 +110,17 @@ describe('idsUntil', () => {
 });
 
 describe('finalRevisionDecisions', () => {
-  const decide = (state: DecisionState, undecided: 'accept' | 'reject' = 'accept') =>
+  const decide = (state: DecisionState, undecided: UndecidedChoice = 'accept') =>
     Object.fromEntries(finalRevisionDecisions(items, state, range, undecided, ignored));
 
   it('gives every revision a decision, undecided ones the undecided choice', () => {
     expect(decide(INITIAL_DECISIONS)).toEqual({ a: 'accept', a2: 'accept', f: 'accept', b: 'reject', i: 'accept', c: 'accept', g: 'reject' });
     expect(decide(INITIAL_DECISIONS, 'reject')).toEqual({ a: 'reject', a2: 'reject', f: 'accept', b: 'reject', i: 'accept', c: 'reject', g: 'reject' });
+  });
+
+  it('keeps undecided text items as tracked changes with the track choice, only those (FR-38b)', () => {
+    const state = { ...INITIAL_DECISIONS, decisions: { c: 'rejected' as const } };
+    expect(decide(state, 'track')).toEqual({ a: 'track', a2: 'track', f: 'accept', b: 'reject', i: 'accept', c: 'reject', g: 'reject' });
   });
 
   it('rejects out-of-range items whatever their decision', () => {

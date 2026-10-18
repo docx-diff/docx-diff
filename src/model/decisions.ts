@@ -1,16 +1,16 @@
 // The reviewer's decisions (FR-27, FR-30, FR-32) and the final decision of every engine revision
 // for the export (docs/architecture.md, "Export"). Text items are decided one by one; formatting is
 // decided once for the whole document (`formattingChoice`).
-import type { FormattingChoice } from '../engine/types';
+import type { FinalDecision, FormattingChoice } from '../engine/types';
 import type { ChangeItem } from './changes';
 import type { RangeClass } from './range';
 
-export type { FormattingChoice };
+export type { FinalDecision, FormattingChoice };
 
 export type Decision = 'accepted' | 'rejected';
 
-/** What the export does with a text change left undecided. */
-export type UndecidedChoice = 'accept' | 'reject';
+/** What the export does with a text change left undecided; `track` keeps it as a Word tracked change (FR-38b). */
+export type UndecidedChoice = 'accept' | 'reject' | 'track';
 
 export interface DecisionState {
   /** Decisions of text items by item id; an absent id is undecided. */
@@ -110,8 +110,8 @@ export function finalRevisionDecisions(
   range: ReadonlyMap<string, RangeClass>,
   undecided: UndecidedChoice,
   ignored: ReadonlySet<string>,
-): Map<string, 'accept' | 'reject'> {
-  const result = new Map<string, 'accept' | 'reject'>();
+): Map<string, FinalDecision> {
+  const result = new Map<string, FinalDecision>();
   for (const item of items) {
     const final = finalItemDecision(item, state, range, undecided, ignored);
     for (const revisionId of item.revisionIds) result.set(revisionId, final);
@@ -120,13 +120,13 @@ export function finalRevisionDecisions(
 }
 
 /** The final decision of one item, applied to all its revisions (see `finalRevisionDecisions`). */
-export function finalItemDecision(
+export function finalItemDecision<U extends UndecidedChoice>(
   item: ChangeItem,
   state: DecisionState,
   range: ReadonlyMap<string, RangeClass>,
-  undecided: UndecidedChoice,
+  undecided: U,
   ignored: ReadonlySet<string>,
-): 'accept' | 'reject' {
+): 'accept' | 'reject' | U {
   const decision = state.decisions[item.id];
   if (range.get(item.id) === 'outOfRange') return 'reject';
   if (item.kind === 'formatting') return state.formattingChoice === 'edited' ? 'accept' : 'reject';

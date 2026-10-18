@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
@@ -265,6 +265,47 @@ test('on the sample pair, rejecting the first text change and accepting the rest
     expect(expected[at]).toContain(words(added));
     expect(exported[at]).not.toContain(words(added));
   }
+});
+
+test('undecided changes export as Word tracked changes by the Edited’s author, with their comments', async ({ page }) => {
+  const original = minimalDocx(['The quick brown fox.', 'Second paragraph.', 'A third one.']);
+  const files = unzipSync(minimalDocx(['The quick red fox.', 'Second paragraph.', 'A new third one.']));
+  files['docProps/core.xml'] = strToU8(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator>Someone</dc:creator><cp:lastModifiedBy>Ann Editor</cp:lastModifiedBy></cp:coreProperties>',
+  );
+  await openAndCompare(page, original, zipSync(files));
+  const [first, second] = [page.getByTestId('change-card').nth(0), page.getByTestId('change-card').nth(1)];
+
+  await first.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect(first).toContainText('Accepted');
+  await first.getByRole('button', { name: 'More Reject options' }).click();
+  await page.getByRole('menuitem', { name: 'Undecided with comment' }).click();
+  await expect(first).toContainText('Undecided');
+  await expect(first.getByRole('textbox', { name: 'Comment on change 1' })).toBeFocused();
+  await page.keyboard.type('Ask the author.');
+  await second.getByRole('button', { name: 'Reject', exact: true }).click();
+
+  await page.getByRole('toolbar').getByRole('button', { name: 'Download…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Download the reviewed document' });
+  await expect(dialog.getByLabel('Author of the comments and tracked changes')).toHaveValue('Ann Editor');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  const exported = await downloadReviewed(page, 'track');
+  const parts = unzipSync(exported.bytes);
+  const body = strFromU8(parts['word/document.xml']!);
+  expect(body).toMatch(/<w:del [^>]*w:author="Ann Editor"[^>]*>.*?brown/);
+  expect(body).toMatch(/<w:ins [^>]*w:author="Ann Editor"[^>]*>.*?red/);
+  // The decided change is applied, untracked.
+  expect(docxText(exported.bytes)[2]).toBe('A third one.');
+  const comments = strFromU8(parts['word/comments.xml']!);
+  expect(comments).toContain('w:author="Ann Editor"');
+  expect(comments).toContain('>Undecided:<');
+  expect(comments).toContain('>Ask the author.<');
+
+  // The next download remembers the choice; another author can be given.
+  const again = await downloadReviewed(page, 'track', 'Bo Reviewer');
+  expect(strFromU8(unzipSync(again.bytes)['word/document.xml']!)).toContain('w:author="Bo Reviewer"');
+  expect(strFromU8(unzipSync(again.bytes)['word/document.xml']!)).not.toContain('Ann Editor');
 });
 
 test('the export dialog shows the undecided changes, and rejecting them gives the Original text', async ({ page }) => {

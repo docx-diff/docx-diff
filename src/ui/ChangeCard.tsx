@@ -85,6 +85,10 @@ export const ChangeCard = memo(function ChangeCard(props: Props) {
   useEffect(() => {
     if (focusComment > 0) commentRef.current?.focus();
   }, [focusComment]);
+  const openComment = () => {
+    if (comment === undefined) onComment(item.id, '');
+    setFocusComment((n) => n + 1);
+  };
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!onSelect || event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -141,8 +145,11 @@ export const ChangeCard = memo(function ChangeCard(props: Props) {
               onThis={() => onDecide(item.id, value)}
               onWithComment={() => {
                 onDecide(item.id, value);
-                if (comment === undefined) onComment(item.id, '');
-                setFocusComment((n) => n + 1);
+                openComment();
+              }}
+              onUndecidedWithComment={() => {
+                if (decision) onDecide(item.id, null);
+                openComment();
               }}
               onUntilHere={() => onDecideUntil(item.id, value)}
             />

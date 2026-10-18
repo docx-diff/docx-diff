@@ -54,8 +54,9 @@ describe('useComparison', () => {
         revisions: [],
         html: SMALL_HTML,
         inputsHadRevisions: false,
+        editedAuthor: null,
         headings: { original: [], edited: [] },
-        timings: { normalize: 0, checkInputs: 0, headings: 0, compare: 0, list: 0, tag: 0, render: 0 },
+        timings: { normalize: 0, checkInputs: 0, headings: 0, author: 0, compare: 0, list: 0, tag: 0, render: 0 },
       }),
     );
     expect(screen.getByTestId('state').textContent).toBe('done');

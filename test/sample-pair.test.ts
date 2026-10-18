@@ -3,12 +3,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
+import { docxDiffRejectRevisions } from 'docxodus/core';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { compare, listRevisions } from '../src/engine/docxodus';
+import { acceptAll, compare, listRevisions } from '../src/engine/docxodus';
+import { reconcileNotes } from '../src/engine/notes';
 import { exportDocx, type ExportOptions } from '../src/engine/exportDocx';
 import { runCompare, type ComparePipelineResult } from '../src/engine/pipeline';
-import type { RevisionListEntry } from '../src/engine/types';
+import type { FinalDecision, RevisionListEntry } from '../src/engine/types';
 import { analyzeComparison, type Analysis } from '../src/model/analyze';
 import { isBareParagraphMark } from '../src/model/changes';
 import { exportComments } from '../src/model/comments';
@@ -19,7 +21,7 @@ import { blockPositions, classify, spanningItems } from '../src/model/range';
 import { DEFAULT_COMPARE_SETTINGS, ignoredItems } from '../src/model/equivalence';
 import { decorateDocument, markCommon, mergeJoinedParagraphs, parseRenderedHtml, prepareRenderedDocument } from '../src/ui/renderedDocument';
 import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
-import { expectDeliverable } from './deliverable';
+import { expectDeliverable, expectTrackedDeliverable } from './deliverable';
 import { expectedText } from './expectedText';
 import { documentLook, lookDifference } from './look';
 import { initNodeEngine } from './node-engine';
@@ -327,13 +329,13 @@ describeWithSamples('sample pair', () => {
     type Decision = 'accept' | 'reject';
     const decide = (decision: (revisionId: string) => Decision) => new Map(result.revisions.map((r) => [r.id, decision(r.id)]));
     /** Each item's decision applied to all its revisions. */
-    const byItem = (decision: (item: Analysis['items'][number], index: number) => Decision) => {
-      const decisions = new Map<string, Decision>();
+    const byItem = <D extends FinalDecision = Decision>(decision: (item: Analysis['items'][number], index: number) => D) => {
+      const decisions = new Map<string, D>();
       analysis.items.forEach((item, index) => item.revisionIds.forEach((id) => decisions.set(id, decision(item, index))));
       return decisions;
     };
     /** Exports; with EXPORT_DIR set, also writes the file there (for scripts/check-libreoffice.sh). */
-    const exportWith = async (decisions: Map<string, Decision>, name: string, options?: ExportOptions) => {
+    const exportWith = async (decisions: Map<string, FinalDecision>, name: string, options?: ExportOptions) => {
       const start = performance.now();
       const exported = await exportDocx(result.redline, result.revisions, decisions, options);
       const ms = Math.round(performance.now() - start);
@@ -431,6 +433,41 @@ describeWithSamples('sample pair', () => {
       expect(count(/<w:commentRangeEnd /g)).toBe(comments.length);
       expect(strFromU8(files['word/comments.xml']!).match(/<w:comment /g)).toHaveLength(comments.length);
       await expectDeliverable(exported, readSamples().original);
+    });
+
+    it('with the detected range, every third text change tracked and a comment on every one: resolving them in Word gives the export deciding them so', async () => {
+      const classes = classify(analysis.items, analysis.index, analysis.suggestedEndPoint);
+      const outOfRange = new Set(analysis.items.filter((item) => classes.get(item.id) === 'outOfRange').flatMap((item) => item.revisionIds));
+      const withTracked = (tracked: FinalDecision) => {
+        let text = 0;
+        return byItem<FinalDecision>((item) =>
+          classes.get(item.id) === 'outOfRange'
+            ? 'reject'
+            : item.kind === 'formatting'
+              ? 'accept'
+              : ([tracked, 'accept', 'reject'] as const)[text++ % 3]!,
+        );
+      };
+      const decisions = withTracked('track');
+      const state = { ...INITIAL_DECISIONS, comments: Object.fromEntries(analysis.items.map((item) => [item.id, `On ${item.id}`])) };
+      const comments = exportComments(analysis.items, state, classes, decisions);
+      const options = { formattingChoice: 'edited' as const, outOfRange };
+      const relocated: string[][] = [];
+      const { exported, ms } = await exportWith(decisions, 'range-tracked', { ...options, comments, onCommentsRelocated: (ids) => relocated.push(...ids) });
+      console.log(`sample pair export, every third text change tracked: ${ms} ms`);
+      expect(relocated).toEqual([]);
+      expect((await listRevisions(exported)).length).toBeGreaterThan(0);
+      for (const [resolve, decision] of [
+        [acceptAll, 'accept'],
+        [docxDiffRejectRevisions, 'reject'],
+      ] as const) {
+        const { exported: expected } = await exportWith(withTracked(decision), `range-tracked-${decision}`, options);
+        expect(docxText(reconcileNotes(await resolve(exported), exported))).toEqual(docxText(expected));
+      }
+      const body = strFromU8(unzipSync(exported)['word/document.xml']!);
+      expect(body.match(/<w:commentReference /g)).toHaveLength(comments.length);
+      expect(strFromU8(unzipSync(exported)['word/comments.xml']!)).toContain('>Undecided:<');
+      await expectTrackedDeliverable(exported, readSamples().original, result.redline);
     });
 
     it('the trailing region out of range and the rest accepted gives the Edited text followed by the Original tail', async () => {

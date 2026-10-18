@@ -17,7 +17,7 @@ Open <https://docx-diff.github.io/>. The comparison engine (~8 MB) loads on the 
 1. Choose the **Original** and the **Edited** `.docx` (or drop them on the page). Both panels show the changes; scrolling is synced.
 2. If the Edited document covers only the first part of the Original, the end of the edited part is detected and the rest of the Original is kept as it is. The range bar shows the end point; you can move it or compare the full documents.
 3. Go through the changes list: accept or reject each change (keyboard: `j`/`k` or `↓`/`↑` to move, `a` accept, `r` reject, `u` undecided; `?` lists the shortcuts), or decide in bulk. Formatting changes are one group.
-4. **Download…** applies your decisions; undecided changes are accepted or rejected, as you choose. The result is a `.docx` without tracked changes.
+4. **Download…** applies your decisions; undecided changes are accepted, rejected or kept as Word tracked changes, as you choose, by the author you give (pre-filled from the Edited document). Otherwise the result is a `.docx` without tracked changes.
 
 The review (files, decisions, range) is saved in the browser and offered again when you come back.
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { docxDiffRejectRevisions, openDocxSession } from 'docxodus/core';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { expectDeliverable } from '../../test/deliverable';
+import { expectDeliverable, expectTrackedDeliverable } from '../../test/deliverable';
 import { documentLook, lookDifference } from '../../test/look';
 import { FIXTURES, FIXTURES_DIR } from '../../test/fixtures/make-fixtures';
 import { initNodeEngine } from '../../test/node-engine';
@@ -16,7 +16,7 @@ import type { FormattingChoice } from './consistentLook';
 import { exportDocx } from './exportDocx';
 import { reconcileNotes } from './notes';
 import { UnsupportedRevisionError } from './rejectRewrite';
-import type { RevisionListEntry } from './types';
+import type { FinalDecision, RevisionListEntry } from './types';
 
 type Decision = 'accept' | 'reject';
 
@@ -165,6 +165,55 @@ describe.each(FIXTURES.map((fixture) => [fixture.name, fixture.description] as c
       await expectDeliverable(exported, original);
     },
   );
+
+  it('keeping every text revision tracked: accepting it gives the Edited text, rejecting it the Original’s', async () => {
+    const tracked = new Map(revisions.map((revision) => [revision.id, revision.type === 'format' ? 'accept' : 'track'] as const));
+    const exported = await exportDocx(redline, revisions, tracked);
+    keep(exported, `${name}-tracked`);
+    const textRevisions = revisions.filter((revision) => revision.type !== 'format').length;
+    expect((await listRevisions(exported)).length > 0).toBe(textRevisions > 0);
+    expect(docxText(reconcileNotes(await acceptAll(exported), exported))).toEqual(docxText(edited));
+    const formatOnly = new Map(revisions.map((revision) => [revision.id, revision.type === 'format' ? 'accept' : 'reject'] as const));
+    expect(docxText(reconcileNotes(await docxDiffRejectRevisions(exported), exported))).toEqual(
+      docxText(await exportDocx(redline, revisions, formatOnly)),
+    );
+    await expectTrackedDeliverable(exported, original, redline);
+  });
+
+  it.each(['accept', 'reject'] as const)(
+    'keeping one revision tracked and deciding the rest (%s): accepting or rejecting it there gives that decision’s export',
+    async (rest) => {
+      for (const revision of revisions.filter((candidate) => candidate.type !== 'format')) {
+        const label = `${revision.id} (${revision.family})`;
+        const exported = await exportDocx(redline, revisions, decisions(rest, { [revision.id]: 'track' as Decision }));
+        for (const [resolve, decision] of [
+          [acceptAll, 'accept'],
+          [docxDiffRejectRevisions, 'reject'],
+        ] as const) {
+          const expected = await exportDocx(redline, revisions, decisions(rest, { [revision.id]: decision }));
+          expect(docxText(reconcileNotes(await resolve(exported), exported)), `${label} ${decision}`).toEqual(docxText(expected));
+        }
+        await expectTrackedDeliverable(exported, original, redline);
+      }
+    },
+  );
+
+  it('gives the tracked changes and the comments the export’s author and date', async () => {
+    const text = revisions.filter((revision) => revision.type !== 'format');
+    if (text.length === 0) return;
+    const tracked = new Map<string, FinalDecision>(revisions.map((revision) => [revision.id, revision.type === 'format' ? 'accept' : 'track']));
+    const comments = [{ revisionIds: [text[0]!.id], paragraphs: ['Undecided:'] }];
+    const exported = await exportDocx(redline, revisions, tracked, { comments, author: 'Ann  Bee Example', date: '2026-10-18T09:00:00Z' });
+    const files = unzipSync(exported);
+    const xml = TEXT_PARTS.concat('word/comments.xml').map((part) => (files[part] ? strFromU8(files[part]) : '')).join('');
+    expect(new Set([...xml.matchAll(/w:author="([^"]*)"/g)].map((match) => match[1]))).toEqual(new Set(['Ann  Bee Example']));
+    expect(new Set([...xml.matchAll(/<w:(?:ins|del|moveFrom|moveTo|comment)\b[^>]*w:date="([^"]*)"/g)].map((match) => match[1]))).toEqual(
+      new Set(['2026-10-18T09:00:00Z']),
+    );
+    expect(strFromU8(files['word/comments.xml']!)).toContain('w:initials="ABE"');
+    // No bookmark of the parking is left.
+    expect(xml).not.toContain('_DDK');
+  });
 
   it('accepting one revision and rejecting the rest applies exactly that change, as the engine does', async () => {
     for (const revision of revisions) {

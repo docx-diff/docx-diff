@@ -13,6 +13,9 @@ function setup(overrides: Partial<Parameters<typeof ExportDialog>[0]> = {}) {
     ignored: { count: 0, decided: 0 },
     outOfRange: null,
     status: { status: 'idle' } as ExportStatus,
+    initialUndecided: 'accept' as const,
+    initialAuthor: '',
+    editedAuthor: null as string | null,
     onDownload: vi.fn(),
     onCancel: vi.fn(),
     ...overrides,
@@ -46,11 +49,33 @@ describe('ExportDialog', () => {
     expect((screen.getByLabelText(/Accept undecided changes/) as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    expect(props.onDownload).toHaveBeenLastCalledWith('accept');
+    expect(props.onDownload).toHaveBeenLastCalledWith({ undecided: 'accept', author: '' });
 
     fireEvent.click(screen.getByLabelText(/Reject undecided changes/));
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    expect(props.onDownload).toHaveBeenLastCalledWith('reject');
+    expect(props.onDownload).toHaveBeenLastCalledWith({ undecided: 'reject', author: '' });
+
+    fireEvent.click(screen.getByLabelText(/Keep undecided changes as tracked changes/));
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    expect(props.onDownload).toHaveBeenLastCalledWith({ undecided: 'track', author: '' });
+  });
+
+  it('starts from the last choice, and takes the author of comments and tracked changes (FR-38b, FR-38c)', () => {
+    const props = setup({ initialUndecided: 'track', initialAuthor: 'Ann Editor', editedAuthor: 'Ann Editor' });
+    expect((screen.getByLabelText(/Keep undecided changes as tracked changes/) as HTMLInputElement).checked).toBe(true);
+    const author = screen.getByLabelText('Author of the comments and tracked changes') as HTMLInputElement;
+    expect(author.value).toBe('Ann Editor');
+    expect(screen.getByText('As in the Edited document.')).toBeTruthy();
+
+    fireEvent.change(author, { target: { value: '  Bo Reviewer ' } });
+    expect(screen.queryByText('As in the Edited document.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+    expect(props.onDownload).toHaveBeenLastCalledWith({ undecided: 'track', author: 'Bo Reviewer' });
+  });
+
+  it('shows the default author when the field is empty', () => {
+    setup();
+    expect((screen.getByLabelText('Author of the comments and tracked changes') as HTMLInputElement).placeholder).toBe('Reviewer');
   });
 
   it('offers the formatting choice, and leaves it out without formatting changes', () => {
