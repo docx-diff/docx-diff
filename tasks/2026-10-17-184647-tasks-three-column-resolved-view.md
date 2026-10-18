@@ -44,7 +44,13 @@ Changed:
 - `test/sample-pair.test.ts` - Text parity on the sample (shares its one compare), detected range and none; logs `applyResolution` timings (jsdom).
 - `e2e/compare.spec.ts`, `e2e/review.spec.ts`, `e2e/range.spec.ts`, `e2e/resume.spec.ts`, `e2e/offline.spec.ts`, `e2e/perf.spec.ts`, `e2e/theme.spec.ts` - Pin the view settings they expect.
 - `docs/architecture.md` - "Joined and split paragraphs": the table/container boundary and what the export does there (task 0.0).
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md` - Documentation (task 5.0).
+- `docs/requirements.md` - FR-25b (Resolved column), FR-25c (columns toggle, defaults, narrow window), FR-27c (comment bubbles); FR-20–29, 30, Design, Non-goals and the Overview for three panels; open question 5 (following the formatting choice later).
+- `docs/architecture.md` - "Resolved column" section; module map entries; N-panel scroll sync; Resolved column parity in Testing.
+- `docs/measurements.md` - Resolved column timings (browser and jsdom), the style sheet order fix, success metric outcomes.
+- `e2e/perf.spec.ts` - Three-column checks on the sample: first display, one decision < 100 ms, Accept all / Reject all < 1 s.
+- `src/ui/DocumentPanel.tsx` (task 5.3) - The document's style sheet (and dark `style` attributes) set before the content goes in; the theme effect writes only changes (the ~300-page display's longest task 1.2 s → 0.45 s, a regression from dark mode).
+- `src/App.tsx`, `src/index.css`, `src/ui/panel.css`, `src/ui/resolvedView.ts`, `src/ui/CommentBubbles.tsx` - Comments cite FR-25b / FR-27c instead of the PRD.
+- `CLAUDE.md` - "UI facts that are easy to get wrong": the Resolved column's rule and joins, style sheet order, `pinView`.
 
 ### Notes
 
@@ -425,10 +431,10 @@ are corrected accordingly (leave such a paragraph, don't hide it).
 
 **Depends on:** tasks 1.0–4.0.
 
-- [ ] 5.0 Documentation, measurements and final checks (PRD-32, success metrics 5–7)
-  - [ ] 5.1 Update `docs/requirements.md` as in the specs.
-  - [ ] 5.2 Add the "Resolved column" section and module map entries to `docs/architecture.md`.
-  - [ ] 5.3 Measure on the sample (Vitest timings from 1.11 and `PERF=1 npm run test:e2e` with three columns) and record them in `docs/measurements.md`; check success metric 5 (< 100 ms per decision, < 1 s Accept all, first display within the existing 10 s).
-  - [ ] 5.4 Update `CLAUDE.md` if any new easy-to-get-wrong fact came up (e.g. the resolved column hides by class, joins must be undone before re-joining).
-  - [ ] 5.5 Ask the user to try the app by hand (`npm run dev`): three columns by default, toggle, narrow window, deciding from the middle column, comment bubbles, light and dark mode.
-  - [ ] 5.6 Final run: `npm run typecheck`, `npm test`, `npm run test:e2e`; mark the PRD's goals and success metrics as met or note what isn't.
+- [x] 5.0 Documentation, measurements and final checks (PRD-32, success metrics 5–7)
+  - [x] 5.1 Update `docs/requirements.md` as in the specs.
+  - [x] 5.2 Add the "Resolved column" section and module map entries to `docs/architecture.md`.
+  - [x] 5.3 Measure on the sample (Vitest timings from 1.11 and `PERF=1 npm run test:e2e` with three columns) and record them in `docs/measurements.md`; check success metric 5 (< 100 ms per decision, < 1 s Accept all, first display within the existing 10 s).
+  - [x] 5.4 Update `CLAUDE.md` if any new easy-to-get-wrong fact came up (e.g. the resolved column hides by class, joins must be undone before re-joining).
+  - [x] 5.5 Ask the user to try the app by hand (`npm run dev`): three columns by default, toggle, narrow window, deciding from the middle column, comment bubbles, light and dark mode.
+  - [x] 5.6 Final run: `npm run typecheck`, `npm test`, `npm run test:e2e`; mark the PRD's goals and success metrics as met or note what isn't.

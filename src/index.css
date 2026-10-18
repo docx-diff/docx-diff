@@ -1280,7 +1280,7 @@ body {
   color: inherit;
 }
 
-/* The reviewer's comments in the Resolved column (PRD-20–26), slotted into the panel's shadow root
+/* The reviewer's comments in the Resolved column (FR-27c), slotted into the panel's shadow root
    like the inline card, below their comment icons; light blue, to stand out from the page. Hidden
    until placed (CommentBubbles.tsx). */
 .comment-bubble {

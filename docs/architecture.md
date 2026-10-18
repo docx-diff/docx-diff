@@ -43,15 +43,17 @@ Model (pure TypeScript, main thread)
 - `src/model/equivalence.ts` — compare settings, ignored items, same-text relabelling, shared edges.
 - `src/model/range.ts` — trailing-region detection, positions, in/out-of-range classification.
 - `src/model/analyze.ts` — index + items + suggested end point from a worker result.
-- `src/model/decisions.ts` — decision state (decisions, formatting choice, comments) and reducer; `finalRevisionDecisions` for export.
+- `src/model/decisions.ts` — decision state (decisions, formatting choice, comments) and reducer; `finalItemDecision` (the per-item rule) and `finalRevisionDecisions` for export.
+- `src/model/resolved.ts` — `resolvedItemDecisions`: each item's side in the Resolved column (FR-25b).
 - `src/model/comments.ts` — the text of the exported comments (FR-27b).
 - `src/model/reviewList.ts` — list entries, navigation order, Previous/Next, next undecided.
 - `src/model/outline.ts` — the headings for the outline sidebar (FR-24a).
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
-- `renderedDocument.ts` — prepares the HTML once for both panels; `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts`, `reveal.ts`, `OverviewBar.tsx`.
-- `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
+- `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
+- `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
+- `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
 
 Storage: `src/storage/reviewStore.ts`. Service worker registration: `src/serviceWorker.ts`.
 
@@ -149,9 +151,10 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
 ## Rendering and linking HTML to revisions
 
 - `convertDocxToHtml(tagged, { renderTrackedChanges: true, renderFootnotesAndEndnotes: true,
-  renderMoveOperations: true, stampAnchors: true })`, **once**. Both panels show this same HTML in a
-  shadow root each: the left hides `<ins>` and move-to content via CSS, the right hides `<del>` and
-  move-from content (`.doc[data-side=left|right]` in `panel.css`).
+  renderMoveOperations: true, stampAnchors: true })`, **once**. Every panel shows this same HTML in a
+  shadow root of its own: the left hides `<ins>` and move-to content via CSS, the right hides `<del>`
+  and move-from content (`.doc[data-side=left|right]` in `panel.css`); the Resolved column hides per
+  item, by class ([Resolved column](#resolved-column)).
 - **Revision ids:** the converter emits no revision id on `<ins>`/`<del>` (only `data-author`,
   `data-date`, and `data-move-id` for moves), and one revision can render as many elements (195
   deletions → 4,333 `<del>` on the sample), so matching by order is impossible. `tagRedline` rewrites
@@ -183,11 +186,13 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   puts a paragraph with a removed mark right before a table only when the whole paragraph goes
   (its text moved into the table's first cell, fixture `paragraph-join-table`), which the panel
   hides anyway; and the converter wraps each table in a `div` without `data-anchor`.
-- **Scroll sync** (`scrollSync.ts`): both panels have the same `data-anchor`s. The top-most visible
-  anchor of the scrolled panel is aligned in the other, interpolating between blocks both panels show;
-  the sync's own scroll events are ignored. `reveal.ts` centres a change's first shown element in each
-  panel (or aligns a panel that shows none of it with the other); `revealBlock` does the same for an
-  outline heading, placing it near the top.
+- **Scroll sync** (`scrollSync.ts`, `useScrollSync(panels, …)` over two or three panels): all panels
+  have the same `data-anchor`s. The top-most visible anchor of the scrolled panel is aligned in each
+  of the others, interpolating between blocks both panels of the pair show (`pairOffsets`,
+  `mapScrollTop`; block offsets cached per panel, pairs per direction, dropped for a panel on
+  resize); the sync's own scroll events are ignored. `reveal.ts` centres a change's first shown
+  element in each panel (or aligns a panel that shows none of it with the first one that does);
+  `revealBlock` does the same for an outline heading, placing it near the top.
 - **Outline** (FR-24a): the Edited's headings, or the Original's when the Edited has none. They are
   read from the inputs in the worker (`src/engine/headings.ts`: body paragraphs with an outline level,
   direct or through the style's `w:basedOn` chain; text in the accepted view), **not** from the
@@ -251,6 +256,69 @@ documents are compared once and the items classified. All positions come from th
 - Out-of-range items are excluded from the list, totals, navigation and bulk actions; their decisions
   stay in state. On export they are rejected (keeping the Original's text). The left panel greys the
   region and its notes and draws a divider; the overview bar hatches it.
+
+## Resolved column
+
+FR-25b, FR-25c, FR-27c. The column between the Original and the Edited shows the document as the
+export resolves it. It is a third `DocumentPanel` (`side='resolved'`) over the same rendered HTML,
+mounted only in three-column view; no engine call and no second render. The rendered HTML's shapes
+it relies on (which element carries which id) are listed at the top of `src/ui/resolvedView.ts`.
+
+- **Which side each item shows** (`resolvedItemDecisions`, `src/model/resolved.ts`): the export's
+  own per-item rule (`finalItemDecision`, shared with `finalRevisionDecisions`) with undecided
+  accepted, so view and export cannot disagree on the text: out of range → reject, ignored →
+  accept unless explicitly decided, otherwise the decision. Formatting items are always accepted:
+  the HTML has only the Edited's formatting (the converter renders a formatting revision with its
+  new properties), so the column cannot follow the formatting choice or FR-39a
+  (requirements, open question 5).
+- **Hiding by class, not CSS per side.** `applyResolution` sets `resolved-hidden` on each element
+  of the changed items by its own kind: `del` (and the converter's deletion markers) hidden when
+  accepted, `ins` when rejected, `tr.rev-row-ins/del` likewise. The rule follows the element, never
+  the item's kind: a paragraph-mark block can belong to a different item than its text. Only the
+  items whose side changed are touched; a bulk decision is one call.
+- **Undoable joins.** A paragraph whose mark the result lacks (`rev-para-ins` rejected,
+  `rev-para-del` accepted) is joined into the next paragraph with the side panels' `joinParagraphs`
+  (same table/container boundary). Since decisions change, `prepareResolvedPanel` saves each
+  paragraph's own children, and each update first **restores** the whole run of paragraphs a changed
+  mark can connect (`runOf`: neighbours that can lose their mark, up to the first that can't), then
+  joins it again. Restoring only the changed block is not enough: content of an earlier block may
+  sit inside it. Markers are saved with the children, so they move with the joins and come back.
+- **Notes** follow `reconcileNotes`: a note is hidden when it has no text left, or no reference is
+  left to it; when both references of a moved reference are left (its two ends decided
+  differently), a copy of the note follows for the second one (`resolved-note-copy`).
+- **Range order** (`applyRangeOrder`), the counterpart of [Range order](#range-order): the top-level
+  blocks placed before the end point (`blockPositions(index, suggestedEndPoint)`) that come after
+  the first block outside the range are moved, in order, before it and its divider; a moved block
+  whose mark an out-of-range revision inserted keeps it only when every in-range change in it is
+  accepted (`pulledMarks`). The previous placement is undone first, and the joins are redone. The
+  panel removes the range divider before and puts it back after.
+- **Marks** (`applyResolvedDecisions`): decided items get `change-accepted`/`change-rejected` (yellow
+  in `panel.css`, at full opacity: the side panels' dimming is scoped to them) and
+  `change-decided-end` (✓/✗) on their last shown `ins`/`del`. Styling targets `:is(ins, del)` and
+  markers only, since paragraph-mark ids sit on blocks. **Markers**: `prepareResolvedPanel` puts an
+  empty `span.resolved-marker` after each item's last deletion and last insertion (after the table
+  for a row); `resolved-marker--shown` shows one where the result drops that side and nothing else
+  of the item is visible, and for a move at the end the decision removed. Undecided items get the
+  dotted underline (and a dotted marker for a deletion).
+- **Comment icons and bubbles** (FR-27c): `applyCommentToggles` puts an empty `span.comment-toggle`
+  after each commented item as shown (after its ✓/✗ or marker; for a paragraph mark only, at the
+  end of the paragraph's text), moved only when its place changed (so it keeps the focus), never
+  into a note copy. The bubbles (`CommentBubbles.tsx`) are React children of the column's scroller,
+  shown through a `<slot>` like the inline card (so they scroll with the text and get the page's
+  styles), placed below the icon (else `changeBox` + `GAP`) and stacked by `stackBoxes`. The panel
+  dispatches `CONTENT_CHANGED` on its scroller after it changed its text, since a decision can
+  move a comment without resizing anything. Which bubbles are closed is App state, not saved.
+- **Scroll anchoring:** the update runs in a layout effect; it first notes the top-most visible
+  block and its offset (`topBlock`), and afterwards scrolls the column so that block stays put,
+  through `scrollQuietly` (the scroll sync doesn't react to it). Text appearing or disappearing
+  above the viewport doesn't move what is being read.
+- **Selection** needs nothing new: markers carry `data-change-id`, the click handler reports it,
+  and `changeBox`/`reveal` include shown markers. Hidden elements can't be clicked.
+- **Layout:** `.panels--three` shares the width equally, with narrower side padding
+  (`--doc-padding-inline`). At 1024 px or narrower (`useNarrowWindow`) two columns are shown whatever the
+  setting; the setting itself is kept. Defaults (`DEFAULT_VIEW_SETTINGS`): three columns, both
+  sidebars collapsed; stored settings are merged over them. E2e specs written for two columns pin
+  their view with `pinView` (`e2e/viewSettings.ts`).
 
 ## Export
 
@@ -454,13 +522,17 @@ marks storage unavailable without stopping later writes.
   text, reject all ≡ Original text (`test/text.ts`, checked against `pandoc -t plain` in
   `test/text.test.ts`). Mixed decisions: on the fixtures, each single revision decided against the
   rest ≡ the engine's own `DocxSession` decision (text and XML); on the sample, alternating decisions ≡
-  `test/expectedText.ts` (an independent text model of the redline). The consistent look is checked
+  `test/expectedText.ts` (an independent text model of the redline).
+- **Resolved column parity** (`test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`): the column's
+  text (`resolvedText`, built under jsdom) equals the export's text for all accepted, rejected and
+  undecided and alternating decisions (`test/parity.ts`), with the full documents and the detected
+  range, each state applied incrementally from the previous one. The consistent look is checked
   with `test/look.ts`: every property set in a mixed export occurs in the chosen version's export.
 - **Deliverable checks:** every export passes `verifyDeliverable` (`passed` /
   `passedWithPreExistingFindings`, `test/deliverable.ts`) and converts with
   `scripts/check-libreoffice.sh`.
 - **E2E** (Playwright, `e2e/`): engine loading and no third-party requests, compare, review, range,
-  export dialog, resume, offline; `PERF=1` adds timing checks (`e2e/perf.spec.ts`), `BIG_PAIR=1` the
+  export dialog, resume, offline, the Resolved column (`resolved.spec.ts`); `PERF=1` adds timing checks (`e2e/perf.spec.ts`), `BIG_PAIR=1` the
   synthetic ~300-page pair (`test/big-pair.ts`).
 
 ## Reference sources

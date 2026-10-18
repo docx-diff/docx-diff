@@ -71,6 +71,13 @@ Verified during planning and the build (details in `docs/architecture.md`); don'
 - Docxodus runs under Node, so engine tests run in Vitest with the real WASM (`test/node-engine.ts`).
 - `getVersion()` does not report the npm package version; use `__DOCXODUS_VERSION__` (injected by `vite.config.ts`), e.g. via `engineVersion()` in `src/engine/docxodus.ts`.
 
+## UI facts that are easy to get wrong
+
+- **The Resolved column** (`src/ui/resolvedView.ts`, "Resolved column" in `docs/architecture.md`) takes each item's side from `resolvedItemDecisions`, the export's own per-item rule (`finalItemDecision`) with undecided = accept and formatting always accepted. Don't write a second rule. It hides elements by class, chosen by the element (`del`/`ins`/`tr.rev-row-*`, `p.rev-para-ins/del`), never by the item's kind.
+- Its paragraph joins depend on decisions: before joining again, restore the **whole run** of paragraphs a changed mark can connect, not just the changed block (earlier blocks' content sits inside it). Markers and comment icons live in the saved children, so they move with joins.
+- **Fill a panel's style sheet before its content goes into the shadow root.** Changing it afterwards (even from empty) makes Chromium restyle the whole document: 0.7 s on the ~300-page pair, over the perf check's 1 s limit. The theme effect writes only when the text differs.
+- E2e specs written for the two-column view pin it with `pinView(page, TWO_COLUMNS)` (`e2e/viewSettings.ts`): the defaults are three columns with both sidebars collapsed.
+
 ## Checks
 
 - Round trip: accept-all export ≡ Edited text, reject-all export ≡ Original text (`test/text.ts`, checked against `pandoc -t plain` in `test/text.test.ts`). Mixed decisions: on the fixtures each single revision decided against the rest ≡ the engine's own `DocxSession` decision (XML too); on the sample, ≡ `test/expectedText.ts` (an independent text model of the redline).

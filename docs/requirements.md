@@ -10,8 +10,11 @@ metrics' outcomes: [`measurements.md`](measurements.md).
 A tool that compares two Word documents (`.docx`), an **Original** and an **Edited** version, lets a
 reviewer go through every difference, accept or reject each one, and download a new `.docx` with
 those decisions applied. It runs **entirely in the browser** as a static site on GitHub Pages;
-documents never leave the user's machine. The layout follows Draftable's comparison view: two
-document panels side by side with changes highlighted, and a list of changes on the right.
+documents never leave the user's machine. The layout follows Draftable's comparison view: the
+document panels side by side with changes highlighted, and a list of changes on the right. By
+default there are three: the Original, the **Resolved** text (the document as the export would
+produce it with the current decisions) and the Edited; two columns (Original | Edited) are a toggle
+away.
 
 The motivating use case is editing translations: an editor revises a long manuscript (the sample
 pair in `docs/`: `aramlo-part-2-2025-05-06.docx`, ~60 pages, 746 paragraphs, 20 footnotes) and
@@ -113,26 +116,68 @@ to ~300 pages; no backend.
 
 ### Side-by-side view
 
-20. Both documents as **continuous text** (no page boxes), with readable formatting: headings,
+20. The documents as **continuous text** (no page boxes), with readable formatting: headings,
     paragraph styles, bold/italic, lists, tables, footnotes (at the end).
 21. Left panel: deleted text red, struck through; right panel: inserted text blue, underlined; moves
     their own colour; a small legend. Changes are marked within the text only, with no rules at the
     paragraph edge. Formatting changes have **no mark** in the panels (in a restyled document nearly
     every line has one); they are reviewed through the changes list and the current-change outline.
-22. The panels scroll **in sync** (the matching paragraph stays aligned).
+    In three-column view (FR-25c) the legend also explains the Resolved column's marks (FR-25b):
+    **Decided** (yellow, with ✓) and **Undecided** (dotted underline); their tooltips say they apply
+    to the Resolved column.
+22. The panels scroll **in sync** (the matching paragraph stays aligned in all of them, whichever is
+    scrolled).
 23. A "Scroll lock" toggle turns sync off.
-24. Each panel has a narrow overview bar showing where the changes are; clicking scrolls there.
+24. The Original and Edited panels each have a narrow overview bar showing where the changes are;
+    clicking scrolls there. The Resolved column has none.
     24a. A collapsible **outline** sidebar on the left lists the headings, indented by level, like a
     table of contents: the Edited's, or the Original's when the Edited has none (only one of them may
     use heading styles). Headings only one version has are struck through (Original only) or
     underlined (Edited only), and those outside the comparison range greyed. Clicking one
-    scrolls **both** panels to it (whatever the scroll lock). Collapsed, it is a strip that opens it
-    again; remembered in the browser, not part of a saved review.
-25. Accepted/rejected changes are distinguishable from undecided ones in both panels (dimmed, ✓ / ✗).
+    scrolls **all** panels to it (whatever the scroll lock). Collapsed, it is a strip that opens it
+    again. **Collapsed by default**; the state is remembered in the browser, not part of a saved
+    review.
+25. Accepted/rejected changes are distinguishable from undecided ones in the Original and Edited
+    panels (dimmed, ✓ / ✗).
     25a. Light and dark colours: the app follows the browser's preference, and an icon button at the
     end of the top bar switches between them (remembered in this browser; switching back to the
     browser's preference follows it again). In dark mode the documents are dark too: their own text,
     highlight and shading colours are adapted, keeping their hue, so that they stay readable.
+
+    25b. The **Resolved** column, between the Original and the Edited, shows the document as the
+    export would produce it with the current decisions (FR-39, FR-40, FR-45), undecided changes
+    counted as accepted (the export dialog's default, FR-38):
+    - an accepted or undecided change shows the Edited's version, a rejected one the Original's; a
+      replacement only its inserted or only its deleted text; a move its text at the destination in
+      the Edited's wording, or (rejected) at the source in the Original's; table rows, paragraph
+      breaks and footnotes/endnotes by the same rules (a note only one version has comes and goes
+      with its reference);
+    - in-range content the engine placed after the out-of-range region (on the sample: the two move
+      destinations and the Edited's closing paragraph) is shown before the divider, where the
+      export puts it; the out-of-range tail (FR-17) is shown as in the Original's panel: the
+      Original's text, greyed, after the divider (FR-18);
+    - changes not offered for decision (ignored, FR-13d; relabelled as formatting, FR-13b; a
+      replacement's shared edges; out of range) appear as the export resolves them, unmarked;
+    - the text keeps the formatting the side panels show (the Edited's wherever a formatting
+      revision exists); it follows neither the formatting choice (FR-30) nor FR-39a. The export
+      decides the formatting; the column's header tooltip says so.
+
+    Marks, only on changes offered for decision: a **decided** change has a light yellow background
+    and, after its last piece, the ✓ (accepted) or ✗ (rejected) of the side panels, at full
+    strength (not dimmed); no red/blue/purple, strike-through or underline. A decision that leaves
+    no text (an accepted deletion, a rejected insertion; the source of an accepted move, the
+    destination of a rejected one) leaves a **marker** there: the ✓/✗ on yellow. An **undecided**
+    change has a dotted underline in a muted colour, and an undecided deletion a small dotted
+    marker. Changes and markers can be clicked to select their item (FR-29); the current change has
+    the same outline as in the side panels. The column updates right after every decision, bulk
+    ones included, without moving the text being read.
+
+    25c. A **columns** icon button in the top bar, before the light/dark toggle, switches between
+    **three columns** (Original | Resolved | Edited, the default) and **two** (Original | Edited).
+    Its icon shows the view a click switches to; its tooltip says so ("Show two columns" / "Show
+    three columns"). The choice is remembered in the browser, not part of a saved review. In a
+    window **1024 CSS px wide or narrower** two columns are shown whatever the choice, and the
+    button is disabled ("The window is too narrow for three columns"); the stored choice is kept.
 
 ### Changes list
 
@@ -141,7 +186,8 @@ to ~300 pages; no backend.
     what changed ("Bold removed, Font changed"). A move that carries edits shows both wordings.
 
     26b. The list can be **collapsed** (» in its header) to a narrow strip showing the number of
-    undecided changes, which opens it again; remembered in the browser.
+    undecided changes, which opens it again. **Collapsed by default**; the state is remembered in
+    the browser.
 27. **Accept** / **Reject** per item, the current decision shown; a decision can be changed or reset.
 
     27a. Each button has a joined arrow opening a menu: **Accept/Reject this** (the button's own
@@ -166,18 +212,29 @@ to ~300 pages; no backend.
 
     A change in a footnote or endnote is commented on the note's reference; a move on the side the
     export keeps.
-28. Clicking an item scrolls **both** panels to it and marks it as current.
+
+    27c. In three-column view each such comment (non-blank, in range, not on a formatting item) is
+    shown in a read-only **bubble** under its change in the Resolved column (under its marker when
+    the decision removes the text), without the change being selected: the comment text only, not
+    the export's wrapper. Bubbles float over the text below with a gap, scroll with it, and are
+    pushed down so they never cover one another. An × closes a bubble; a small speech-bubble icon
+    after the change (after its ✓/✗) shows or hides it, without selecting the change (tooltip
+    "Show comment" / "Hide comment"; Enter and Space work too). All bubbles are open when a review
+    is shown, after a reload or on resuming; closing one is not remembered. A new comment's bubble
+    opens; a removed or blanked comment takes its bubble and icon away.
+28. Clicking an item scrolls **all** panels to it and marks it as current.
 
     28a. The current change's **card** (as in the list: text, Accept/Reject with their menus,
-    comment) also appears in the Edited's panel, below the change with a gap so the next line stays
+    comment) also appears in the Edited's panel (never in the Resolved column), below the change with a gap so the next line stays
     readable, whichever way it was selected (panel, list, keyboard). It scrolls with the text; for a
     deletion it sits under the place the deleted text was. An × in its corner (or Escape) hides it
     until the next selection. A **Display** option in Compare settings turns it off (on by default;
     remembered in the browser, not part of a saved review). With it, changes can be reviewed with
     the list collapsed (FR-26b).
-29. Clicking a change in either panel selects its item.
-30. **Formatting group:** all formatting changes in one collapsible group, **collapsed by default**,
-    with their count. The group itself is hidden by default; a **Fmt** button after Accept all /
+29. Clicking a change in any panel (or a marker in the Resolved column, FR-25b) selects its item;
+    the clicked panel does not scroll.
+30. **Formatting group:** all formatting changes in one collapsible group (on a light gray
+    background), **collapsed by default**, with their count. The group itself is hidden by default; a **Fmt** button after Accept all /
     Reject all shows or hides it (the totals always name the formatting choice). Formatting is decided **once for the whole document**: **Keep the Original's
     formatting** / **Use the Edited's formatting** (default: the Edited's). Expanded, the group shows
     the individual items for review only; they have no Accept/Reject of their own.
@@ -243,6 +300,8 @@ to ~300 pages; no backend.
 - Exporting a `.docx` that still contains tracked changes.
 - Editing text in the tool; exporting/importing a review as a file; sharing or collaboration.
 - More than two documents, or formats other than `.docx`.
+- Editing text or comments in the Resolved column; the current change's card there; an overview
+  bar for it; a layout for phones or touch input (at 1024 px or narrower: two columns).
 - Any server, account or upload.
 - Testing in Microsoft Word (not available; LibreOffice and `verifyDeliverable` are the acceptance
   checks). Printing.
@@ -252,10 +311,13 @@ to ~300 pages; no backend.
 - **Toolbar:** file names / pickers, Swap, Scroll lock, Previous / Next, Download…, Close review, Help
   (icon; the legend is in its popover). Compare settings, the columns toggle and the light/dark toggle are
   icon buttons with tooltips at the end of the header. The comparison range has its own bar below the header.
-- **Main area:** Original panel | Edited panel, each with its overview bar. **Right sidebar:** the
-  changes list, Accept all / Reject all at the top, the formatting group, totals at the bottom.
-- **Colours:** deletions red, insertions blue, moves purple; never colour alone (strikethrough,
-  underline).
+- **Main area:** Original panel | Resolved column | Edited panel (three columns sharing the width),
+  or Original | Edited; the side panels each with its overview bar. **Left sidebar:** the outline.
+  **Right sidebar:** the changes list, Accept all / Reject all at the top, the formatting group,
+  totals at the bottom. Both sidebars start collapsed, so the documents get the width.
+- **Colours:** deletions red, insertions blue, moves purple; light yellow means a decided change in
+  the Resolved column (so the formatting group and the formatting cards' edge are gray); never
+  colour alone (strikethrough, underline, ✓/✗, dotted underline).
 - **Empty state:** what the app does (compare, accept/reject, resume a saved review, download the resolved document), two drop
   zones with short instructions, a note that files stay on the user's computer (kept in the browser for
   resuming), and a sketch of the review screen: outline, Original → Resolved ← Edited, changes list, with a
@@ -290,3 +352,13 @@ All six were met at the end of the initial build (2026-10-17); details in
    with the Original's tail cut off fixes it (~6–8 days, with open design questions:
    [`false-moves-at-trailing-tail.md`](false-moves-at-trailing-tail.md)). Do it only if false moves
    show up in real use, or report the cliff upstream to Docxodus.
+5. **The Resolved column and formatting.** The Resolved column shows the formatting of the redline
+   HTML, not the formatting choice (FR-30) or FR-39a (FR-25b): the converter renders formatting
+   revisions with the Edited's properties only, and rewriting `w:rPr` before rendering would change
+   the `data-anchor` unids the range and scroll sync rely on. If following the choice is wanted
+   later (deferred 2026-10-17), the candidates are: (a) a second HTML rendered from the tagged
+   redline with only the formatting revisions rejected, which needs anchors that still match (or
+   range and scroll sync keyed by `data-change-id`); (b) CSS overrides from the formatting
+   revisions' old properties (run formatting only, not styles or numbering); (c) rendering the real
+   export (exact, but ~1 s per decision and no ids for selection). FR-39a would come on top of any
+   of them.

@@ -64,7 +64,7 @@ interface Props {
   card?: ReactNode;
   /**
    * The Resolved column only: the commented items, each with whether its bubble is open (a comment
-   * icon after each, PRD-23), what a click on an icon does, and the bubbles (`CommentBubbles`).
+   * icon after each, FR-27c), what a click on an icon does, and the bubbles (`CommentBubbles`).
    */
   commentToggles?: ReadonlyMap<string, boolean>;
   onToggleComment?: (itemId: string) => void;
@@ -72,6 +72,11 @@ interface Props {
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
+/** The document's own colours (CSS or a `style` attribute) for the theme (darkColors.ts). */
+function themedColors(css: string, theme: Theme): string {
+  return theme === 'dark' ? darkColors(css) : css;
+}
+
 const NO_SIDES: ReadonlyMap<string, ResolvedSide> = new Map();
 const NO_POSITIONS: ReadonlyMap<string, number> = new Map();
 const NO_TOGGLES: ReadonlyMap<string, boolean> = new Map();
@@ -150,6 +155,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const appliedSides = useRef<ReadonlyMap<string, ResolvedSide> | null>(null);
   const appliedToggles = useRef<ReadonlyMap<string, boolean> | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   useLayoutEffect(() => {
     const host = scrollerRef.current!;
@@ -164,6 +171,11 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     wrapper.append(...Array.from(document.body.childNodes, (node) => owner.importNode(node, true)));
     if (side === 'resolved') resolvedRef.current = prepareResolvedPanel(wrapper);
     else mergeJoinedParagraphs(wrapper, side);
+    // The document's colours for the theme go in with the content: changing its style sheet once
+    // the content is in makes the browser restyle the whole document (0.7 s on the ~300-page pair).
+    const styled = Array.from(wrapper.querySelectorAll<HTMLElement>('[style]'), (element): [HTMLElement, string] => [element, element.getAttribute('style')!]);
+    documentStyle.textContent = themedColors(document.css, themeRef.current);
+    if (themeRef.current === 'dark') for (const [element, style] of styled) element.setAttribute('style', darkColors(style));
     const cardSlot = owner.createElement('slot');
     cardSlot.name = CARD_SLOT;
     const bubbleSlot = owner.createElement('slot');
@@ -173,7 +185,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     elementsRef.current = elementMap(wrapper);
     blocksRef.current = [...wrapper.querySelectorAll<HTMLElement>('[data-anchor]')];
     documentStyleRef.current = documentStyle;
-    styledRef.current = Array.from(wrapper.querySelectorAll<HTMLElement>('[style]'), (element) => [element, element.getAttribute('style')!]);
+    styledRef.current = styled;
     appliedDecisions.current = {};
     appliedCurrent.current = null;
     appliedSides.current = null;
@@ -182,9 +194,13 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   }, [document, side]);
 
   useLayoutEffect(() => {
-    const dark = theme === 'dark';
-    documentStyleRef.current!.textContent = dark ? darkColors(document.css) : document.css;
-    for (const [element, style] of styledRef.current) element.setAttribute('style', dark ? darkColors(style) : style);
+    const documentStyle = documentStyleRef.current!;
+    const css = themedColors(document.css, theme);
+    if (documentStyle.textContent !== css) documentStyle.textContent = css;
+    for (const [element, style] of styledRef.current) {
+      const themed = themedColors(style, theme);
+      if (element.getAttribute('style') !== themed) element.setAttribute('style', themed);
+    }
   }, [document, side, theme]);
 
   useLayoutEffect(() => {
@@ -292,7 +308,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   useEffect(() => {
     const root = scrollerRef.current?.shadowRoot;
     if (!root) return;
-    /** A comment icon shows or hides its bubble, and doesn't select the change (PRD-23). */
+    /** A comment icon shows or hides its bubble, and doesn't select the change (FR-27c). */
     const toggleComment = (event: Event) => {
       const toggle = event.target instanceof Element ? event.target.closest<HTMLElement>(COMMENT_TOGGLE) : null;
       if (!toggle) return false;

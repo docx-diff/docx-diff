@@ -132,7 +132,7 @@
   color: var(--danger);
 }
 
-/* The Resolved column's marks (PRD-11–14), only on changes offered for decision. Decided: yellow.
+/* The Resolved column's marks (FR-25b), only on changes offered for decision. Decided: yellow.
    Undecided: a dotted underline. A marker stands where a decision left no text: its ✓/✗ on
    yellow, or a small dotted box while undecided. */
 .doc[data-side='resolved'] :is(ins, del, .resolved-marker):is(.change-accepted, .change-rejected):not(.change-ignored, .change-as-formatting, .change-out-of-range, .change-common) {
@@ -164,7 +164,7 @@
   border-radius: 2px;
 }
 
-/* The comment icon after a commented change in the Resolved column (PRD-23), which shows or hides
+/* The comment icon after a commented change in the Resolved column (FR-27c), which shows or hides
    the comment: a speech bubble drawn with a mask, filled light blue while the comment is hidden
    and strong blue while it is shown. It keeps the line's height. */
 .doc .comment-toggle {

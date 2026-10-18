@@ -119,7 +119,7 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
   const [picking, setPicking] = useState(false);
-  /** The comment bubbles the reviewer closed in the Resolved column; not saved (PRD-24). */
+  /** The comment bubbles the reviewer closed in the Resolved column; not saved (FR-27c). */
   const [closedBubbles, setClosedBubbles] = useState<ReadonlySet<string>>(new Set());
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
@@ -290,7 +290,7 @@ export function App() {
 
   const setComment = useCallback((itemId: string, text: string | null) => dispatch({ type: 'setComment', itemId, text }), []);
 
-  // The comments shown in the Resolved column (PRD-20, 27): those the export writes.
+  // The comments shown in the Resolved column (FR-27c): those the export writes.
   const bubbleComments = useMemo<BubbleComment[]>(
     () =>
       (items ?? []).flatMap((item) => {
@@ -300,7 +300,7 @@ export function App() {
       }),
     [items, review.comments, range],
   );
-  // A comment removed or blanked forgets that its bubble was closed: a new one opens (PRD-25).
+  // A comment removed or blanked forgets that its bubble was closed: a new one opens (FR-27c).
   useEffect(() => {
     setClosedBubbles((closed) => {
       const kept = [...closed].filter((id) => review.comments[id]?.trim());

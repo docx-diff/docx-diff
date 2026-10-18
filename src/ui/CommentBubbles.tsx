@@ -59,7 +59,7 @@ function belowIcon(scroller: HTMLElement, itemId: string): { top: number; left: 
 }
 
 /**
- * Stacks the bubbles (PRD-26): in the order of their tops, a box that would overlap one placed
+ * Stacks the bubbles (FR-27c): in the order of their tops, a box that would overlap one placed
  * before it (with `spacing` around it) is pushed down below that one, until it overlaps none.
  * Returns the tops, in the boxes' order.
  */
@@ -87,7 +87,7 @@ export function stackBoxes(boxes: readonly Box[], spacing = SPACING): number[] {
 }
 
 /**
- * The reviewer's comments in the Resolved column (PRD-20–27), each in a bubble below its comment icon,
+ * The reviewer's comments in the Resolved column (FR-27c), each in a bubble below its comment icon,
  * open until closed with its ×. Rendered as children of the panel's scroller (the shadow host),
  * shown through a slot, like the inline card: they scroll with the text and get the page's styles.
  * Their places are written to the elements directly, after every change of the text.

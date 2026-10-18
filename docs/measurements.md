@@ -99,6 +99,28 @@ scrolling, so the HTML is inserted in one go).
 scrolling ~33 ms per two frames (85 ms without), Previous/Next ~35 ms, a keyboard decision (decide,
 move, scroll both panels) ~70 ms, Accept all one 222 ms task.
 
+**Resolved column** (2026-10-18). Sample pair, `e2e/perf.spec.ts` with `PERF=1` (each time from the
+key press or click to the frame after it, which includes the column's update):
+
+| | Two columns | Three columns |
+|---|---|---|
+| Choosing the files → panels shown | 8.3 s | 8.1–9.2 s |
+| One decision (`r` / `a`) | — | 22–30 ms / 13–24 ms |
+| Reject all (every undecided change flips) | — | 122–130 ms |
+| Accept all (marks only) | — | 63–69 ms |
+| Longest main-thread task | 314–352 ms | 510–628 ms |
+
+Under jsdom (`test/sample-pair.test.ts`, which logs them; slower than the browser): the first
+`applyResolution` 370–390 ms; a bulk change with the detected range 73–88 ms, without a range
+190–390 ms (the 579-paragraph tail's item flips and its run of paragraphs is restored and joined
+again); one decision < 1 ms.
+
+**Style sheet order** (fixed 2026-10-18): since dark mode, each panel's document style sheet was
+filled in by a separate effect after the content was in its shadow root. Chromium then restyles the
+whole document: the display's longest task on the ~300-page pair went from ~375 ms to ~1.2 s (over
+the 1 s "frozen" limit of `e2e/perf.spec.ts`). Filling it in with the content brought it back to
+406–450 ms (light and dark).
+
 **First load**, local server gzipping like GitHub Pages, cache disabled, to "Engine ready":
 
 | Connection | Time |
@@ -138,6 +160,25 @@ Offline reload: "Engine ready" after 0.8 s, everything from the service worker. 
    **2.4–3.3 s**; longest main-thread task 344–537 ms. The engine takes ~8 s of the sample pair
    (compare 2.7 s, render 3.5 s; 15–20 % slower than earlier measurements, as is the plain worker
    timing in `e2e/engine.spec.ts`, so the machine rather than the app); the app adds ~0.5 s.
+   Re-checked 2026-10-18 with the Resolved column: three columns 8.1–9.2 s for the sample pair; two
+   columns 7.5–8.6 s, ~300-page pair 13.3–14.5 s, longest task 314–416 ms (after the style sheet fix
+   above).
 5. **Met.** A reload offers the saved review and restores decisions and range (`e2e/resume.spec.ts`).
 6. **Met**, locally (`e2e/engine.spec.ts`, `e2e/offline.spec.ts`) and on the deployed site: no
    requests to other sites; a repeat visit offline is served by the service worker and compares.
+
+**Resolved column** (FR-25b, 2026-10-18; the success metrics of its plan):
+- **Met.** Text parity with the export on every fixture and the sample, for all accepted, rejected,
+  undecided and alternating decisions, with and without the range (`test/fixture-pairs.test.ts`,
+  `test/sample-pair.test.ts`; in the browser on a fixture, `e2e/resolved.spec.ts`).
+- **Met.** Formatting does not follow the formatting choice: the column renders the one redline HTML
+  and its updates depend on the item decisions only (formatting items are always accepted,
+  `src/model/resolved.test.ts`).
+- **Met.** Changes and markers select their item when clicked (`e2e/resolved.spec.ts`).
+- **Met.** Comment bubbles: all shown on load, × and the icon toggle them, a reload reopens them
+  (`e2e/resolved.spec.ts`).
+- **Met.** On the sample a decision updates the column in 13–30 ms, Reject all in 122–130 ms,
+  Accept all in 63–69 ms; first display with three columns 8.1–9.2 s, within the 10 s of metric 4
+  (`e2e/perf.spec.ts`, `PERF=1`).
+- **Met.** A fresh profile shows three columns with both sidebars collapsed; at 1024 px two columns
+  with the toggle disabled (`e2e/resolved.spec.ts`).

@@ -319,6 +319,12 @@ from that result, without exporting first.
    collapsed. At 1024 px or narrower it shows two columns with the toggle disabled. (e2e)
 7. All existing tests (`npm test`, `npm run test:e2e`, typecheck) pass.
 
+**Status (2026-10-18):** goals 1–6 and success metrics 1–7 are met; the evidence and numbers are in
+`docs/measurements.md` ("Resolved column" under the success metrics outcomes). Metric 5 measured on
+the sample: one decision 13–30 ms, Reject all 122–130 ms, Accept all 63–69 ms, first display with
+three columns 8.1–9.2 s. While measuring, a regression from dark mode (not from this feature) was
+found and fixed: the ~300-page pair's longest display task had grown to ~1.2 s.
+
 ## 9. Open questions
 
 1. **Later: following the formatting choice** (deferred, decided 2026-10-17). If it is wanted

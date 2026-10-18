@@ -29,13 +29,13 @@
 //   `section.endnotes`.
 // - `.rev-del-marker`/`.rev-move-from-marker` appear on no fixture nor the sample.
 //
-// Marks (PRD-11–14): decided items get `change-accepted`/`change-rejected` (yellow in panel.css) and
+// Marks (FR-25b): decided items get `change-accepted`/`change-rejected` (yellow in panel.css) and
 // `change-decided-end` (✓/✗) on their last shown insertion or deletion and on their shown markers. A marker
 // (`span.resolved-marker`, no text) follows each item's last deletion and last insertion; it is shown
 // where the result drops that side and nothing of the item is left to see, and for moves at the end
 // the decision removed.
 //
-// Comment icons (PRD-23): `span.comment-toggle` (no text) after each commented item as shown,
+// Comment icons (FR-27c): `span.comment-toggle` (no text) after each commented item as shown,
 // placed again after every change, since joins and decisions move the item's text.
 import type { Decision } from '../model/decisions';
 import type { ResolvedSide } from '../model/resolved';
@@ -313,7 +313,7 @@ export function applyResolution(handle: ResolvedPanel, sides: ReadonlyMap<string
 }
 
 /**
- * Shows the decisions (PRD-11, 12): `change-accepted`/`change-rejected` on the items' elements and
+ * Shows the decisions (FR-25b): `change-accepted`/`change-rejected` on the items' elements and
  * markers, and `change-decided-end` (✓/✗) on the last insertion or deletion shown and on the shown
  * markers. With `changed`, only those
  * items are updated; without, all. `applyResolution` keeps the marks of the items it changes.
@@ -394,7 +394,7 @@ function showNote(handle: ResolvedPanel, note: Element): void {
 }
 
 /**
- * The comment icons (PRD-23): one for each item in `toggles`, whose value says whether its bubble
+ * The comment icons (FR-27c): one for each item in `toggles`, whose value says whether its bubble
  * is open; the others' icons are removed. Each is placed by `placeCommentToggles`.
  */
 export function applyCommentToggles(handle: ResolvedPanel, toggles: ReadonlyMap<string, boolean>): void {
@@ -461,7 +461,7 @@ function anchorOf(element: HTMLElement): string | undefined {
 }
 
 /**
- * The order around the region outside the range (PRD-6), the counterpart of the export's
+ * The order around the region outside the range (FR-25b), the counterpart of the export's
  * `planRangeOrder`: the top-level blocks placed before the end point (`positions`, from
  * `blockPositions(index, suggestedEndPoint)`) that come after the first block outside the range
  * are moved, in order, to just before it (and before the range divider, if there is one). The
