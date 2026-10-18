@@ -180,8 +180,9 @@ Update the file after completing each sub-task, not just after completing an ent
      ~300-page pair the browser's own paint/layout of the long documents takes most of it before any
      of our code, and a decision is over it today: an update there will be about as slow as a
      decision (~150 ms). Meeting 100 ms there needs rendering work outside this feature (e.g.
-     `content-visibility: auto` on blocks, which affects scroll sync's offsets). **Open: user to
-     decide** whether the ~300-page target becomes "no slower than a decision" (task 8.1).
+     `content-visibility: auto` on blocks, which affects scroll sync's offsets). **Decided
+     (2026-10-18):** on the ~300-page pair the target is "no slower than a decision" (~150 ms): it
+     runs once when the reviewer stops typing, not per keystroke. The sample keeps 100 ms (task 8.1).
 
 ### 1.0 Paragraph edit model (pure)
 
@@ -474,7 +475,7 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** tasks 0–7.
 
 - [ ] 8.0 Documentation, measurements and final checks
-  - [ ] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms; the target there is the user's decision.)
+  - [ ] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms. Decided: there, an update is no slower than a decision; the sample keeps 100 ms; no task over 50 ms per keystroke on both.)
   - [ ] 8.2 `docs/requirements.md` updates and FR citations in code comments.
   - [ ] 8.3 `docs/architecture.md` "Inline edits" section, module map, Saved review.
   - [ ] 8.4 `docs/measurements.md` numbers.
