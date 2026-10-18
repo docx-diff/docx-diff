@@ -36,8 +36,10 @@ to ~300 pages; no backend.
 5. Files are processed locally only; no document content is sent over the network.
 6. A progress indicator while the engine downloads and while a comparison runs. Until the app and
    its engine are ready, a "Loading…" modal with a spinner covers the page; it is in the static HTML,
-   so it shows before the scripts load. All engine work runs in a Web Worker, so the UI stays
-   responsive during comparison, rendering and export.
+   so it shows before the scripts load. While a comparison runs, a card in place of the drop zones
+   shows a ring filling up with the percentage (estimated from the engine's stages), the stage and
+   the seconds elapsed. All engine work runs in a Web Worker, so the UI stays responsive during
+   comparison, rendering and export.
 
 ### Comparison
 
@@ -175,10 +177,11 @@ to ~300 pages; no backend.
     the list collapsed (FR-26b).
 29. Clicking a change in either panel selects its item.
 30. **Formatting group:** all formatting changes in one collapsible group, **collapsed by default**,
-    with their count. Formatting is decided **once for the whole document**: **Keep the Original's
+    with their count. The group itself is hidden by default; a **Fmt** button after Accept all /
+    Reject all shows or hides it (the totals always name the formatting choice). Formatting is decided **once for the whole document**: **Keep the Original's
     formatting** / **Use the Edited's formatting** (default: the Edited's). Expanded, the group shows
     the individual items for review only; they have no Accept/Reject of their own.
-31. Previous/Next skip formatting items while the group is collapsed and include them when expanded.
+31. Previous/Next skip formatting items while the group is hidden or collapsed and include them when expanded.
 32. **Accept all** / **Reject all**, with confirmation, applying only to undecided changes.
 33. **Previous change** / **Next change** buttons.
 34. Keyboard shortcuts: `j`/`↓` next, `k`/`↑` previous, `a` accept, `r` reject, `A`/`R` accept/reject

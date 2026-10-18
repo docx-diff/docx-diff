@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { ProgressStage } from './engine/types';
 import type { ChangeItem } from './model/changes';
 import {
   INITIAL_DECISIONS,
@@ -40,7 +39,7 @@ import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
 import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
 import { Outline } from './ui/Outline';
-import { Progress } from './ui/Progress';
+import { CompareProgress, Progress } from './ui/Progress';
 import { RangeControl } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
 import { ThemeToggle } from './ui/ThemeToggle';
@@ -114,6 +113,8 @@ export function App() {
   /** The current change's card in the Edited's panel was closed; it comes back with the next selection (FR-28a). */
   const [cardClosed, setCardClosed] = useState(false);
   const [formattingExpanded, setFormattingExpanded] = useState(false);
+  /** The formatting group is shown in the changes list (its Fmt button); hidden by default. */
+  const [formattingShown, setFormattingShown] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
   const [picking, setPicking] = useState(false);
@@ -245,7 +246,10 @@ export function App() {
     [resolvedSides, positions, rangeState.endPoint],
   );
   const formatting = useMemo(() => formattingItems(items ?? [], range), [items, range]);
-  const entries = useMemo(() => buildReviewList(reviewable, formatting, formattingExpanded), [reviewable, formatting, formattingExpanded]);
+  const entries = useMemo(
+    () => buildReviewList(reviewable, formattingShown ? formatting : [], formattingExpanded),
+    [reviewable, formatting, formattingShown, formattingExpanded],
+  );
   const order = useMemo(() => navigationOrder(entries), [entries]);
   const itemById = useMemo(() => new Map((items ?? []).map((item) => [item.id, item])), [items]);
   const labelById = useMemo(
@@ -425,7 +429,6 @@ export function App() {
       </header>
 
       <Notices
-        comparisonRunning={comparisonState.status === 'running' ? comparisonState : null}
         comparisonError={comparisonState.status === 'error' ? comparisonState.message : null}
         inputsHadRevisions={comparison?.result.inputsHadRevisions ?? false}
         storageUnavailable={storage.status === 'unavailable' && !storageNoticeDismissed}
@@ -511,6 +514,8 @@ export function App() {
               }
               formattingChoice={review.formattingChoice}
               onFormattingChoice={(choice) => dispatch({ type: 'setFormattingChoice', choice })}
+              formattingShown={formattingShown}
+              onFormattingShown={setFormattingShown}
               formattingExpanded={formattingExpanded}
               onFormattingExpanded={setFormattingExpanded}
               totals={totals}
@@ -529,14 +534,10 @@ export function App() {
             </div>
           )}
         </div>
+      ) : comparisonState.status === 'running' ? (
+        <CompareProgress startedAt={comparisonState.startedAt} stage={comparisonState.stage ?? 'comparing'} />
       ) : (
-        <FileDropZones
-          original={files.original}
-          edited={files.edited}
-          onFile={setFile}
-          onSwap={swap}
-          disabled={comparisonState.status === 'running'}
-        />
+        <FileDropZones original={files.original} edited={files.edited} onFile={setFile} onSwap={swap} />
       )}
       {engineState.status === 'loading' && (
         <LoadingModal detail={<Progress startedAt={engineState.startedAt} stage={engineState.stage ?? 'loading-engine'} />} />
@@ -585,7 +586,6 @@ export function App() {
 }
 
 function Notices(props: {
-  comparisonRunning: { startedAt: number; stage: ProgressStage | null } | null;
   comparisonError: string | null;
   inputsHadRevisions: boolean;
   storageUnavailable: boolean;
@@ -593,14 +593,9 @@ function Notices(props: {
   resumeNotice: string | null;
   onDismissResume: () => void;
 }) {
-  const { comparisonRunning, comparisonError } = props;
+  const { comparisonError } = props;
   return (
     <div className="notices" aria-live="polite">
-      {comparisonRunning && (
-        <p className="notice notice--progress" data-testid="compare-progress">
-          <Progress startedAt={comparisonRunning.startedAt} stage={comparisonRunning.stage ?? 'comparing'} />
-        </p>
-      )}
       {comparisonError && (
         <p className="notice notice--error" role="alert">
           The documents could not be compared: {comparisonError}

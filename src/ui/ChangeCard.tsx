@@ -38,8 +38,16 @@ export function locationLabel(item: ChangeItem): string {
   }
 }
 
-function wordDeltaLabel({ removed, added }: ChangeItem['wordDelta']): string {
-  return [removed > 0 ? `−${removed}` : '', added > 0 ? `+${added}` : ''].filter(Boolean).join(' ');
+/** "−3 +2": the words removed, in the deletions' red, and added, in the insertions' blue. */
+function WordDelta({ removed, added }: ChangeItem['wordDelta']) {
+  if (removed === 0 && added === 0) return null;
+  return (
+    <span className="change-card__delta">
+      {removed > 0 && <span className="change-card__delta-removed">−{removed}</span>}
+      {removed > 0 && added > 0 && ' '}
+      {added > 0 && <span className="change-card__delta-added">+{added}</span>}
+    </span>
+  );
 }
 
 interface Props {
@@ -78,7 +86,6 @@ export const ChangeCard = memo(function ChangeCard(props: Props) {
     if (focusComment > 0) commentRef.current?.focus();
   }, [focusComment]);
   const state = formatting ? 'formatting' : (decision ?? 'undecided');
-  const delta = wordDeltaLabel(item.wordDelta);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!onSelect || event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
     event.preventDefault();
@@ -98,7 +105,7 @@ export const ChangeCard = memo(function ChangeCard(props: Props) {
         <span className="change-card__number">{label}</span>
         <span className={`change-card__kind change-card__kind--${item.kind}`}>{KIND_LABELS[item.kind]}</span>
         <span className="change-card__location">{locationLabel(item)}</span>
-        {delta && <span className="change-card__delta">{delta}</span>}
+        <WordDelta {...item.wordDelta} />
         {!formatting && <span className="change-card__state">{decision === 'accepted' ? '✓ Accepted' : decision === 'rejected' ? '✗ Rejected' : 'Undecided'}</span>}
         {onClose && (
           <button type="button" className="change-card__close" aria-label="Hide this card" title="Hide this card (Esc)" onClick={onClose}>

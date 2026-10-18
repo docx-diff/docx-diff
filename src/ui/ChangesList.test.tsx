@@ -39,6 +39,8 @@ function renderList(expanded: boolean, overrides: Partial<Parameters<typeof Chan
     onDecideAllUndecided: vi.fn(),
     formattingChoice: 'edited' as const,
     onFormattingChoice: vi.fn(),
+    formattingShown: true,
+    onFormattingShown: vi.fn(),
     formattingExpanded: expanded,
     onFormattingExpanded: vi.fn(),
     totals,
@@ -93,6 +95,12 @@ describe('ChangesList', () => {
     expect(props.onFormattingExpanded).toHaveBeenCalledWith(true);
     fireEvent.click(screen.getByRole('radio', { name: "Keep the Original's formatting" }));
     expect(props.onFormattingChoice).toHaveBeenCalledWith('original');
+
+    // The Fmt button hides the group.
+    const fmt = screen.getByRole('button', { name: /^Fmt/ });
+    expect(fmt.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(fmt);
+    expect(props.onFormattingShown).toHaveBeenCalledWith(false);
   });
 
   it('shows formatting items without Accept/Reject when expanded', () => {

@@ -27,6 +27,9 @@ interface Props {
   onDecideAllUndecided: (decision: Decision) => void;
   formattingChoice: FormattingChoice;
   onFormattingChoice: (choice: FormattingChoice) => void;
+  /** The formatting group is in `entries`; toggled by the Fmt button. */
+  formattingShown: boolean;
+  onFormattingShown: (shown: boolean) => void;
   formattingExpanded: boolean;
   onFormattingExpanded: (expanded: boolean) => void;
   totals: ListTotals;
@@ -71,6 +74,17 @@ export function ChangesList(props: Props) {
         <button type="button" className="button button--reject" disabled={undecided === 0} onClick={() => setConfirm('rejected')}>
           Reject all
         </button>
+        {totals.formatting > 0 && (
+          <button
+            type="button"
+            className="button"
+            aria-expanded={props.formattingShown}
+            title={`${props.formattingShown ? 'Hide' : 'Show'} the formatting changes (${totals.formatting})`}
+            onClick={() => props.onFormattingShown(!props.formattingShown)}
+          >
+            Fmt <span aria-hidden="true">{props.formattingShown ? '▾' : '▸'}</span>
+          </button>
+        )}
         <button type="button" className="button button--plain changes__hide" aria-label="Hide the changes list" title="Hide the changes list" onClick={props.onHide}>
           »
         </button>

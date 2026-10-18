@@ -30,10 +30,11 @@ const COLUMN_WIDTH = 200;
 const COLUMN_HEIGHT = 230;
 const LINE_STEP = 22;
 
-function Column({ x, title, lines, resolved = false }: { x: number; title: string; lines: Line[]; resolved?: boolean }) {
+/** A document column; `kind` gives the Original and the Edited their drop zones' backgrounds and outlines the Resolved. */
+function Column({ x, title, lines, kind }: { x: number; title: string; lines: Line[]; kind: 'original' | 'resolved' | 'edited' }) {
   return (
     <g>
-      <rect className={`review-diagram__page${resolved ? ' review-diagram__page--resolved' : ''}`} x={x} y={TOP} width={COLUMN_WIDTH} height={COLUMN_HEIGHT} rx="6" />
+      <rect className={`review-diagram__page review-diagram__page--${kind}`} x={x} y={TOP} width={COLUMN_WIDTH} height={COLUMN_HEIGHT} rx="6" />
       <text className="review-diagram__title" x={x + COLUMN_WIDTH / 2} y={TOP - 10} textAnchor="middle">
         {title}
       </text>
@@ -80,6 +81,7 @@ export function ReviewDiagram() {
         <text className="review-diagram__title" x="65" y={TOP - 10} textAnchor="middle">
           Outline
         </text>
+        <circle className="review-diagram__hide-bg" cx="114" cy={TOP + 13} r="11" />
         <text className="review-diagram__hide" x="114" y={TOP + 19} textAnchor="middle">
           «
         </text>
@@ -87,9 +89,9 @@ export function ReviewDiagram() {
           <rect key={i} className="review-diagram__heading" x={12 + indent} y={TOP + 32 + i * 22} width={width} height="7" rx="2" />
         ))}
 
-        <Column x={150} title="Original" lines={ORIGINAL} />
-        <Column x={400} title="Resolved" lines={RESOLVED} resolved />
-        <Column x={650} title="Edited" lines={EDITED} />
+        <Column x={150} title="Original" lines={ORIGINAL} kind="original" />
+        <Column x={400} title="Resolved" lines={RESOLVED} kind="resolved" />
+        <Column x={650} title="Edited" lines={EDITED} kind="edited" />
         <Arrow from={356} to={394} y={TOP + COLUMN_HEIGHT / 2} />
         <Arrow from={644} to={606} y={TOP + COLUMN_HEIGHT / 2} />
 
@@ -98,6 +100,7 @@ export function ReviewDiagram() {
         <text className="review-diagram__title" x="935" y={TOP - 10} textAnchor="middle">
           Changes
         </text>
+        <circle className="review-diagram__hide-bg" cx="886" cy={TOP + 13} r="11" />
         <text className="review-diagram__hide" x="886" y={TOP + 19} textAnchor="middle">
           »
         </text>
@@ -123,9 +126,11 @@ export function ReviewDiagram() {
         <text className="review-diagram__note-text" x="0" y="298">
           Open/collapse with
         </text>
+        <circle className="review-diagram__hide-bg" cx="162" cy="292" r="11" />
         <text className="review-diagram__hide" x="162" y="298" textAnchor="middle">
           «
         </text>
+        <circle className="review-diagram__hide-bg" cx="192" cy="292" r="11" />
         <text className="review-diagram__hide" x="192" y="298" textAnchor="middle">
           »
         </text>

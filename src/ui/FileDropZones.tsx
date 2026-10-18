@@ -4,6 +4,7 @@ import { ReviewDiagram } from './ReviewDiagram';
 export type DocumentRole = 'original' | 'edited';
 
 const ROLE_LABELS: Record<DocumentRole, string> = { original: 'Original', edited: 'Edited' };
+const ROLE_DESCRIPTIONS: Record<DocumentRole, string> = { original: 'the older version', edited: 'the newer version' };
 
 /** Every `.docx` is a zip package, which starts with a local file header: `PK\x03\x04`. */
 const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04];
@@ -57,7 +58,7 @@ export function FileDropZone({ role, file, onFile, compact = false, disabled = f
   const label = ROLE_LABELS[role];
   return (
     <div
-      className={['drop-zone', compact && 'drop-zone--compact', dragging && 'drop-zone--dragging'].filter(Boolean).join(' ')}
+      className={['drop-zone', `drop-zone--${role}`, compact && 'drop-zone--compact', dragging && 'drop-zone--dragging'].filter(Boolean).join(' ')}
       data-testid={`drop-${role}`}
       onDragOver={(event) => {
         event.preventDefault();
@@ -86,6 +87,7 @@ export function FileDropZone({ role, file, onFile, compact = false, disabled = f
       ) : (
         <>
           <span className="drop-zone__role">{label}</span>
+          <span className="drop-zone__description">{ROLE_DESCRIPTIONS[role]}</span>
           {file ? <span className="drop-zone__file">{file.name}</span> : <span className="drop-zone__hint">Drop a .docx here</span>}
           <label htmlFor={inputId} className="button">
             {file ? 'Replace…' : 'Choose file…'}

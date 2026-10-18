@@ -62,7 +62,7 @@ export function HelpPopover({ open, onOpenChange }: Props) {
           <h2>Colours</h2>
           <Legend />
           <p className="help__note">
-            Formatting changes are not marked in the panels; review them in the formatting group of the changes list. Accepted
+            Formatting changes are not marked in the panels; review them in the formatting group of the changes list (its Fmt button shows it). Accepted
             changes are dimmed with ✓, rejected ones with ✗.
           </p>
         </div>

@@ -213,6 +213,8 @@ test('formatting changes are one group decided for the whole document', async ({
   await openAndCompare(page, original, zipSync(files));
 
   const group = page.getByTestId('formatting-group');
+  await expect(group).toHaveCount(0);
+  await page.getByRole('button', { name: /^Fmt/ }).click();
   await expect(group).toContainText('Formatting changes (1)');
   await expect(page.getByRole('radio', { name: "Use the Edited's formatting" })).toBeChecked();
   await expect(page.getByTestId('change-card')).toHaveCount(1);
@@ -295,8 +297,9 @@ test('on the sample pair, rejecting every undecided change gives the Original te
   // formatting keeps them as text. The choice made here is the one in the changes list.
   await dialog.getByLabel("Keep the Original's formatting").check();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('formatting-group').getByRole('radio', { name: "Keep the Original's formatting" })).toBeChecked();
   await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: /^Fmt/ }).click();
+  await expect(page.getByTestId('formatting-group').getByRole('radio', { name: "Keep the Original's formatting" })).toBeChecked();
 
   await page.getByRole('button', { name: /Compare settings/ }).click();
   for (const setting of [/Ignore quote style/, /Ignore dash changes/, /Ignore whitespace changes/]) await page.getByLabel(setting).uncheck();
