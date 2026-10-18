@@ -96,7 +96,7 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Depends on:** `refs/Docxodus` (unid hash), `src/engine/pipeline.ts` (`runCompare`), `test/fixtures/`, `test/samples.ts`, `test/big-pair.ts`, `src/model/docIndex.ts`.
 
-- [ ] 0.0 Spike
+- [x] 0.0 Spike
   - [x] 0.1 Read `UnidHelper.ContentSignature` and where the converter stamps `data-anchor` in `refs/Docxodus`; note what goes into the hash (text, descendant element names; attributes don't count) and whether the redline XML alone is enough to recompute it.
   - [x] 0.2 Try mapping (b) (ordinal + text check) in a scratch Vitest file over every fixture and the sample: for each rendered `[data-anchor]` paragraph block, find its `w:p` and compare texts. Log mismatches. Also check that **character offsets** agree between the block's HTML text and the `w:p`'s XML text with inline objects as one placeholder each (tabs, breaks, `w:sym`, no-break hyphens, note references, field results, list labels absent in XML); list the cases that differ.
   - [x] 0.3 If (b) has mismatches, try (a); if both work, prefer the simpler (b) unless (a) is needed for robustness. Write the chosen function to `src/engine/blockKey.ts` with `blockKey.test.ts` over fixtures + sample (+ big pair behind `BIG_PAIR=1`).
