@@ -497,6 +497,11 @@ Update the file after completing each sub-task, not just after completing an ent
   `documentLook` in `DocumentPanel.tsx` rewrites `text-align: justify` to `start` with the dark-mode
   colours, in all panels. Files: `useViewSettings.ts`, `CompareSettingsDialog.tsx`, `App.tsx`,
   `DocumentPanel.tsx` (+ their tests), `docs/requirements.md` (FR-20a), `docs/architecture.md`.
+- **Fixed (user report, 2026-10-18): an italic word edited in part lost its italics** (display and
+  export) unless the text before it was italic too: the whole-word insertion took the formatting of
+  the visible character before the deletion. `formattingSource` (`paragraphEdit.ts`) is now the one
+  rule for both `renderBlockSegments` and `applyEdits`: the deleted character right before the typed
+  text, else the visible one before, else after (PRD-18 updated).
 - CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
   caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 

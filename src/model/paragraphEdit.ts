@@ -477,6 +477,31 @@ export interface AlignUnit {
 /** An Original-side character in both, or an inserted one only in the old block (removed), only in the new segments (typed), or in both. */
 export type AlignStep<L> = { leaf: L; unit: AlignUnit } | { leaf: L; unit?: undefined } | { leaf?: undefined; unit: AlignUnit };
 
+/**
+ * Whose formatting the typed unit `steps[i]` takes (PRD-18; the display and the export's patch
+ * both use this): the deleted character right before the typed text, when there is one, as the
+ * typed text replaces it (a word changed in part becomes a deletion and an insertion of the whole
+ * word, so the character before the insertion is the one before the word); else the visible
+ * character before it, else the one after it. `undefined` when the block has no character.
+ */
+export function formattingSource<L extends AlignUnit>(steps: readonly AlignStep<L>[], i: number): L | undefined {
+  const isChar = (step: AlignStep<L>): step is { leaf: L; unit: AlignUnit } => !!step.leaf && !!step.unit && !step.leaf.object;
+  let j = i - 1;
+  // Past the other typed units, and inserted characters the new segments remove.
+  while (j >= 0 && !(steps[j]!.leaf && steps[j]!.unit)) j--;
+  const before = steps[j];
+  if (before && isChar(before) && before.unit.side === 'del') return before.leaf;
+  for (let k = j; k >= 0; k--) {
+    const step = steps[k]!;
+    if (isChar(step) && step.unit.side !== 'del') return step.leaf;
+  }
+  for (let k = i + 1; k < steps.length; k++) {
+    const step = steps[k]!;
+    if (isChar(step) && step.unit.side !== 'del') return step.leaf;
+  }
+  return undefined;
+}
+
 /** The segments as units. */
 export function segmentUnits(segments: readonly Segment[]): AlignUnit[] {
   const units: AlignUnit[] = [];

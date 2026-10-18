@@ -407,9 +407,12 @@ spaces as NBSP.
 the same alignment as the export's patch (`alignUnits`, below): each character or object of the
 block keeps its elements (its ancestors below the block, cloned once per run of characters sharing
 them), and everything that isn't text (list labels, ¶ glyphs, back links, bookmarks, the mark after
-a break) stays before the character it preceded. A character turning unchanged ↔ deleted, and typed
-text, take the elements of the neighbouring character (before, else after) without its
-`ins`/`del`, in a new `ins`/`del` of their revision (`data-author`, `data-change-id`, the block's
+a break) stays before the character it preceded. A character turning unchanged ↔ deleted keeps its
+elements; typed text takes those of its formatting source (`formattingSource` in
+`paragraphEdit.ts`, shared with the export's patch: the deleted character right before it, which
+it replaces, as a word changed in part becomes a deletion and an insertion of the whole word;
+else the visible character before it, else after it), both without the `ins`/`del` they had, in a
+new `ins`/`del` of their revision (`data-author`, `data-change-id`, the block's
 `data-date`) unless they stay in, or join, that character's revision. A block rendered with its own
 segments is unchanged (checked on every fixture and the sample).
 
@@ -511,8 +514,9 @@ common subsequence), the others are removed or typed in. The runs this touches a
 run per character (each in its own `w:ins`/`w:del`, a copy with a new `w:id`; formatting markup
 such as `w:rPrChange` in a copied `w:rPr` gets a new id in its revision too), patched, and joined
 again: touching pieces of one revision into one element, touching text runs with the same
-properties into one run. New text takes the `w:rPr` of the visible character before it (else after
-it; a note reference's is never used), without its formatting markup; new `w:ins`/`w:del` get the
+properties into one run. New text takes the `w:rPr` of its formatting source (`formattingSource`,
+as the display: the deleted character it replaces, else the visible character before it, else
+after it; a note reference's is never used), without its formatting markup; new `w:ins`/`w:del` get the
 engine's author and date, and `w:id`s above every id of the text parts (the engine numbers them
 across the parts). Bookmarks, comment ranges, `w:proofErr`, note references, tabs and breaks stay in
 place; runs inside `w:hyperlink`/`w:smartTag` stay inside. A paragraph with anything else (fields,

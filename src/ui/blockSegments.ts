@@ -6,7 +6,7 @@
 import { revisionIdFromAuthor } from '../engine/tagRedline';
 import { NOT_TEXT } from '../model/docIndex';
 import { PARAGRAPH_BLOCK } from './renderedDocument';
-import { alignUnits, revisionTexts, segmentUnits, type AlignStep, type AlignUnit, type ObjectSegment, type Segment } from '../model/paragraphEdit';
+import { alignUnits, formattingSource, revisionTexts, segmentUnits, type AlignUnit, type ObjectSegment, type Segment } from '../model/paragraphEdit';
 
 /** `Node.TEXT_NODE`, `Node.ELEMENT_NODE` (`Node` is not a global with jsdom in Node). */
 const TEXT_NODE = 3;
@@ -258,7 +258,6 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
 
   const chains = new Map<Leaf, Frame[]>();
   for (const step of steps) if (step.leaf && step.unit) chains.set(step.leaf, chainFor(step.unit, step.leaf.entry.chain));
-  const visibleChar = (step: AlignStep<Leaf>) => !!step.leaf && !!step.unit && !step.leaf.object && step.unit.side !== 'del';
   const fallback = leaves.find((leaf) => !leaf.object);
   // Text typed into an empty paragraph goes where its filler was.
   const fillerChain = entries.find((entry) => entry.kind === 'keep' && entry.filler)?.chain ?? [];
@@ -280,7 +279,6 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
   // Text typed before the first character goes after what precedes that character (a list label).
   let waiting: Piece[] = [];
   let started = false;
-  let source: Leaf | undefined;
   steps.forEach((step, i) => {
     if (step.leaf) {
       pieces.push(...keepsBefore.get(step.leaf)!, ...waiting);
@@ -290,10 +288,9 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
       const chain = chains.get(step.leaf)!;
       const entry = step.leaf.entry;
       pieces.push(entry.kind === 'char' ? { chain, ch: entry.ch } : { chain, node: entry.element });
-      if (visibleChar(step)) source = step.leaf;
       return;
     }
-    const neighbour = source ?? steps.slice(i + 1).find(visibleChar)?.leaf ?? fallback;
+    const neighbour = formattingSource(steps, i) ?? fallback;
     const piece = { chain: chainFor(step.unit, neighbour ? (chains.get(neighbour) ?? neighbour.entry.chain) : fillerChain), ch: step.unit.ch };
     if (started) pieces.push(piece);
     else waiting.push(piece);

@@ -126,6 +126,17 @@ describe('applyEdits on plain runs', () => {
     expect(revisions.map((entry) => entry.constituentKeys)).toEqual([[content('del', 1)], [content('ins', Number(insId))]]);
   });
 
+  it('gives a word replaced in part the formatting of the word it replaces, not of the text before it', async () => {
+    const italic = '<w:p><w:r><w:t xml:space="preserve">A </w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>kiccavatta</w:t></w:r><w:r><w:t xml:space="preserve"> word</w:t></w:r></w:p>';
+    const { parts } = await patch(italic, [revision('n1', 'delete', []), revision('n2', 'insert', [])], () => [
+      eq('A '),
+      del('kiccavatta', 'n1'),
+      ins('kiccavattá', 'n2', 'n1'),
+      eq(' word'),
+    ]);
+    expect(bodyXml(parts)).toMatch(/<w:ins w:id="\d+"[^>]*><w:r><w:rPr><w:i\/><\/w:rPr><w:t[^>]*>kiccavattá<\/w:t><\/w:r><\/w:ins>/);
+  });
+
   it('allocates ids above every id of the part', async () => {
     const { parts } = await patch('<w:p><w:bookmarkStart w:id="40" w:name="b"/><w:r><w:t>Kept</w:t></w:r><w:bookmarkEnd w:id="40"/></w:p>', [revision('n1', 'insert', [])], () => [
       eq('Kept'),

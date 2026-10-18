@@ -166,6 +166,16 @@ describe('renderBlockSegments', () => {
     expect(html).toBe('<ins class="rev-ins" data-author="rev:ex.1" data-change-id="ex.1"><span class="docx-a">Big </span></ins><span class="docx-a">house</span>');
   });
 
+  it('gives a word changed in part the formatting of the word it replaces, not of the text before it', () => {
+    const document = parse('<p data-anchor="w"><span>A </span><span class="italic">kiccavatta</span><span> word</span></p>');
+    const original = readBlockSegments(block(document, 'w'));
+    const edited = applyTextEdit(original, 'A kiccavattá word', { unid: 'w', nextId: 1 }).segments;
+    const rendered = renderBlockSegments(block(document, 'w'), edited);
+    expect(rendered.querySelector('ins > span')!.className).toBe('italic');
+    expect(rendered.querySelector('ins')!.textContent).toBe('kiccavattá');
+    expect(rendered.querySelector('del > span')!.className).toBe('italic');
+  });
+
   it('keeps a typo fixed inside an insertion in that insertion, with its attributes', () => {
     const { segments, rendered } = edit(
       '<p data-anchor="x"><span class="docx-a">The </span><ins class="rev-ins" data-author="rev:r2" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">hosue</span></ins></p>',

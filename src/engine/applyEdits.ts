@@ -16,7 +16,7 @@
 // every id of the text parts. Works on @xmldom/xmldom documents, since it runs in the worker.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import type { BlockScope } from '../model/docIndex';
-import { PART_OF_SCOPE, alignUnits, segmentUnits, type AlignStep, type AlignUnit } from '../model/paragraphEdit';
+import { PART_OF_SCOPE, alignUnits, formattingSource, segmentUnits, type AlignUnit } from '../model/paragraphEdit';
 import { paragraphUnids } from './blockKey';
 import { ElementIndex, W_NS, parseConstituentKey, readPart, unzipDocx, writePart, type DocxFiles } from './ooxml';
 import type { BlockEditPatch, RevisionListEntry } from './types';
@@ -205,10 +205,8 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
   const leaves = collectLeaves(paragraph, context, fail);
   const steps = alignUnits(leaves, units, fail);
 
-  const visibleChar = (step: AlignStep<Leaf>) => !!step.leaf && !!step.unit && !step.leaf.object && step.unit.side !== 'del';
   const fallbackRun = leaves.find((leaf) => !leaf.object)?.run;
   let cursor: Element | null = null;
-  let lastRun: Element | undefined;
   steps.forEach((step, i) => {
     if (step.leaf && !step.unit) {
       unwrap(step.leaf.slot, (child) => child !== step.leaf!.run);
@@ -217,12 +215,11 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
     if (step.leaf && step.unit) {
       retype(step.leaf, step.unit, context, fail);
       cursor = step.leaf.slot;
-      if (visibleChar(step)) lastRun = step.leaf.run;
       return;
     }
     const unit = step.unit!;
     if (unit.object) throw fail('an object was added');
-    const source = lastRun ?? steps.slice(i + 1).find(visibleChar)?.leaf!.run ?? fallbackRun;
+    const source = formattingSource(steps, i)?.run ?? fallbackRun;
     const run = newRun(context, source, unit.ch, 't');
     const slot = wrap(run, 'ins', { revisionId: unit.revisionId!, kind: 'Content' }, context);
     if (cursor) {
@@ -233,7 +230,6 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
       else paragraph.appendChild(slot);
     }
     cursor = slot;
-    lastRun = run;
   });
 
   joinPieces(paragraph, context);
