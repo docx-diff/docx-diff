@@ -292,7 +292,7 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Depends on:** task 0 (`blockKey`), task 1 (segments, ids), `src/ui/renderedDocument.ts` (prepared HTML, for the reader in 2.6); `src/engine/exportDocx.ts`, `rejectRewrite.ts`, `ooxml.ts` (`ElementIndex`, `parseConstituentKey`, `W_NS`), `trackedRevisions.ts`, `test/text.ts`, `test/deliverable.ts`, `test/expectedText.ts`.
 
-- [ ] 2.0 Export with edits
+- [x] 2.0 Export with edits
   - [x] 2.1 Add `edits` to `ExportRequest` and pass it through `engine.worker.ts` / `client.ts` (no behaviour yet); typecheck.
   - [x] 2.2 Write `applyEdits` for plain runs (no engine revisions in the paragraph): insert, delete, replace; unit tests on hand-written XML (`test/minimal-docx.ts` style).
   - [x] 2.3 Extend to paragraphs with engine `w:ins`/`w:del`: text changed inside, split elements with new ids and keys, removed elements; unit tests.
