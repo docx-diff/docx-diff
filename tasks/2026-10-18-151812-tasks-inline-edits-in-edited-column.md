@@ -6,8 +6,8 @@ PRD: [`2026-10-18-151812-prd---inline-edits-in-edited-column.md`](2026-10-18-151
 ## Relevant Files
 
 New:
-- `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment` types, `applyTextEdit` (old visible text → new visible text applied to the segments), whole-word normalisation, item assignment (PRD-16), `revertBlock`, deterministic ids. Shared by the main thread and the worker.
-- `src/model/paragraphEdit.test.ts` - Unit tests: PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, ids stable on replay.
+- `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment`/`BlockEdit` types, `visibleText`/`originalText`, `editSpan`, `applyTextEdit` (old visible text → new visible text applied to the segments: ownership, whole-word widening, typed-back cancellation, new ids), `revertBlock`, `revisionTexts`, `blockItems`. Shared by the main thread and the worker.
+- `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`.
 - `src/ui/blockSegments.ts` - Reads a rendered block's segments from the DOM (`equal` / `del` / `ins` / inline objects, with item and revision ids), and renders segments back to block HTML in the converter's markup (`ins`/`del` with `data-author="rev:<id>"`, formatting source spans copied).
 - `src/ui/blockSegments.test.ts` - Round trip block → segments → HTML on fixture-shaped HTML (`test/small-html.ts`); editability checks (PRD-12).
 - `src/engine/applyEdits.ts` - Worker side: patch each edited block's `w:p` in the redline from its segments and return the updated revision list (new `w:ins`/`w:del`, fresh `w:id`s, updated `constituentKeys`).
@@ -48,7 +48,7 @@ Changed:
 - `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`, `test/expectedText.ts` - Round trips and mixed decisions with scripted edits; the sample's block mapping (task 0).
 - `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0).
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1).
 
 ### Notes
 
@@ -223,13 +223,31 @@ Update the file after completing each sub-task, not just after completing an ent
 **Depends on:** nothing new; follows `ChangeItem` (`src/model/changes.ts`) and `countWords`.
 
 - [ ] 1.0 Paragraph edit model (pure)
-  - [ ] 1.1 Create `src/model/paragraphEdit.ts` with the types, `visibleText`, `originalText` and the id helper. Typed text is normalized to NFC before it is applied (PRD-18).
-  - [ ] 1.2 Implement the edit span (old → new visible text) and applying it to the segments without normalisation; unit tests for insert/delete/replace at the start, middle, end, inside `ins`, across `equal`/`ins` boundaries.
-  - [ ] 1.3 Implement the ownership rules (inside / continuing a word of an `ins`) and the "never join an existing item" rule; unit test PRD-16's `the [big] red [house]` example (three items, decisions untouched).
-  - [ ] 1.4 Implement whole-word widening and the local normalisation; tests: a typo fixed inside a word of `equal` text gives `del "hosue"` + `ins "house"`; typing the Original back removes the item; deleting all of an insertion removes the item.
-  - [ ] 1.5 Implement `revertBlock` and replay determinism (applying the same sequence of edits from `original` gives identical segments and ids); tests.
-  - [ ] 1.6 Add a function giving the block's items from its segments (`kind`, `removedText`, `addedText`, `wordDelta`, `revisionIds`) in `ChangeItem` shape, keeping existing items' ids, kinds recomputed (Inserted / Deleted / Replaced); tests.
-  - [ ] 1.7 `npm run typecheck`, `npm test`; commit.
+  - [x] 1.1 Create `src/model/paragraphEdit.ts` with the types, `visibleText`, `originalText` and the id helper. Typed text is normalized to NFC before it is applied (PRD-18).
+  - [x] 1.2 Implement the edit span (old → new visible text) and applying it to the segments without normalisation; unit tests for insert/delete/replace at the start, middle, end, inside `ins`, across `equal`/`ins` boundaries.
+  - [x] 1.3 Implement the ownership rules (inside / continuing a word of an `ins`) and the "never join an existing item" rule; unit test PRD-16's `the [big] red [house]` example (three items, decisions untouched).
+  - [x] 1.4 Implement whole-word widening and the local normalisation; tests: a typo fixed inside a word of `equal` text gives `del "hosue"` + `ins "house"`; typing the Original back removes the item; deleting all of an insertion removes the item.
+  - [x] 1.5 Implement `revertBlock` and replay determinism (applying the same sequence of edits from `original` gives identical segments and ids); tests.
+  - [x] 1.6 Add a function giving the block's items from its segments (`kind`, `removedText`, `addedText`, `wordDelta`, `revisionIds`) in `ChangeItem` shape, keeping existing items' ids, kinds recomputed (Inserted / Deleted / Replaced); tests.
+  - [x] 1.7 `npm run typecheck`, `npm test`; commit.
+
+**Notes** (task 1, for later tasks)
+
+- `BlockEdit` also holds `nextId` (as the saved record in task 6 does). `ObjectSegment` has an
+  optional `owner` (`{ change, itemId, revisionId }`) for an object that is inserted or deleted
+  content (e.g. an inserted note reference): it is hidden in the view that lacks it. No segment
+  stores a formatting `source`: the renderer (3.1) and the patch (2.2) find formatting by text
+  offset from the neighbouring character.
+- `applyTextEdit` takes `{ unid, nextId, caret? }` and returns `{ segments, nextId,
+  createdItemIds }`. The edit is the common prefix/suffix span of the old and new visible text, so
+  edits at two places in one paragraph within one debounce become one span (unchanged text and
+  items between them would be replaced): task 4.5 must also flush when the cursor moves away from
+  the pending edit (`selectionchange` outside the changed span), not only on blur.
+- `blockItems(edit, { items, revisions })` needs the current items and the engine's revision texts
+  (`RevisionText`) to keep revisions outside the block and engine texts of untouched revisions
+  (task 3.4).
+- A new piece never joins an existing item, including the reviewer's own earlier ones: typing
+  "big" and, after a pause, " dog" gives two items.
 
 ### 2.0 Export with edits
 
@@ -373,7 +391,7 @@ Update the file after completing each sub-task, not just after completing an ent
   - [ ] 4.2 `EditableToggle` component and `App` state (reset per review); test.
   - [ ] 4.3 Editing mode in `DocumentPanel` (class, contenteditable on/off by editability, no click-to-select, card hidden), CSS in `panel.css` / `index.css` for light and dark.
   - [ ] 4.4 `src/ui/editing.ts`: `beforeinput` rules, plain-text paste, object protection, cross-block selection check; `Toast` with the PRD-13 messages. jsdom tests for the rules.
-  - [ ] 4.5 Debounce, blur and toggle-off flush, composition handling; tests with fake timers.
+  - [ ] 4.5 Debounce, blur and toggle-off flush, flush when the cursor leaves the pending edit's span (task 1 notes), composition handling; tests with fake timers.
   - [ ] 4.6 Cursor/selection save and restore as text offsets around `replaceBlock`; tests in jsdom and an e2e check.
   - [ ] 4.7 Wire the update: read visible text, `useEdits.update`, `replaceBlock` in all panels (the 3.6 path accepts the created items).
   - [ ] 4.8 Escape blurs the editable block; App's Escape handler leaves it alone.

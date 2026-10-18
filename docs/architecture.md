@@ -50,6 +50,7 @@ Model (pure TypeScript, main thread)
 - `src/model/comments.ts` — the text of the exported comments (FR-27b).
 - `src/model/reviewList.ts` — list entries, navigation order, Previous/Next, next undecided.
 - `src/model/outline.ts` — the headings for the outline sidebar (FR-24a).
+- `src/model/paragraphEdit.ts` — the segment model of inline edits: one text edit applied to a block's segments, ids, the block's items ([Inline edits](#inline-edits)); also used by the worker.
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
@@ -335,6 +336,52 @@ it relies on (which element carries which id) are listed at the top of `src/ui/r
   setting; the setting itself is kept. Defaults (`DEFAULT_VIEW_SETTINGS`): three columns, both
   sidebars collapsed; stored settings are merged over them. E2e specs written for two columns pin
   their view with `pinView` (`e2e/viewSettings.ts`).
+
+## Inline edits
+
+The reviewer can edit the text of paragraphs in the Edited panel. An edit changes the Edited
+version only, and only that paragraph's changes; it never runs the engine again.
+
+**Segment model** (`src/model/paragraphEdit.ts`, pure, also used by the worker). A block is a
+sequence of segments: `equal` text, `del`/`ins` text of one revision of one item, and inline
+`object`s (note references, tabs, breaks, …; `owner` when they are inserted or deleted content).
+`visibleText` is the Edited text (no `del`), `originalText` the Original (no `ins`); an object is
+one `OBJECT_CHAR` (U+FFFC) in both. A `BlockEdit` keeps the block's `original` segments (as the
+comparison produced them, for revert and the replay check), its `current` ones and `nextId`.
+
+`applyTextEdit(segments, newVisible, { unid, nextId, caret })` applies one edit of the visible
+text. A fresh diff of the whole paragraph against its Original could align the engine's untouched
+changes differently and silently move or dissolve decided items; applying the edit to the
+segments leaves everything outside it as it was:
+- **The edit span** is the common prefix/suffix of the old and new visible text (`editSpan`): an
+  edit is one contiguous span, so the update must run before the cursor moves on to another place in
+  the paragraph. `caret` places an ambiguous edit (an "a" typed next to an "a") where it was
+  made. A no-break space equals a space (browsers type and render some spaces as NBSP); typed NBSPs
+  become spaces, and typed text is NFC-normalized. Deleting or typing an object throws.
+- **Who owns the text.** Deleted `equal` text becomes a new deletion; deleted `ins` text leaves its
+  insertion. Typed text between two characters (or objects) inserted by the same item joins that
+  item; otherwise its first (last) word joins the insertion it continues with no space between, and
+  the rest is new. Only the characters' places decide this, never the DOM node the browser typed
+  into. New text goes after the deleted span, or after the hidden deletions at the cursor.
+- **A new piece never joins an existing item**, even when they touch: decisions are deliberate, so
+  an edit never moves text between items. Example: `the [big] red [house]`, "red" changed to
+  "blue" gives three items, the editor's two with their decisions and a new Replaced one.
+- **Normalisation, around the edit only:** a run of new pieces widens to whole words (FR-7; when
+  its first or last character, deleted or inserted, is a word character next to an unchanged one,
+  that word's unchanged characters join both sides), then lists its deletion before its insertion
+  and becomes one new item (Replaced when it has both). A run of changes the edit touched whose
+  deleted and inserted text are the same (the Original typed back) becomes unchanged text: its
+  items lose those segments, and an item left without any disappears (its decision and comment stay
+  in the review state, for revert).
+- **Ids** of new items are `editId(unid, n)` = `e<unid>.<n>`, `n` counting up in the block's
+  `nextId` (never reused): the deletion's id, then the insertion's; the item's id is the first. They
+  can't collide with the engine's numeric ids and are the same when the edits are replayed. An
+  existing item keeps its id for the life of the review, even when the revision it was named after
+  is gone.
+- `blockItems` gives the block's items from its segments in `ChangeItem` shape (kind recomputed,
+  texts, word counts); an existing item keeps the order of its revisions and those outside the
+  block (a note's, for an item that inserts the reference), and a revision the edits left alone
+  keeps the engine's text.
 
 ## Export
 

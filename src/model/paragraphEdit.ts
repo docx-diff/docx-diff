@@ -1,0 +1,431 @@
+// The paragraph edit model behind inline edits in the Edited panel: a block as a sequence of
+// segments, and how one text edit of its visible (Edited) text changes them. Rules:
+// docs/architecture.md, "Inline edits". Pure (no DOM): shared by the main thread and the worker.
+import type { BlockScope } from './docIndex';
+import { countWords, type ChangeItem } from './changes';
+
+/** Stands for an inline object (note reference, tab, break, …) in visible and Original text. */
+export const OBJECT_CHAR = '\uFFFC';
+
+/** Text both versions have. */
+export interface EqualSegment {
+  kind: 'equal';
+  text: string;
+}
+
+/** Text of one revision of one item: a deletion (hidden in the Edited panel) or an insertion. */
+export interface ChangeSegment {
+  kind: 'del' | 'ins';
+  text: string;
+  itemId: string;
+  revisionId: string;
+}
+
+/** An inline object; `owner` when it is inserted or deleted content. */
+export interface ObjectSegment {
+  kind: 'object';
+  key: string;
+  owner?: { change: 'del' | 'ins'; itemId: string; revisionId: string };
+}
+
+export type Segment = EqualSegment | ChangeSegment | ObjectSegment;
+
+export interface BlockEdit {
+  /** The block's `data-anchor` (`src/engine/blockKey.ts`). */
+  unid: string;
+  scope: BlockScope;
+  /** The block as the comparison produced it. */
+  original: Segment[];
+  current: Segment[];
+  /** The next number for `editId`. */
+  nextId: number;
+}
+
+/** Item and revision ids of the items edits create: they never collide with the engine's numbers. */
+export function editId(unid: string, n: number): string {
+  return `e${unid}.${n}`;
+}
+
+function isEditIdOf(unid: string, id: string): boolean {
+  return id.startsWith(`e${unid}.`);
+}
+
+/** The block's text as the Edited panel shows it: no deletions, objects as `OBJECT_CHAR`. */
+export function visibleText(segments: readonly Segment[]): string {
+  return segments.map((segment) => {
+    if (segment.kind === 'object') return segment.owner?.change === 'del' ? '' : OBJECT_CHAR;
+    return segment.kind === 'del' ? '' : segment.text;
+  }).join('');
+}
+
+/** The block's Original text: no insertions, objects as `OBJECT_CHAR`. */
+export function originalText(segments: readonly Segment[]): string {
+  return segments.map((segment) => {
+    if (segment.kind === 'object') return segment.owner?.change === 'ins' ? '' : OBJECT_CHAR;
+    return segment.kind === 'ins' ? '' : segment.text;
+  }).join('');
+}
+
+const isSpace = (ch: string | undefined) => ch === ' ' || ch === '\u00a0';
+/** Browsers type and render some spaces as no-break spaces: they don't make an edit. */
+const sameChar = (a: string | undefined, b: string | undefined) => a === b || (isSpace(a) && isSpace(b));
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+/** The part of the visible text an edit changed: `before.slice(start, end)` became `text`. */
+export interface EditSpan {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * The changed span between two visible texts, from their common prefix and suffix (an edit is
+ * one contiguous span). `caret`, the cursor's offset in `after`, places an ambiguous edit (typing
+ * "a" next to an "a") where it was made: the span then contains it.
+ */
+export function editSpan(before: string, after: string, caret?: number): EditSpan {
+  const shortest = Math.min(before.length, after.length);
+  const commonSuffix = (limit: number) => {
+    let s = 0;
+    while (s < limit && sameChar(before[before.length - 1 - s], after[after.length - 1 - s])) s++;
+    if (s > 0 && isLowSurrogate(before.charCodeAt(before.length - s))) s--;
+    return s;
+  };
+  const commonPrefix = (limit: number) => {
+    let p = 0;
+    while (p < limit && sameChar(before[p], after[p])) p++;
+    if (p > 0 && isHighSurrogate(before.charCodeAt(p - 1))) p--;
+    return p;
+  };
+  let prefix: number;
+  let suffix: number;
+  if (caret === undefined) {
+    prefix = commonPrefix(shortest);
+    suffix = commonSuffix(shortest - prefix);
+  } else {
+    suffix = commonSuffix(Math.max(0, Math.min(shortest, after.length - caret)));
+    prefix = commonPrefix(Math.min(shortest - suffix, caret));
+  }
+  return { start: prefix, end: before.length - suffix, text: after.slice(prefix, after.length - suffix) };
+}
+
+/** One character (UTF-16 code unit) or object of a block while an edit is applied. */
+interface Unit {
+  /** `newDel`/`newIns`: changed by this edit outside existing items; ids are given at the end. */
+  kind: 'equal' | 'del' | 'ins' | 'object' | 'newDel' | 'newIns';
+  ch: string;
+  itemId?: string;
+  revisionId?: string;
+  object?: ObjectSegment;
+  /** Changed by this edit, or next to a character it removed from an item. */
+  touched?: boolean;
+  removed?: boolean;
+}
+
+const isChange = (unit: Unit) => unit.kind === 'del' || unit.kind === 'ins' || unit.kind === 'newDel' || unit.kind === 'newIns';
+const isNew = (unit: Unit) => unit.kind === 'newDel' || unit.kind === 'newIns';
+const isVisible = (unit: Unit) =>
+  unit.kind === 'object' ? unit.object!.owner?.change !== 'del' : unit.kind === 'equal' || unit.kind === 'ins';
+const isWordEqual = (unit: Unit | undefined) => unit?.kind === 'equal' && !/\s/u.test(unit.ch);
+const isWordInsert = (unit: Unit | undefined) => unit?.kind === 'ins' && !/\s/u.test(unit.ch);
+
+function insertedBy(unit: Unit | undefined): { itemId: string; revisionId: string } | undefined {
+  if (unit?.kind === 'ins') return { itemId: unit.itemId!, revisionId: unit.revisionId! };
+  if (unit?.kind === 'object' && unit.object!.owner?.change === 'ins') return unit.object!.owner;
+  return undefined;
+}
+
+function toUnits(segments: readonly Segment[]): Unit[] {
+  const units: Unit[] = [];
+  for (const segment of segments) {
+    if (segment.kind === 'object') {
+      units.push({ kind: 'object', ch: OBJECT_CHAR, object: segment });
+      continue;
+    }
+    for (const ch of segment.text.split('')) {
+      units.push(segment.kind === 'equal'
+        ? { kind: 'equal', ch }
+        : { kind: segment.kind, ch, itemId: segment.itemId, revisionId: segment.revisionId });
+    }
+  }
+  return units;
+}
+
+export interface TextEditResult {
+  segments: Segment[];
+  nextId: number;
+  /** Items this edit created (they start as accepted); empty on a change of existing items only. */
+  createdItemIds: string[];
+}
+
+/**
+ * Applies an edit of the block's visible text (`visibleText(segments)` → `newVisible`, NFC
+ * normalized here) to its segments:
+ * - deleted unchanged text becomes a new deletion; deleted inserted text leaves its insertion;
+ * - typed text inside an insertion, or continuing one of its words with no space between, joins
+ *   that insertion's item; other typed text is a new insertion;
+ * - new pieces widen to whole words, and touching new deletions and insertions form one new item
+ *   (a Replaced one when it has both); a new piece never joins an existing item;
+ * - a run of changes the edit touched whose Original and Edited text are the same (typed back)
+ *   becomes unchanged text again: its items lose those segments, and disappear without any.
+ * Objects can't be deleted or typed: such an edit throws.
+ */
+export function applyTextEdit(
+  segments: readonly Segment[],
+  newVisible: string,
+  ids: { unid: string; nextId: number; caret?: number },
+): TextEditResult {
+  const before = visibleText(segments);
+  const span = editSpan(before, newVisible.normalize('NFC'), ids.caret);
+  if (span.start === span.end && span.text === '') return { segments: [...segments], nextId: ids.nextId, createdItemIds: [] };
+  if (before.slice(span.start, span.end).includes(OBJECT_CHAR)) throw new Error('An edit cannot delete an inline object');
+  if (span.text.includes(OBJECT_CHAR)) throw new Error('An edit cannot insert an inline object');
+  const typed = span.text.replace(/\u00a0/g, ' ');
+
+  const units = toUnits(segments);
+  const visible = units.filter(isVisible);
+  const left = visible[span.start - 1];
+  const right = visible[span.end];
+
+  for (const unit of visible.slice(span.start, span.end)) {
+    if (unit.kind === 'equal') {
+      unit.kind = 'newDel';
+      unit.touched = true;
+    } else {
+      unit.removed = true;
+    }
+  }
+  let previous: Unit | undefined;
+  let afterRemoved = false;
+  for (const unit of units) {
+    if (unit.removed) {
+      if (previous && isChange(previous)) previous.touched = true;
+      afterRemoved = true;
+      continue;
+    }
+    if (afterRemoved && isChange(unit)) unit.touched = true;
+    afterRemoved = false;
+    previous = unit;
+  }
+
+  // Who owns the typed text.
+  let leading = '';
+  let middle = typed;
+  let trailing = '';
+  const leftOwner = insertedBy(left);
+  const rightOwner = insertedBy(right);
+  if (leftOwner && rightOwner && leftOwner.itemId === rightOwner.itemId) {
+    leading = typed;
+    middle = '';
+  } else {
+    const lead = isWordInsert(left) ? /^\S*/u.exec(typed)![0].length : 0;
+    const trail = isWordInsert(right) ? Math.min(/\S*$/u.exec(typed)![0].length, typed.length - lead) : 0;
+    leading = typed.slice(0, lead);
+    middle = typed.slice(lead, typed.length - trail);
+    trailing = typed.slice(typed.length - trail);
+  }
+  const owned = (text: string, owner: { itemId: string; revisionId: string } | undefined): Unit[] =>
+    text.split('').map((ch) => ({ kind: 'ins', ch, itemId: owner!.itemId, revisionId: owner!.revisionId, touched: true }));
+  const fresh: Unit[] = middle.split('').map((ch) => ({ kind: 'newIns', ch, touched: true }));
+
+  // New text goes after the deleted span, or after the hidden deletions at the cursor; text
+  // joining an insertion goes next to it.
+  const deletedLast = span.end > span.start ? visible[span.end - 1] : undefined;
+  const placed: Unit[] = [];
+  for (const unit of units) {
+    if (unit === right) {
+      if (!deletedLast) placed.push(...fresh);
+      placed.push(...owned(trailing, rightOwner));
+    }
+    if (!unit.removed) placed.push(unit);
+    if (unit === left) placed.push(...owned(leading, leftOwner));
+    if (unit === deletedLast) placed.push(...fresh);
+  }
+  if (!deletedLast && !right) placed.push(...fresh);
+
+  const widened = widenToWords(placed);
+  const cancelled = cancelTypedBack(widened);
+  return toSegments(cancelled, ids.unid, ids.nextId);
+}
+
+/**
+ * Widens each run of new changes to whole words (FR-7): when the run starts (ends) inside a word,
+ * that word's unchanged characters become part of both its deletion and its insertion. Then each
+ * run lists its deleted characters before its inserted ones.
+ */
+function widenToWords(units: Unit[]): Unit[] {
+  const split = new Set<Unit>();
+  for (const [start, end] of runs(units, isNew)) {
+    const run = units.slice(start, end);
+    const firstOf = (kind: Unit['kind']) => run.find((unit) => unit.kind === kind)?.ch;
+    const lastOf = (kind: Unit['kind']) => [...run].reverse().find((unit) => unit.kind === kind)?.ch;
+    const wordChar = (ch: string | undefined) => ch !== undefined && !/\s/u.test(ch);
+    if (wordChar(firstOf('newDel')) || wordChar(firstOf('newIns'))) {
+      for (let i = start - 1; i >= 0 && isWordEqual(units[i]); i--) split.add(units[i]!);
+    }
+    if (wordChar(lastOf('newDel')) || wordChar(lastOf('newIns'))) {
+      for (let i = end; i < units.length && isWordEqual(units[i]); i++) split.add(units[i]!);
+    }
+  }
+  const expanded = units.flatMap((unit): Unit[] => split.has(unit)
+    ? [{ kind: 'newDel', ch: unit.ch, touched: true }, { kind: 'newIns', ch: unit.ch, touched: true }]
+    : [unit]);
+  const ordered: Unit[] = [];
+  let last = 0;
+  for (const [start, end] of runs(expanded, isNew)) {
+    ordered.push(...expanded.slice(last, start));
+    const run = expanded.slice(start, end);
+    ordered.push(...run.filter((unit) => unit.kind === 'newDel'), ...run.filter((unit) => unit.kind === 'newIns'));
+    last = end;
+  }
+  ordered.push(...expanded.slice(last));
+  return ordered;
+}
+
+/** A touched run of changes whose deleted and inserted text are the same is unchanged text. */
+function cancelTypedBack(units: Unit[]): Unit[] {
+  for (const [start, end] of runs(units, isChange).reverse()) {
+    const run = units.slice(start, end);
+    if (!run.some((unit) => unit.touched)) continue;
+    const deleted = run.filter((unit) => unit.kind === 'del' || unit.kind === 'newDel');
+    const inserted = run.filter((unit) => unit.kind === 'ins' || unit.kind === 'newIns');
+    if (deleted.length !== inserted.length || !deleted.every((unit, i) => sameChar(unit.ch, inserted[i]!.ch))) continue;
+    units.splice(start, end - start, ...deleted.map((unit): Unit => ({ kind: 'equal', ch: unit.ch })));
+  }
+  return units;
+}
+
+/** `[start, end)` of each maximal run of units matching `test`. */
+function runs(units: readonly Unit[], test: (unit: Unit) => boolean): [number, number][] {
+  const found: [number, number][] = [];
+  for (let i = 0; i < units.length; i++) {
+    if (!test(units[i]!)) continue;
+    let end = i;
+    while (end < units.length && test(units[end]!)) end++;
+    found.push([i, end]);
+    i = end - 1;
+  }
+  return found;
+}
+
+/** Gives each run of new changes its item (deletion id first) and merges units into segments. */
+function toSegments(units: Unit[], unid: string, firstId: number): TextEditResult {
+  let nextId = firstId;
+  const createdItemIds: string[] = [];
+  for (const [start, end] of runs(units, isNew)) {
+    const run = units.slice(start, end);
+    const delId = run.some((unit) => unit.kind === 'newDel') ? editId(unid, nextId++) : undefined;
+    const insId = run.some((unit) => unit.kind === 'newIns') ? editId(unid, nextId++) : undefined;
+    const itemId = (delId ?? insId)!;
+    createdItemIds.push(itemId);
+    for (const unit of run) {
+      unit.itemId = itemId;
+      unit.revisionId = unit.kind === 'newDel' ? delId : insId;
+      unit.kind = unit.kind === 'newDel' ? 'del' : 'ins';
+    }
+  }
+
+  const segments: Segment[] = [];
+  for (const unit of units) {
+    const last = segments.at(-1);
+    if (unit.kind === 'object') {
+      segments.push(unit.object!);
+    } else if (unit.kind === 'equal') {
+      if (last?.kind === 'equal') last.text += unit.ch;
+      else segments.push({ kind: 'equal', text: unit.ch });
+    } else if (last?.kind === unit.kind && last.revisionId === unit.revisionId && last.itemId === unit.itemId) {
+      last.text += unit.ch;
+    } else {
+      segments.push({ kind: unit.kind as 'del' | 'ins', text: unit.ch, itemId: unit.itemId!, revisionId: unit.revisionId! });
+    }
+  }
+  return { segments, nextId, createdItemIds };
+}
+
+/** The block as the comparison produced it. */
+export function revertBlock(edit: BlockEdit): Segment[] {
+  return edit.original;
+}
+
+export interface RevisionText {
+  type: 'insert' | 'delete';
+  text: string;
+}
+
+/** Each revision's text in the block, in order of appearance (objects add no text). */
+export function revisionTexts(segments: readonly Segment[]): Map<string, RevisionText & { itemId: string }> {
+  const texts = new Map<string, RevisionText & { itemId: string }>();
+  const add = (change: 'del' | 'ins', itemId: string, revisionId: string, text: string) => {
+    const entry = texts.get(revisionId);
+    if (entry) entry.text += text;
+    else texts.set(revisionId, { type: change === 'del' ? 'delete' : 'insert', text, itemId });
+  };
+  for (const segment of segments) {
+    if (segment.kind === 'object') {
+      if (segment.owner) add(segment.owner.change, segment.owner.itemId, segment.owner.revisionId, '');
+    } else if (segment.kind !== 'equal') {
+      add(segment.kind, segment.itemId, segment.revisionId, segment.text);
+    }
+  }
+  return texts;
+}
+
+export type BlockItem = Pick<ChangeItem, 'id' | 'kind' | 'revisionIds' | 'removedText' | 'addedText' | 'wordDelta'>;
+
+/**
+ * The items of an edited block, in order of appearance, as the parts of a `ChangeItem` its
+ * segments decide. An existing item (in `context.items`) keeps its id and the order of its
+ * revisions; it loses the revisions the edits removed, and keeps those outside the block (a note's,
+ * for an item that inserts a note reference), whose text comes from `context.revisions`. A
+ * revision the edits left as it was keeps the engine's text from there too. Kinds are recomputed.
+ */
+export function blockItems(
+  edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>,
+  context?: { items: ReadonlyMap<string, ChangeItem>; revisions: ReadonlyMap<string, RevisionText> },
+): BlockItem[] {
+  const current = revisionTexts(edit.current);
+  const original = revisionTexts(edit.original);
+  const order: string[] = [];
+  const own = new Map<string, string[]>();
+  for (const [revisionId, { itemId }] of current) {
+    if (!own.has(itemId)) {
+      order.push(itemId);
+      own.set(itemId, []);
+    }
+    own.get(itemId)!.push(revisionId);
+  }
+
+  const textOf = (revisionId: string): RevisionText | undefined => {
+    const engine = context?.revisions.get(revisionId);
+    const now = current.get(revisionId);
+    if (!now) return engine;
+    return engine && original.get(revisionId)?.text === now.text ? engine : now;
+  };
+  return order.map((id) => {
+    const existing = context?.items.get(id);
+    const revisionIds = existing
+      ? existing.revisionIds.filter((r) => current.has(r) || (!original.has(r) && !isEditIdOf(edit.unid, r)))
+      : own.get(id)!;
+    const texts = revisionIds.map(textOf).filter((text) => text !== undefined);
+    const removedText = texts.filter((t) => t.type === 'delete').map((t) => t.text).join('');
+    const addedText = texts.filter((t) => t.type === 'insert').map((t) => t.text).join('');
+    return {
+      id,
+      kind: kindOf(removedText, addedText, texts[0]?.type),
+      revisionIds,
+      removedText,
+      addedText,
+      wordDelta: { removed: countWords(removedText), added: countWords(addedText) },
+    };
+  });
+}
+
+/** Replaced when both sides have text (`¶` alone isn't text), else the side that has it. */
+function kindOf(removedText: string, addedText: string, firstType: RevisionText['type'] | undefined): BlockItem['kind'] {
+  const hasText = (text: string) => !/^¶*$/.test(text);
+  if (hasText(removedText) && hasText(addedText)) return 'replaced';
+  if (hasText(addedText)) return 'inserted';
+  if (hasText(removedText)) return 'deleted';
+  return firstType === 'insert' ? 'inserted' : 'deleted';
+}
