@@ -3,6 +3,7 @@
 // (`src/ui/blockSegments.ts`), edited with the edit model (`applyTextEdit`), and handed to the export
 // as patches with their new revisions; and what the redline paragraphs hold, to check the segments.
 import type { Element as XmlElement } from '@xmldom/xmldom';
+import { unpatchableContent } from '../src/engine/applyEdits';
 import { paragraphUnids } from '../src/engine/blockKey';
 import { W_NS, readPart, unzipDocx } from '../src/engine/ooxml';
 import type { BlockEditPatch, FinalDecision, RevisionListEntry } from '../src/engine/types';
@@ -88,17 +89,12 @@ export function segmentsText(segments: readonly Segment[], decisions: ReadonlyMa
     .join('');
 }
 
-/** Paragraph content the edit patch refuses (and that the HTML doesn't mark): fields, content controls, symbols, … */
-const UNPATCHABLE = new Set([
-  'fldChar', 'fldSimple', 'instrText', 'delInstrText', 'sdt', 'sym', 'noBreakHyphen', 'ptab', 'drawing', 'pict', 'object', 'moveFrom', 'moveTo',
-]);
-
 export interface RedlineParagraph {
   element: XmlElement;
   /** The paragraph's text without insertions, and without deletions; objects as `OBJECT_CHAR`. */
   original: string;
   edited: string;
-  /** It holds content the patch refuses, or a nested paragraph. */
+  /** It holds content the patch refuses (`unpatchableContent`). */
   unpatchable: boolean;
   /** Its ordinal among the part's `w:p` elements (for `expectedText`'s overrides). */
   ordinal: number;
@@ -115,19 +111,14 @@ export async function redlineParagraphs(redline: Uint8Array): Promise<Map<string
     const ordinals = new Map<XmlElement, number>();
     for (let i = 0; i < all.length; i++) ordinals.set(all.item(i)!, i);
     for (const [unid, element] of await paragraphUnids(part)) {
-      let unpatchable = false;
       const text = (skip: string) => {
         let result = '';
         const walk = (node: XmlElement, skipped: boolean) => {
           for (let child = node.firstChild; child; child = child.nextSibling) {
             if (child.nodeType !== child.ELEMENT_NODE) continue;
             const el = child as XmlElement;
-            if (el.namespaceURI !== W_NS) {
-              unpatchable = true;
-              continue;
-            }
+            if (el.namespaceURI !== W_NS) continue;
             const name = el.localName!;
-            if (UNPATCHABLE.has(name) || name === 'p') unpatchable = true;
             const inSkip = skipped || name === skip;
             if (name === 't' || name === 'delText') {
               if (!inSkip) result += el.textContent ?? '';
@@ -141,14 +132,14 @@ export async function redlineParagraphs(redline: Uint8Array): Promise<Map<string
         walk(element, false);
         return result;
       };
-      found.set(`${scope}:${unid}`, { element, original: text('ins'), edited: text('del'), unpatchable, ordinal: ordinals.get(element)! });
+      found.set(`${scope}:${unid}`, { element, original: text('ins'), edited: text('del'), unpatchable: unpatchableContent(element) !== undefined, ordinal: ordinals.get(element)! });
     }
   }
   return found;
 }
 
 /** NBSP and space are the same character to the edit model and the patch. */
-export const spaces = (text: string) => text.replace(/ /g, ' ');
+export const spaces = (text: string) => text.replace(/\u00a0/g, ' ');
 
 export type Scenario = 'insert a word' | 'delete a word' | 'edit inside an insertion' | 'edit between two changes' | 'type the Original back';
 export const SCENARIOS: readonly Scenario[] = ['type the Original back', 'edit between two changes', 'edit inside an insertion', 'insert a word', 'delete a word'];

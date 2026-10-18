@@ -49,7 +49,7 @@ export interface BlockEdit {
   nextId: number;
 }
 
-/** Item and revision ids of the items edits create: they never collide with the engine's numbers. */
+/** Item and revision ids of the items edits create: the `e` prefix never occurs in the engine's ids (`rev…`). */
 export function editId(unid: string, n: number): string {
   return `e${unid}.${n}`;
 }
@@ -258,9 +258,11 @@ export function applyTextEdit(
 }
 
 /**
- * Widens each run of new changes to whole words (FR-7): when the run starts (ends) inside a word,
- * that word's unchanged characters become part of both its deletion and its insertion. Then each
- * run lists its deleted characters before its inserted ones.
+ * Widens each run of new changes to whole words (FR-7): when the run starts (ends) inside a word
+ * of either version, that word's unchanged characters become part of both its deletion and its
+ * insertion. A side without text continues with the unchanged neighbour, so a deleted space that
+ * joins two words, or a typed one that splits a word, widens too. Then each run lists its deleted
+ * characters before its inserted ones.
  */
 function widenToWords(units: Unit[]): Unit[] {
   const split = new Set<Unit>();
@@ -269,10 +271,12 @@ function widenToWords(units: Unit[]): Unit[] {
     const firstOf = (kind: Unit['kind']) => run.find((unit) => unit.kind === kind)?.ch;
     const lastOf = (kind: Unit['kind']) => [...run].reverse().find((unit) => unit.kind === kind)?.ch;
     const wordChar = (ch: string | undefined) => ch !== undefined && !/\s/u.test(ch);
-    if (wordChar(firstOf('newDel')) || wordChar(firstOf('newIns'))) {
+    const before = isWordEqual(units[start - 1]) ? units[start - 1]!.ch : undefined;
+    const after = isWordEqual(units[end]) ? units[end]!.ch : undefined;
+    if (before && (wordChar(firstOf('newDel') ?? after) || wordChar(firstOf('newIns') ?? after))) {
       for (let i = start - 1; i >= 0 && isWordEqual(units[i]); i--) split.add(units[i]!);
     }
-    if (wordChar(lastOf('newDel')) || wordChar(lastOf('newIns'))) {
+    if (after && (wordChar(lastOf('newDel') ?? before) || wordChar(lastOf('newIns') ?? before))) {
       for (let i = end; i < units.length && isWordEqual(units[i]); i++) split.add(units[i]!);
     }
   }
@@ -384,6 +388,7 @@ export function revisionTexts(segments: readonly Segment[]): Map<string, Revisio
  * (without `constituentKeys`: the export's patch gives them, `src/engine/applyEdits.ts`).
  */
 export function editRevisions(edit: Pick<BlockEdit, 'unid' | 'scope' | 'current'>): RevisionListEntry[] {
+  // Kind `p` for headings too: the model reads only an anchor's `unid` (`src/model/changes.ts`).
   const anchor = { id: `p:${edit.scope}:${edit.unid}`, kind: 'p', scope: edit.scope, unid: edit.unid };
   return [...revisionTexts(edit.current)]
     .filter(([revisionId]) => isEditIdOf(edit.unid, revisionId))

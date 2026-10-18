@@ -97,8 +97,14 @@ describe('applyTextEdit', () => {
     expect(show(edit([eq('the red house')], 'the blue house').segments)).toBe('the [-red:eb.0-][+blue:eb.0/eb.1+] house');
   });
 
-  it('keeps a space typed between two words a lone insertion', () => {
-    expect(show(edit([eq('the redhouse')], 'the red house').segments)).toBe('the red[+ :eb.0+]house');
+  it('widens a space that splits a word, or joins two, to the words', () => {
+    expect(show(edit([eq('the redhouse')], 'the red house', 0, 8).segments)).toBe('the [-redhouse:eb.0-][+red house:eb.0/eb.1+]');
+    expect(show(edit([eq('the red house')], 'the redhouse').segments)).toBe('the [-red house:eb.0-][+redhouse:eb.0/eb.1+]');
+  });
+
+  it('keeps a word typed with its space next to a word unwidened', () => {
+    expect(show(edit([eq('the red house')], 'the red big house', 0, 12).segments)).toBe('the red [+big :eb.0+]house');
+    expect(show(edit([eq('the red big house')], 'the red house').segments)).toBe('the red [-big :eb.0-]house');
   });
 
   it('keeps a typo fixed inside an insertion in that insertion', () => {

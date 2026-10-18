@@ -10,9 +10,9 @@ New:
 - `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`.
 - `src/ui/blockSegments.ts` - `readBlockSegments`: a rendered block's segments from the decorated HTML (`equal` / `del` / `ins` / inline objects: note references, tabs, breaks; item ids from `data-change-id`, revision ids from `data-author`) (task 2.6); task 3.1 adds rendering segments back to block HTML.
 - `src/ui/blockSegments.test.ts` - Reader tests on `test/small-html.ts` shapes (objects, back links/¶/list labels skipped, empty-paragraph and deleted-mark fillers, shared edges); task 3 adds the HTML round trip and editability checks (PRD-12).
-- `src/engine/applyEdits.ts` - The export's first step: patches each edited block's `w:p` to its final segments (Original-side characters aligned one to one, inserted ones matched per gap; only touched runs split, then joined again) and returns the updated revision list (new `w:ins`/`w:del`, `w:id`s above every id of the text parts, updated `constituentKeys`, emptied revisions dropped); `EditPatchError`.
+- `src/engine/applyEdits.ts` - The export's first step: patches each edited block's `w:p` to its final segments (Original-side characters aligned one to one, inserted ones matched per gap; only touched runs split, then joined again) and returns the updated revision list (new `w:ins`/`w:del`, `w:id`s above every id of the text parts, updated `constituentKeys`, emptied revisions dropped); `EditPatchError`; `unpatchableContent`, the one rule for the paragraphs it refuses (also used by task 3.2 and `test/edits.ts`).
 - `src/engine/applyEdits.test.ts` - Unit tests on hand-written redline XML: plain runs, formatting from the neighbour, ids, empty paragraph, inside an engine `w:ins` (one and several runs), engine `w:del` partly typed back, typed-back replacement dropped, `w:rPrChange` in split runs, hyperlink, bookmark/comment range, tab/break, note references (plain and inserted), refused content (field, `w:sdt`), unknown revision.
-- `test/edits.ts` - Test helpers for inline edits: `scriptEdits` (reader + `applyTextEdit` → patches and new revisions), the scenarios (`scenarioEdit`, `pickScenarios`), `editableBlocks`, `redlineParagraphs` (each `w:p`'s Original/Edited text by unid), `segmentsText` / `editedOverrides` for `expectedText`.
+- `test/edits.ts` - Test helpers for inline edits: `scriptEdits` (reader + `applyTextEdit` → patches and new revisions), the scenarios (`scenarioEdit`, `pickScenarios`), `editableBlocks`, `redlineParagraphs` (each `w:p`'s Original/Edited text by unid, and whether `unpatchableContent` refuses it), `segmentsText` / `editedOverrides` for `expectedText`.
 - `test/engine-decide.ts` - `engineDecideOne` (a `DocxSession` decision) and `partsXml`, moved out of `src/engine/exportDocx.test.ts` to be shared with the inline-edit checks.
 - `test/fixtures/link-bookmark-tab.{original,edited}.docx` - Fixture with edits next to a hyperlink, a bookmark, a tab and a line break (the `field-hyperlink` link paragraph isn't editable: an inserted mark joins into it).
 - `src/engine/blockKey.ts` - `paragraphUnids`: the engine's Unid of every `w:p` of a part, i.e. the rendered blocks' `data-anchor` (task 0).
@@ -313,9 +313,10 @@ Update the file after completing each sub-task, not just after completing an ent
   naming a dropped revision skip it (`anchorComments` ignores unknown ids).
 - `applyEdits` refuses (`EditPatchError`, reported as the worker error code) a paragraph with
   content it can't keep in place: anything but runs of `w:t`/`w:delText`/tab/break/note
-  references/zero-width marks, `w:ins`/`w:del` (not nested), `w:hyperlink`/`w:smartTag`, bookmarks,
-  comment ranges, `w:proofErr`, `w:permStart/End`. Task 3.2's `uneditableBlocks` must cover at least
-  that (`test/edits.ts` `UNPATCHABLE` and `editableBlocks` are the test-side version of the rule).
+  references/zero-width marks, `w:ins`/`w:del` (not nested), `w:hyperlink`/`w:smartTag` (not inside
+  a change), bookmarks, comment ranges, `w:proofErr`, `w:permStart/End`. The rule is
+  `unpatchableContent`; task 3.2's `uneditableBlocks` and `test/edits.ts` (`redlineParagraphs`,
+  `editableBlocks`) use it rather than a list of their own.
 - The sample has no editable heading (every `h*` block has a paragraph-mark change) and no table:
   those are covered by the fixtures and a small generated pair.
 - The reader works on the **decorated, unjoined** master document (`prepareRenderedDocument`); a
@@ -371,7 +372,7 @@ Update the file after completing each sub-task, not just after completing an ent
 - [ ] 3.0 Live review state with edits
   - [ ] 3.1 In `src/ui/blockSegments.ts` (reader from task 2.6), render segments back to block HTML in the converter's markup. Tests on `test/small-html.ts` shapes and every fixture's blocks: block → segments → HTML → segments is identity.
   - [ ] 3.2 Editability check (PRD-12) in `blockSegments.ts`: in range, no move content, no paragraph-mark revision, not a join target in any panel, not in `uneditableBlocks`. Return a reason for the message (PRD-13). Tests.
-    - Worker side first: `CompareResult.uneditableBlocks` (unid → reason) from `runCompare` (`src/engine/pipeline.ts`), via `paragraphUnids` on the redline: paragraphs containing a field (`w:fldChar`, `w:fldSimple`, `w:instrText`), an inline `w:sdt`, `w:sym`, `w:noBreakHyphen`, `w:ptab`, `w:drawing`/`w:pict`/`w:object`/`mc:AlternateContent`, or a nested `w:p` (task 0 findings, item 2: the HTML doesn't mark them). Engine test on the fixtures (`field-hyperlink`) and the sample (its time goes into the compare's timings).
+    - Worker side first: `CompareResult.uneditableBlocks` (unid → reason) from `runCompare` (`src/engine/pipeline.ts`), via `paragraphUnids` on the redline: every paragraph for which `unpatchableContent` (`src/engine/applyEdits.ts`) gives a reason. Don't write a second list: the export refuses exactly those paragraphs, so a paragraph editable in the panel can always be exported. It covers fields (`w:fldChar`, `w:fldSimple`, `w:instrText`), inline `w:sdt`, `w:sym`, `w:noBreakHyphen`, `w:ptab`, drawings/`w:pict`/`w:object`/`mc:AlternateContent`, nested paragraphs (task 0 findings, item 2: the HTML doesn't mark them), and also `w:customXml`, `w:dir`/`w:bdo`, math, nested `w:ins`/`w:del`, a hyperlink inside a change, and run content such as `w:pgNum`. Map its detail to the PRD-13 message ("contains a field or object that can't be edited here"). Engine test on the fixtures (`field-hyperlink`) and the sample (its time goes into the compare's timings).
   - [ ] 3.3 Scope `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` (`renderedDocument.ts`) and `collectItemTexts` (`equivalence.ts`) to a root/block without changing their whole-document behaviour; existing tests pass unchanged, new tests for a block.
   - [ ] 3.4 `DocIndex` and items for one replaced block: functions in `docIndex.ts` / `changes.ts` that replace one block's entries and items, keep other items' identity, keep existing ids, renumber `order`. Tests.
   - [ ] 3.5 `useEdits` hook with `update`, `revert`, `revertAll`, derived values, reset per comparison. Hook tests.
@@ -415,7 +416,7 @@ Update the file after completing each sub-task, not just after completing an ent
   - [ ] 4.1 Fix `useKeyboardShortcuts` for events from inside shadow roots (`composedPath()[0]`); test with an editable element in a shadow root.
   - [ ] 4.2 `EditableToggle` component and `App` state (reset per review); test.
   - [ ] 4.3 Editing mode in `DocumentPanel` (class, contenteditable on/off by editability, no click-to-select, card hidden), CSS in `panel.css` / `index.css` for light and dark.
-  - [ ] 4.4 `src/ui/editing.ts`: `beforeinput` rules, plain-text paste, object protection, cross-block selection check; `Toast` with the PRD-13 messages. jsdom tests for the rules.
+  - [ ] 4.4 `src/ui/editing.ts`: `beforeinput` rules, plain-text paste, object protection, cross-block selection check; `Toast` with the PRD-13 messages. Typed and pasted text has U+FFFC (`OBJECT_CHAR`) removed: `applyTextEdit` throws on it. jsdom tests for the rules.
   - [ ] 4.5 Debounce, blur and toggle-off flush, flush when the cursor leaves the pending edit's span (task 1 notes), composition handling; tests with fake timers.
   - [ ] 4.6 Cursor/selection save and restore as text offsets around `replaceBlock`; tests in jsdom and an e2e check.
   - [ ] 4.7 Wire the update: read visible text, `useEdits.update`, `replaceBlock` in all panels (the 3.6 path accepts the created items).

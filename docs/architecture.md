@@ -369,14 +369,15 @@ segments leaves everything outside it as it was:
   "blue" gives three items, the editor's two with their decisions and a new Replaced one.
 - **Normalisation, around the edit only:** a run of new pieces widens to whole words (FR-7; when
   its first or last character, deleted or inserted, is a word character next to an unchanged one,
-  that word's unchanged characters join both sides), then lists its deletion before its insertion
+  that word's unchanged characters join both sides; a side with no text continues with the
+  neighbour, so a deleted space joining two words or a typed one splitting a word widens too), then lists its deletion before its insertion
   and becomes one new item (Replaced when it has both). A run of changes the edit touched whose
   deleted and inserted text are the same (the Original typed back) becomes unchanged text: its
   items lose those segments, and an item left without any disappears (its decision and comment stay
   in the review state, for revert).
 - **Ids** of new items are `editId(unid, n)` = `e<unid>.<n>`, `n` counting up in the block's
   `nextId` (never reused): the deletion's id, then the insertion's; the item's id is the first. They
-  can't collide with the engine's numeric ids and are the same when the edits are replayed. An
+  can't collide with the engine's ids (`rev…` strings) and are the same when the edits are replayed. An
   existing item keeps its id for the life of the review, even when the revision it was named after
   is gone.
 - `blockItems` gives the block's items from its segments in `ChangeItem` shape (kind recomputed,
@@ -410,8 +411,9 @@ it; a note reference's is never used), without its formatting markup; new `w:ins
 engine's author and date, and `w:id`s above every id of the text parts (the engine numbers them
 across the parts). Bookmarks, comment ranges, `w:proofErr`, note references, tabs and breaks stay in
 place; runs inside `w:hyperlink`/`w:smartTag` stay inside. A paragraph with anything else (fields,
-`w:sdt`, `w:sym`, drawings, moves, …) fails the export (`EditPatchError`): such paragraphs are not
-editable. Afterwards a revision's keys are those outside the edited paragraphs plus its elements
+`w:sdt`, `w:sym`, drawings, moves, `w:customXml`, nested changes, a hyperlink inside a change, …)
+fails the export (`EditPatchError`): such paragraphs are not editable. `unpatchableContent` is
+that rule, and the one place it is written: the editability check uses it too. Afterwards a revision's keys are those outside the edited paragraphs plus its elements
 inside them; one left with none is dropped. The engine may group the patched markup into revisions
 differently (it splits a formatting change that new text interrupts), which doesn't matter: the
 export uses our list. The patch costs ~0.4 s on the sample (mostly parsing and writing

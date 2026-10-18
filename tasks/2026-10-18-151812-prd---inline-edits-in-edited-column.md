@@ -354,7 +354,7 @@ checked against the code on 2026-10-18.
   revision id (`ChangeItem.id`, `src/model/changes.ts`). If an edit removes that revision (e.g. the
   whole inserted half of a Replaced item), recomputing the id would lose the decision. Keep each
   existing item's id fixed for the life of the review.
-- New revision and item ids: strings that can't collide with the engine's numeric ids and are
+- New revision and item ids: strings that can't collide with the engine's ids (`rev…` strings, not numbers) and are
   **deterministic on replay**, e.g. `e<paragraphKey>.<n>`. Nothing in the model parses ids as
   numbers (checked: `revisionIdFromAuthor` slices the `rev:` prefix; `changes.ts` sorts by list
   position). `ChangeItem.order` must be renumbered after inserting new items.

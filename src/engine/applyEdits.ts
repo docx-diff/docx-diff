@@ -187,7 +187,8 @@ type Step = { leaf: Leaf; unit: Unit } | { leaf: Leaf; unit?: undefined } | { le
 
 function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartContext): void {
   const fail = (detail: string) => new EditPatchError(edit.unid, detail);
-  checkContent(paragraph, fail);
+  const unpatchable = unpatchableContent(paragraph);
+  if (unpatchable) throw fail(unpatchable);
   const units = unitsOf(edit.segments);
   // The runs the patch changes, or puts new text next to, are split first: then each of their
   // characters has a run (and `w:ins`/`w:del`) of its own.
@@ -280,7 +281,7 @@ function planSteps(leaves: Leaf[], units: Unit[], fail: (detail: string) => Erro
   return steps;
 }
 
-const isSpace = (ch: string) => ch === ' ' || ch === ' ';
+const isSpace = (ch: string) => ch === ' ' || ch === '\u00a0';
 /** The HTML shows some spaces as no-break spaces. */
 const sameChar = (a: string, b: string) => a === b || (isSpace(a) && isSpace(b));
 
@@ -349,31 +350,36 @@ function retype(leaf: Leaf, unit: Unit, context: PartContext, fail: (detail: str
   leaf.revisionId = unit.revisionId;
 }
 
-/** Throws on paragraph content the patch doesn't know how to keep in place. */
-function checkContent(paragraph: Element, fail: (detail: string) => Error): void {
-  const visit = (parent: Element, inWrapper: boolean): void => {
+/**
+ * Why the patch can't keep the paragraph's content in place (`undefined` when it can): anything but
+ * runs of text, tabs, breaks, note references and zero-width marks, single `w:ins`/`w:del`,
+ * hyperlinks and smart tags outside changes, and markers. Such paragraphs are not editable.
+ */
+export function unpatchableContent(paragraph: Element): string | undefined {
+  const visit = (parent: Element, inWrapper: boolean): string | undefined => {
     for (const child of elementChildren(parent)) {
-      if (child.namespaceURI !== W_NS) throw fail(`it contains {${child.namespaceURI}}${child.localName}`);
+      if (child.namespaceURI !== W_NS) return `it contains {${child.namespaceURI}}${child.localName}`;
       const name = child.localName!;
+      let found: string | undefined;
       if (name === 'r') {
         for (const content of elementChildren(child)) {
           const contentName = content.namespaceURI === W_NS ? content.localName! : '';
           if (!['rPr', 't', 'delText'].includes(contentName) && !OBJECTS.has(contentName) && !ZERO_WIDTH.has(contentName)) {
-            throw fail(`a run contains {${content.namespaceURI}}${content.localName}`);
+            return `a run contains {${content.namespaceURI}}${content.localName}`;
           }
         }
       } else if (WRAPPERS.has(name)) {
-        if (inWrapper) throw fail(`it contains a nested w:${name}`);
-        visit(child, true);
+        found = inWrapper ? `it contains a nested w:${name}` : visit(child, true);
       } else if (CONTAINERS.has(name)) {
-        if (inWrapper) throw fail(`it contains a w:${name} inside a change`);
-        visit(child, false);
+        found = inWrapper ? `it contains a w:${name} inside a change` : visit(child, false);
       } else if (!(name === 'pPr' && parent === paragraph) && !MARKERS.has(name) && !CONTAINER_PROPERTIES.has(name)) {
-        throw fail(`it contains w:${name}`);
+        found = `it contains w:${name}`;
       }
+      if (found) return found;
     }
+    return undefined;
   };
-  visit(paragraph, false);
+  return visit(paragraph, false);
 }
 
 /** Splits a run into runs of one character or object each (zero-width content gets one too). */

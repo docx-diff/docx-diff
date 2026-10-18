@@ -3,7 +3,7 @@ import type { Element } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 import type { Segment } from '../model/paragraphEdit';
 import { OBJECT_CHAR } from '../model/paragraphEdit';
-import { EditPatchError, applyEdits } from './applyEdits';
+import { EditPatchError, applyEdits, unpatchableContent } from './applyEdits';
 import { paragraphUnids } from './blockKey';
 import { ElementIndex, W_NS, parseConstituentKey, parseXml, unzipDocx, zipDocx, type DocxFiles } from './ooxml';
 import { rejectRevisions } from './rejectRewrite';
@@ -306,6 +306,23 @@ describe('applyEdits keeps other paragraph content in place', () => {
     await expect(applyEdits(parts, [revision('n1', 'insert', [])], [{ unid, scope: 'body', segments: [eq('Page '), ins('x', 'n1')] }])).rejects.toThrow(/fldChar/);
     const sdt = files('<w:p><w:sdt><w:sdtContent><w:r><w:t>x</w:t></w:r></w:sdtContent></w:sdt></w:p>');
     await expect(applyEdits(sdt, [], [{ unid: await unidOf(sdt), scope: 'body', segments: [eq('x')] }])).rejects.toThrow(/w:sdt/);
+  });
+
+  it('names the content it refuses, beyond fields and content controls (unpatchableContent)', () => {
+    const paragraph = (xml: string) => parseXml(files(xml)[DOCUMENT]!).getElementsByTagNameNS(W_NS, 'p').item(0)!;
+    const M_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
+    expect(unpatchableContent(paragraph('<w:p><w:pPr/><w:bookmarkStart w:id="0" w:name="a"/><w:hyperlink r:id="r1"><w:r><w:t>a</w:t></w:r></w:hyperlink><w:ins w:id="1"><w:r><w:tab/></w:r></w:ins></w:p>'))).toBeUndefined();
+    for (const [xml, reason] of [
+      ['<w:p><w:customXml><w:r><w:t>a</w:t></w:r></w:customXml></w:p>', /w:customXml/],
+      ['<w:p><w:dir w:val="rtl"><w:r><w:t>a</w:t></w:r></w:dir></w:p>', /w:dir/],
+      [`<w:p><m:oMath xmlns:m="${M_NS}"/></w:p>`, /oMath/],
+      ['<w:p><w:del w:id="1"><w:ins w:id="2"><w:r><w:t>a</w:t></w:r></w:ins></w:del></w:p>', /nested w:ins/],
+      ['<w:p><w:ins w:id="1"><w:hyperlink r:id="r1"><w:r><w:t>a</w:t></w:r></w:hyperlink></w:ins></w:p>', /w:hyperlink inside a change/],
+      ['<w:p><w:r><w:pgNum/></w:r></w:p>', /pgNum/],
+      ['<w:p><w:r><w:sym w:char="F04A"/></w:r></w:p>', /sym/],
+    ] as const) {
+      expect(unpatchableContent(paragraph(xml)), xml).toMatch(reason);
+    }
   });
 
   it('fails on a revision the request does not list', async () => {

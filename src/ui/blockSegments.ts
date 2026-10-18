@@ -10,7 +10,7 @@ import type { ObjectSegment, Segment } from '../model/paragraphEdit';
 const TEXT_NODE = 3;
 const ELEMENT_NODE = 1;
 /** The converter writes a left-to-right mark after each line break. */
-const BREAK_MARK = '‎';
+const BREAK_MARK = '\u200e';
 
 /** The block's segments: unchanged text, each revision's inserted or deleted text, inline objects. */
 export function readBlockSegments(block: Element): Segment[] {
@@ -70,7 +70,7 @@ export function readBlockSegments(block: Element): Segment[] {
 
   // An empty paragraph renders a no-break space so that it has a height.
   const [only] = segments;
-  if (segments.length === 1 && only!.kind === 'equal' && /^[  ]$/.test(only!.text)) return [];
+  if (segments.length === 1 && only!.kind === 'equal' && /^[\u00a0 ]$/.test(only!.text)) return [];
   return segments;
 }
 
