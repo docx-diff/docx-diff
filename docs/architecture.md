@@ -407,8 +407,10 @@ text, take the elements of the neighbouring character (before, else after) witho
 segments is unchanged (checked on every fixture and the sample).
 
 **Which blocks can be edited** (`uneditableReason`): paragraph blocks in the comparison range,
-without move content or a paragraph-mark change, not following a paragraph whose mark changes (a
-panel joins that one into it), and not refused by the export's patch. The last can't be seen in the
+without move content or a paragraph-mark change, without another paragraph joined into them in a
+side panel (the rule of `mergeJoinedParagraphs`: a preceding paragraph whose mark that version
+lacks, past the paragraphs the panel doesn't show at all; a wholly deleted empty paragraph before
+it joins nothing), and not refused by the export's patch. The last can't be seen in the
 HTML (fields, content controls, symbols render as plain text): the worker lists those paragraphs at
 compare time (`CompareResult.uneditableBlocks`, unid → `unpatchableContent`'s reason; 0.27 s on the
 sample), so a paragraph the panel lets the reviewer edit can always be exported.

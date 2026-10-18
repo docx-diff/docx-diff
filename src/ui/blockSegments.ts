@@ -357,7 +357,7 @@ export const UNEDITABLE_MESSAGES: Record<UneditableReason, string> = {
 /**
  * Why the block of the decorated, unjoined document can't be edited (`undefined` when it can):
  * only paragraphs in the comparison range are, without move content or a paragraph-mark change,
- * not following a paragraph whose mark changes (a panel may join that one into it), and without
+ * without another paragraph's content joined into them in a side panel (`joinedInto`), and without
  * content the export's patch refuses (`uneditable`, from the compare: `CompareResult.uneditableBlocks`).
  */
 export function uneditableReason(
@@ -369,9 +369,23 @@ export function uneditableReason(
   if (context.outOfRange.has(unid)) return 'out-of-range';
   if (block.querySelector('.rev-move-from, .rev-move-to')) return 'move';
   if (block.matches('.rev-para-ins, .rev-para-del') || block.querySelector('.rev-para-mark-del')) return 'paragraph-break';
-  if (block.previousElementSibling?.matches('[data-anchor]:is(.rev-para-ins, .rev-para-del)')) return 'joined';
+  if (joinedInto(block, 'rev-para-ins', 'not-in-original') || joinedInto(block, 'rev-para-del', 'not-in-edited')) return 'joined';
   if (Object.hasOwn(context.uneditable, unid)) return 'object';
   return undefined;
+}
+
+/**
+ * Whether a side panel joins a preceding paragraph into the block (`mergeJoinedParagraphs`): one
+ * whose mark that panel's version lacks (`missingMark`), past the paragraphs it doesn't show at all
+ * (`missingBlock`, e.g. a wholly deleted empty paragraph in the Edited panel), which join nothing.
+ * The Resolved column's joins don't matter: its block replacement restores and redoes them.
+ */
+function joinedInto(block: Element, missingMark: string, missingBlock: string): boolean {
+  for (let previous = block.previousElementSibling; previous; previous = previous.previousElementSibling) {
+    if (previous.matches(`[data-anchor].${missingBlock}`)) continue;
+    return previous.matches(`[data-anchor].${missingMark}`);
+  }
+  return false;
 }
 
 /** The key of an inline object element: a note reference, a tab or a line break. */
