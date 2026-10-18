@@ -222,7 +222,7 @@ Update the file after completing each sub-task, not just after completing an ent
 
 **Depends on:** nothing new; follows `ChangeItem` (`src/model/changes.ts`) and `countWords`.
 
-- [ ] 1.0 Paragraph edit model (pure)
+- [x] 1.0 Paragraph edit model (pure)
   - [x] 1.1 Create `src/model/paragraphEdit.ts` with the types, `visibleText`, `originalText` and the id helper. Typed text is normalized to NFC before it is applied (PRD-18).
   - [x] 1.2 Implement the edit span (old → new visible text) and applying it to the segments without normalisation; unit tests for insert/delete/replace at the start, middle, end, inside `ins`, across `equal`/`ins` boundaries.
   - [x] 1.3 Implement the ownership rules (inside / continuing a word of an `ins`) and the "never join an existing item" rule; unit test PRD-16's `the [big] red [house]` example (three items, decisions untouched).
