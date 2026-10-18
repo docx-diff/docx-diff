@@ -162,8 +162,9 @@ have to leave the tool, and the comparison doesn't slow down.
     document's).
 18. Inserted text takes the formatting of the text it is typed into: the character before the
     cursor, else the one after it. When the edit changes part of a word (which becomes a deletion
-    and an insertion of the whole word, FR-7), the new word takes the formatting of the word it
-    replaces (e.g. an italic word stays italic). Typed text is normalized to NFC, like the inputs
+    and an insertion of the whole word, FR-7, punctuation included), each character of the new word
+    takes the formatting of the replaced word's at the same place (e.g. an italic word in plain
+    parentheses stays italic, the parentheses plain). Typed text is normalized to NFC, like the inputs
     (FR-13a).
 19. After an update, the Edited panel shows the new markup (insertions blue and underlined, FR-21).
     The cursor and the text selection stay where they were in the text, and the panel doesn't

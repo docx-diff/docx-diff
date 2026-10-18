@@ -500,8 +500,10 @@ Update the file after completing each sub-task, not just after completing an ent
 - **Fixed (user report, 2026-10-18): an italic word edited in part lost its italics** (display and
   export) unless the text before it was italic too: the whole-word insertion took the formatting of
   the visible character before the deletion. `formattingSource` (`paragraphEdit.ts`) is now the one
-  rule for both `renderBlockSegments` and `applyEdits`: the deleted character right before the typed
-  text, else the visible one before, else after (PRD-18 updated).
+  rule for both `renderBlockSegments` and `applyEdits`: typed text right after deleted text takes,
+  per character, the formatting of the deleted text (common start/end matched, the changed middle
+  from the character before the change: "(kiccavatta)" widens over its plain parentheses), else the
+  visible character before, else after (PRD-18 updated).
 - CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
   caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 

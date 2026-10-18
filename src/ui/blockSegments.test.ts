@@ -176,6 +176,19 @@ describe('renderBlockSegments', () => {
     expect(rendered.querySelector('del > span')!.className).toBe('italic');
   });
 
+  it('gives each character of a word changed in part the formatting of the replaced word’s (an italic word in plain parentheses)', () => {
+    const document = parse('<p data-anchor="w"><span>A (</span><span class="italic">kiccavatta</span><span>) word</span></p>');
+    const original = readBlockSegments(block(document, 'w'));
+    const edited = applyTextEdit(original, 'A (kiccavattá) word', { unid: 'w', nextId: 1 }).segments;
+    expect(edited.flatMap((segment) => (segment.kind === 'del' ? [segment.text] : []))).toEqual(['(kiccavatta)']);
+    const rendered = renderBlockSegments(block(document, 'w'), edited);
+    expect([...rendered.querySelector('ins')!.children].map((span) => [span.className, span.textContent])).toEqual([
+      ['', '('],
+      ['italic', 'kiccavattá'],
+      ['', ')'],
+    ]);
+  });
+
   it('keeps a typo fixed inside an insertion in that insertion, with its attributes', () => {
     const { segments, rendered } = edit(
       '<p data-anchor="x"><span class="docx-a">The </span><ins class="rev-ins" data-author="rev:r2" data-change-id="r1" data-date="2000-01-01T00:00:00Z"><span class="docx-a">hosue</span></ins></p>',

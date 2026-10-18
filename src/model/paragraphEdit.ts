@@ -479,24 +479,41 @@ export type AlignStep<L> = { leaf: L; unit: AlignUnit } | { leaf: L; unit?: unde
 
 /**
  * Whose formatting the typed unit `steps[i]` takes (PRD-18; the display and the export's patch
- * both use this): the deleted character right before the typed text, when there is one, as the
- * typed text replaces it (a word changed in part becomes a deletion and an insertion of the whole
- * word, so the character before the insertion is the one before the word); else the visible
+ * both use this). Typed text right after deleted text replaces it (a word changed in part becomes
+ * a deletion and an insertion of the whole word, which may include unformatted punctuation, e.g.
+ * an italic word in plain parentheses): each typed character takes the formatting of the deleted
+ * one it matches in their common start or end, and the changed middle that of the deleted
+ * character before the change (as typing there would). Other typed text takes the visible
  * character before it, else the one after it. `undefined` when the block has no character.
  */
 export function formattingSource<L extends AlignUnit>(steps: readonly AlignStep<L>[], i: number): L | undefined {
-  const isChar = (step: AlignStep<L>): step is { leaf: L; unit: AlignUnit } => !!step.leaf && !!step.unit && !step.leaf.object;
-  let j = i - 1;
-  // Past the other typed units, and inserted characters the new segments remove.
-  while (j >= 0 && !(steps[j]!.leaf && steps[j]!.unit)) j--;
-  const before = steps[j];
-  if (before && isChar(before) && before.unit.side === 'del') return before.leaf;
-  for (let k = j; k >= 0; k--) {
-    const step = steps[k]!;
+  const isChar = (step: AlignStep<L> | undefined): step is { leaf: L; unit: AlignUnit } => !!step?.leaf && !!step.unit && !step.leaf.object;
+  // The typed run around the unit (past inserted characters the new segments remove).
+  const inRun = (step: AlignStep<L> | undefined) => !!step && !(step.leaf && step.unit);
+  let start = i;
+  while (inRun(steps[start - 1])) start--;
+  let end = i;
+  while (inRun(steps[end + 1])) end++;
+  const typed = steps.slice(start, end + 1).filter((step) => !step.leaf);
+  const replaced: L[] = [];
+  for (let j = start - 1; isChar(steps[j]) && steps[j]!.unit!.side === 'del'; j--) replaced.unshift(steps[j]!.leaf!);
+  if (replaced.length > 0) {
+    const at = typed.indexOf(steps[i]!);
+    const shortest = Math.min(replaced.length, typed.length);
+    let prefix = 0;
+    while (prefix < shortest && replaced[prefix]!.ch === typed[prefix]!.unit!.ch) prefix++;
+    let suffix = 0;
+    while (suffix < shortest - prefix && replaced[replaced.length - 1 - suffix]!.ch === typed[typed.length - 1 - suffix]!.unit!.ch) suffix++;
+    if (at < prefix) return replaced[at];
+    if (at >= typed.length - suffix) return replaced[replaced.length - (typed.length - at)];
+    return replaced[Math.max(0, prefix - 1)];
+  }
+  for (let k = start - 1; k >= 0; k--) {
+    const step = steps[k];
     if (isChar(step) && step.unit.side !== 'del') return step.leaf;
   }
-  for (let k = i + 1; k < steps.length; k++) {
-    const step = steps[k]!;
+  for (let k = end + 1; k < steps.length; k++) {
+    const step = steps[k];
     if (isChar(step) && step.unit.side !== 'del') return step.leaf;
   }
   return undefined;

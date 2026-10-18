@@ -137,6 +137,20 @@ describe('applyEdits on plain runs', () => {
     expect(bodyXml(parts)).toMatch(/<w:ins w:id="\d+"[^>]*><w:r><w:rPr><w:i\/><\/w:rPr><w:t[^>]*>kiccavattá<\/w:t><\/w:r><\/w:ins>/);
   });
 
+  it('gives each character of a word changed in part the formatting of the replaced word’s', async () => {
+    const italic = '<w:p><w:r><w:t xml:space="preserve">A (</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>kiccavatta</w:t></w:r><w:r><w:t xml:space="preserve">) word</w:t></w:r></w:p>';
+    const { parts } = await patch(italic, [revision('n1', 'delete', []), revision('n2', 'insert', [])], () => [
+      eq('A '),
+      del('(kiccavatta)', 'n1'),
+      ins('(kiccavattá)', 'n2', 'n1'),
+      eq(' word'),
+    ]);
+    const inserted = /<w:ins w:id="\d+"[^>]*>(.*?)<\/w:ins>/.exec(bodyXml(parts))![1];
+    expect(inserted).toBe(
+      '<w:r><w:t xml:space="preserve">(</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">kiccavattá</w:t></w:r><w:r><w:t xml:space="preserve">)</w:t></w:r>',
+    );
+  });
+
   it('allocates ids above every id of the part', async () => {
     const { parts } = await patch('<w:p><w:bookmarkStart w:id="40" w:name="b"/><w:r><w:t>Kept</w:t></w:r><w:bookmarkEnd w:id="40"/></w:p>', [revision('n1', 'insert', [])], () => [
       eq('Kept'),
