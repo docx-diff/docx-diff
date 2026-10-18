@@ -25,6 +25,7 @@ describe('FileDropZones', () => {
     const onSwap = vi.fn();
     const { rerender } = render(<FileDropZones original={null} edited={null} onFile={onFile} onSwap={onSwap} />);
     expect(screen.getByText(/never uploaded/)).toBeTruthy();
+    expect(screen.getByRole('img', { name: /Original, the Resolved text and the Edited/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Swap/ })).toHaveProperty('disabled', true);
 
     const original = zip('original.docx');

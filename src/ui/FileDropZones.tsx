@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type DragEvent } from 'react';
+import { ReviewDiagram } from './ReviewDiagram';
 
 export type DocumentRole = 'original' | 'edited';
 
@@ -108,14 +109,28 @@ interface ZonesProps {
   disabled?: boolean;
 }
 
-/** The empty state: one zone per document, Swap, and the note that files stay local. */
+/** The empty state: what the app does, one zone per document, Swap, the note that files stay local, and a sketch of the review screen. */
 export function FileDropZones({ original, edited, onFile, onSwap, disabled }: ZonesProps) {
   return (
     <div className="drop-zones">
+      <ol className="drop-zones__steps">
+        <li>
+          <strong>Compare</strong> two versions of a Word document: deletions, insertions and moves are marked.
+        </li>
+        <li>
+          <strong>Accept or reject</strong> each change and add <strong>comments</strong>; the Resolved column shows the result.
+        </li>
+        <li>
+          <strong>Resume</strong> later: your progress is saved in <strong>this browser</strong>, open the app again to resume.
+        </li>
+        <li>
+          <strong>Download</strong> the resolved document as a .docx.
+        </li>
+      </ol>
       <p className="drop-zones__intro">
         Choose the <strong>Original</strong> and the <strong>Edited</strong> Word document to compare. Your files stay on
-        this computer: they are compared in the browser and never uploaded. The review, with both files, is kept in this
-        browser so that you can resume it, until you close it or start another one.
+        this computer: they are compared in the browser and never uploaded. The saved review, with both files, stays in this
+        browser until you close it or start another one.
       </p>
       <div className="drop-zones__row">
         <FileDropZone role="original" file={original} onFile={onFile} disabled={disabled} />
@@ -124,6 +139,7 @@ export function FileDropZones({ original, edited, onFile, onSwap, disabled }: Zo
         </button>
         <FileDropZone role="edited" file={edited} onFile={onFile} disabled={disabled} />
       </div>
+      <ReviewDiagram />
     </div>
   );
 }

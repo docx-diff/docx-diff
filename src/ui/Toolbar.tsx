@@ -1,6 +1,5 @@
 import { FileDropZone, type DocumentRole } from './FileDropZones';
 import { HelpPopover } from './HelpPopover';
-import { Legend } from './Legend';
 
 interface Props {
   original: File | null;
@@ -54,7 +53,6 @@ export function Toolbar(props: Props) {
         ✕ Close review
       </button>
       <span className="toolbar__separator" />
-      <Legend />
       <HelpPopover open={props.helpOpen} onOpenChange={props.onHelpOpenChange} />
     </div>
   );

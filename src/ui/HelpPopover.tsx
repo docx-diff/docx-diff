@@ -30,8 +30,16 @@ export function HelpPopover({ open, onOpenChange }: Props) {
 
   return (
     <div className="help" ref={containerRef}>
-      <button type="button" className="button" aria-expanded={open} aria-controls="help-popover" onClick={() => onOpenChange(!open)}>
-        ? Help
+      <button
+        type="button"
+        className="button button--icon"
+        aria-label="Help"
+        title="Help"
+        aria-expanded={open}
+        aria-controls="help-popover"
+        onClick={() => onOpenChange(!open)}
+      >
+        <span aria-hidden="true">?</span>
       </button>
       {open && (
         <div id="help-popover" className="help__popover" role="dialog" aria-label="Help">

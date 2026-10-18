@@ -408,8 +408,14 @@ export function App() {
             onHelpOpenChange={setHelpOpen}
           />
         )}
-        <button type="button" className="button" onClick={() => setSettingsOpen(true)}>
-          ⚙ Compare settings
+        <button
+          type="button"
+          className="button button--icon"
+          aria-label="Compare settings"
+          title="Compare settings"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <span aria-hidden="true">⚙</span>
         </button>
         <EngineStatus state={engineState} onRetry={retry} />
         {comparison && (

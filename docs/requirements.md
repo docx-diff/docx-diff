@@ -246,14 +246,17 @@ to ~300 pages; no backend.
 
 ## Design
 
-- **Toolbar:** file names / pickers, Swap, Scroll lock, Previous / Next, compare settings, Download…,
-  Close review, legend, Help, light/dark toggle. The comparison range has its own bar below the header.
+- **Toolbar:** file names / pickers, Swap, Scroll lock, Previous / Next, Download…, Close review, Help
+  (icon; the legend is in its popover). Compare settings, the columns toggle and the light/dark toggle are
+  icon buttons with tooltips at the end of the header. The comparison range has its own bar below the header.
 - **Main area:** Original panel | Edited panel, each with its overview bar. **Right sidebar:** the
   changes list, Accept all / Reject all at the top, the formatting group, totals at the bottom.
 - **Colours:** deletions red, insertions blue, moves purple; never colour alone (strikethrough,
   underline).
-- **Empty state:** two drop zones with short instructions and a note that files stay on the user's
-  computer (kept in the browser for resuming).
+- **Empty state:** what the app does (compare, accept/reject, resume a saved review, download the resolved document), two drop
+  zones with short instructions, a note that files stay on the user's computer (kept in the browser for
+  resuming), and a sketch of the review screen: outline, Original → Resolved ← Edited, changes list, with a
+  note that the two sidebars are collapsible.
 - Primary target: desktop browser.
 
 ## Success metrics
