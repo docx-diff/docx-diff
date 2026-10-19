@@ -9,6 +9,7 @@ import {
   isolateCommonAffixes,
   joinParagraphs,
   joinRun,
+  markBlankParagraphs,
   markCommon,
   markItems,
   mergeJoinedParagraphs,
@@ -208,6 +209,40 @@ describe('mergeJoinedParagraphs', () => {
     expect(block(root, 'd').textContent).toBe('C D');
     expect(block(root, 'x').textContent).toBe('X');
     expect([...root.querySelectorAll('.merged-into-next')].map((element) => element.getAttribute('data-anchor'))).toEqual(['a', 'c']);
+  });
+});
+
+describe('markBlankParagraphs', () => {
+  const html = `<div>
+    <p data-anchor="nbsp" class="rev-para-del"><span>&nbsp;</span><span class="rev-para-mark-del">¶</span></p>
+    <p data-anchor="empty"><span class="rev-format-change"><span>&nbsp;</span></span></p>
+    <p data-anchor="lrm"><br>\u200e</p>
+    <p data-anchor="text">A</p>
+    <p data-anchor="deleted"><del class="rev-del">•</del>&nbsp;</p>
+    <p data-anchor="inserted"><ins class="rev-ins">B</ins></p>
+    <p data-anchor="image"><img src="x.png"></p>
+    <h2 data-anchor="heading"> </h2>
+    <table data-anchor="t"><tr data-anchor="r"><td data-anchor="c"></td></tr></table>
+  </div>`;
+  const marked = () => {
+    const root = new DOMParser().parseFromString(html, 'text/html').body.firstElementChild!;
+    markBlankParagraphs(root);
+    return root;
+  };
+
+  it('marks the paragraphs with no text in either version and nothing else shown', () => {
+    expect([...marked().querySelectorAll('[data-blank]')].map((element) => element.getAttribute('data-anchor'))).toEqual(['nbsp', 'empty', 'lrm', 'heading']);
+  });
+
+  it('marks a blank paragraph that a join moves text into', () => {
+    const root = marked();
+    for (const unid of ['text', 'nbsp']) root.querySelector(`[data-anchor="${unid}"]`)!.classList.add('rev-para-del');
+    root.querySelector('[data-anchor="text"]')!.after(root.querySelector('[data-anchor="empty"]')!);
+    root.querySelector('[data-anchor="lrm"]')!.before(root.querySelector('[data-anchor="nbsp"]')!);
+    mergeJoinedParagraphs(root, 'right');
+    // `text` joins into `empty`, which shows it; the blank `nbsp` joins into `lrm`, which stays blank.
+    expect(root.querySelector('[data-anchor="empty"]')!.classList.contains('joined-text')).toBe(true);
+    expect(root.querySelector('[data-anchor="lrm"]')!.classList.contains('joined-text')).toBe(false);
   });
 });
 

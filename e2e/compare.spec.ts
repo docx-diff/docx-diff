@@ -122,3 +122,50 @@ test('compares the sample pair, keeps the panels in sync and, without the range,
   await expect(szentelt).not.toHaveClass(/change-ignored/);
   await expect(quotedAz).not.toHaveClass(/change-common/);
 });
+
+test('hides the blank paragraphs by default, which keeps the synced panels closer together (FR-20b)', async ({ page }) => {
+  test.skip(!samplesAvailable, 'sample documents not present');
+  await openApp(page);
+  const { original, edited } = readSamples();
+  await chooseFiles(page, { name: 'original.docx', bytes: original }, { name: 'edited.docx', bytes: edited });
+  const left = page.getByTestId('panel-left');
+  await expect(left.locator('del.rev-del').first()).toBeVisible({ timeout: 60_000 });
+  const blankShown = () => left.evaluate((element) => [...element.shadowRoot!.querySelectorAll('[data-blank]')].filter((block) => block.getClientRects().length > 0).length);
+
+  // How far apart the blocks both panels show are in their viewports, on average, at a few scroll
+  // positions of the Original's panel (the sync aligns the top one).
+  const drift = () =>
+    page.evaluate(async () => {
+      const [left, right] = ['panel-left', 'panel-right'].map((id) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!);
+      const offsets = (scroller: HTMLElement) => {
+        const top = scroller.getBoundingClientRect().top;
+        const shown = new Map<string, number>();
+        for (const block of scroller.shadowRoot!.querySelectorAll<HTMLElement>('[data-anchor]')) {
+          const rect = block.getBoundingClientRect();
+          if (rect.height > 0 && rect.top >= top && rect.bottom <= top + scroller.clientHeight) shown.set(block.dataset.anchor!, rect.top - top);
+        }
+        return shown;
+      };
+      const gaps: number[] = [];
+      for (let i = 1; i <= 8; i++) {
+        left!.scrollTop = (i / 10) * (left!.scrollHeight / 3);
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const rightOffsets = offsets(right!);
+        for (const [anchor, offset] of offsets(left!)) {
+          const other = rightOffsets.get(anchor);
+          if (other !== undefined) gaps.push(Math.abs(offset - other));
+        }
+      }
+      return Math.round(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length);
+    });
+
+  expect(await blankShown()).toBe(0);
+  const hidden = await drift();
+  await page.getByRole('button', { name: /Compare settings/ }).click();
+  await page.getByLabel(/Hide empty paragraphs/).uncheck();
+  await page.keyboard.press('Escape');
+  await expect.poll(blankShown).toBeGreaterThan(300);
+  const shown = await drift();
+  console.log(`sample pair: blocks both panels show are ${hidden} px apart on average with blank paragraphs hidden, ${shown} px with them shown`);
+  expect(hidden).toBeLessThan(shown);
+});

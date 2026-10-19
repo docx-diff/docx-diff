@@ -12,9 +12,18 @@ export interface ViewSettings {
   threeColumns: boolean;
   /** Justified paragraphs are shown aligned to the start, in every panel (FR-20a). */
   leftAligned: boolean;
+  /** Paragraphs with no text are not shown, in any panel (FR-20b). */
+  hideBlankParagraphs: boolean;
 }
 
-export const DEFAULT_VIEW_SETTINGS: ViewSettings = { inlineCard: true, changesList: false, outline: false, threeColumns: true, leftAligned: true };
+export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
+  inlineCard: true,
+  changesList: false,
+  outline: false,
+  threeColumns: true,
+  leftAligned: true,
+  hideBlankParagraphs: true,
+};
 
 const STORAGE_KEY = 'docx-diff:view-settings';
 

@@ -86,6 +86,19 @@
   display: none;
 }
 
+/* Paragraphs with no text in either version (renderedDocument.ts, `markBlankParagraphs`), unless a
+   join moved text into them: hidden while the Display setting says so (FR-20b). The paragraph
+   before one keeps a gap in its place: documents spaced with blank lines have no paragraph spacing
+   of their own. 0.75em is 9pt at 12pt, the sample Edited's spacing (pandoc's Body Text); a run of
+   blank lines gives one gap, as the hidden ones after the first follow a hidden element. */
+.doc.doc--hide-blank [data-blank]:not(.joined-text) {
+  display: none;
+}
+
+.doc.doc--hide-blank :has(+ [data-blank]:not(.joined-text)) {
+  margin-bottom: 0.75em;
+}
+
 /* Insertions and deletions that belong to a formatting item (same text, a list label added by
    numbering), changes the compare settings ignore, and the edges of a replacement both sides share
    (e.g. a quote style change next to a changed word): plain text, as each version has it. These

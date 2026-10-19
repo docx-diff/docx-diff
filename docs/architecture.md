@@ -246,6 +246,26 @@ After rendering, on the main thread (`renderedDocument.ts`, `equivalence.ts`):
   they are). Toggling it swaps the style text like the theme. Without it, the Edited panel's
   alignment changed when Editable showed joined paragraphs one by one: a joined paragraph takes the
   alignment of the paragraph it joins into, and the sample's are styled differently.
+- **Blank paragraphs** (FR-20b, a Display setting, on by default): `markBlankParagraphs`
+  (`renderedDocument.ts`) gives `data-blank` to each paragraph block of the master document with no
+  text in either version (whitespace, `&nbsp;`, LRM and the deleted ¶ don't count) and no image or
+  table, once, in `prepareRenderedDocument`; blocks re-rendered by inline edits don't get it, so a
+  paragraph the reviewer empties stays. While the setting is on, the panel wrapper has
+  `doc--hide-blank` (set before the content goes in, like the document's look) and `panel.css`
+  hides `[data-blank]:not(.joined-text)`, giving the element before one a 0.75em bottom margin
+  (`:has(+ …)`): a document spaced with blank lines has no paragraph spacing of its own (the
+  sample Original's `Normal` paragraphs have 0, the Edited's Body Text 9pt, which is 0.75em at
+  12pt and collapses with it), and the text ran together without them. A run of blank lines gives
+  one gap, as the later ones follow a hidden element. A join that moves a non-blank paragraph's content into a
+  blank one gives that one `joined-text` (`joinParagraphs`; the Resolved column's `restore` removes
+  it): on the sample the Original's blank line after a paragraph often keeps its mark while the
+  paragraph's is deleted, so in the Edited's panel all 31 blank paragraphs both versions have hold
+  the preceding text. Of the 368, the other 337 are the Original's only (`not-in-edited`), so
+  without the setting the Original's panel showed 368 blank lines the Edited's lacked, between the
+  blocks the sync aligns: matching blocks in view were 45 px apart on average, 6 px with them
+  hidden (`e2e/compare.spec.ts`). A change whose only element is in a hidden paragraph (an empty
+  paragraph's mark, listed when "Ignore whitespace changes" is off) is revealed like a change the
+  panel doesn't show.
 - The panel and list scrollers have `contain: strict`: without it, every list change laid out the long
   panel documents again.
 

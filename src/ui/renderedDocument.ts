@@ -195,9 +195,40 @@ export function joinParagraphs(blocks: readonly HTMLElement[], rules: JoinRules)
     let insertBefore = next.firstChild;
     while (insertBefore?.nodeType === ELEMENT_NODE && isListLabel(insertBefore as Element)) insertBefore = insertBefore.nextSibling;
     next.insertBefore(moveChildren(block), insertBefore);
+    if (next.hasAttribute(BLANK) && !block.hasAttribute(BLANK)) next.classList.add(JOINED_TEXT);
     block.classList.add('merged-into-next');
     targets.set(block, next);
   }
+}
+
+/**
+ * Marks a paragraph block with `data-blank` when the redline has no text in it, in either version
+ * (whitespace, `&nbsp;` and the deleted ¶ don't count) and nothing else to show (an image, a
+ * table). The panels hide such paragraphs while the Display setting says so (FR-20b): the blank
+ * lines one version has and the other doesn't would make the panels' text drift apart between the
+ * paragraphs the scroll sync aligns. Set once, on the master document: what joins move into a blank
+ * paragraph gives it `joined-text`, which shows it.
+ */
+export function markBlankParagraphs(root: ParentNode): void {
+  for (const block of within(root, PARAGRAPH_BLOCK)) {
+    if (isBlank(block)) block.setAttribute(BLANK, '');
+  }
+}
+
+/** A paragraph block with no text in the redline (`markBlankParagraphs`). */
+export const BLANK = 'data-blank';
+/** A blank paragraph that a join moved text into: shown. */
+export const JOINED_TEXT = 'joined-text';
+const SHOWN_CONTENT = 'img, svg, object, embed, video, canvas, iframe, hr, table, input';
+const NOT_BLANK = /[^\s\u00a0\u200b\u200e\u200f\ufeff]/;
+
+function isBlank(block: Element): boolean {
+  if (block.querySelector(SHOWN_CONTENT)) return false;
+  const walker = block.ownerDocument.createTreeWalker(block, SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (NOT_BLANK.test(node.textContent ?? '') && !node.parentElement?.closest('.rev-para-mark-del')) return false;
+  }
+  return true;
 }
 
 /** The converter renders a paragraph as `p`, or `h1`–`h6` when its style has an outline level. */
@@ -398,6 +429,7 @@ export function prepareRenderedDocument<A extends { items: ChangeItem[]; index: 
   const parsed = parseRenderedHtml(html, parse);
   const analysis = analyze(parsed);
   decorateDocument(parsed, analysis.items, analysis.index);
+  markBlankParagraphs(parsed);
   const itemTexts = collectItemTexts(parsed, analysis.items);
   const items = combineTypedListNumbers(parsed, relabelTextUnchanged(analysis.items, itemTexts).items);
   isolateCommonAffixes(parsed, items);

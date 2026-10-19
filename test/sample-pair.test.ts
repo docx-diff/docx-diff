@@ -211,6 +211,26 @@ describeWithSamples('sample pair', () => {
       expect(formatting.filter((item) => !withElement.has(item.id))).toEqual([]);
       expect(document.querySelectorAll('.rev-format-marker')).toHaveLength(23);
     });
+
+    it('marks the blank paragraphs, nearly all of them blank lines the Edited lacks (FR-20b)', () => {
+      const { document } = prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), (html) => new JSDOM(html).window.document);
+      const blank = [...document.body.querySelectorAll('[data-blank]')];
+      const count = (selector: string) => blank.filter((block) => block.matches(selector)).length;
+      expect({ blank: blank.length, notInEdited: count('.not-in-edited'), inBoth: count(':not(.not-in-edited, .not-in-original)') }).toEqual({ blank: 368, notInEdited: 337, inBoth: 31 });
+      // What each panel shows of them without the setting: all in the Original's, none in the
+      // Edited's, where the text before each of the 31 both versions have joins into it (the engine
+      // keeps the blank line's mark, deleting the text's).
+      const shown = (side: 'left' | 'right') => {
+        const panel = document.body.cloneNode(true) as HTMLElement;
+        mergeJoinedParagraphs(panel, side);
+        const missing = side === 'left' ? '.not-in-original' : '.not-in-edited';
+        return {
+          blank: panel.querySelectorAll(`[data-blank]:not(.joined-text, .merged-into-next, ${missing})`).length,
+          joined: panel.querySelectorAll('.joined-text').length,
+        };
+      };
+      expect({ left: shown('left'), right: shown('right') }).toEqual({ left: { blank: 368, joined: 0 }, right: { blank: 0, joined: 31 } });
+    });
   });
 
   describe('outline', () => {

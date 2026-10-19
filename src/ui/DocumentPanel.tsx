@@ -59,6 +59,8 @@ interface Props {
   theme: Theme;
   /** Justified paragraphs are shown aligned to the start (the Display setting). */
   leftAligned?: boolean;
+  /** Paragraphs with no text are hidden (the Display setting, `markBlankParagraphs`). */
+  hideBlankParagraphs?: boolean;
   title: string;
   /** The title's tooltip, when not the title itself. */
   titleTooltip?: string;
@@ -116,6 +118,8 @@ interface Props {
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
+/** The wrapper's class while blank paragraphs are hidden (panel.css). */
+const HIDE_BLANK = 'doc--hide-blank';
 const JUSTIFIED = /text-align\s*:\s*justify/gi;
 
 /**
@@ -300,6 +304,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   const leftAlignedRef = useRef(leftAligned);
   leftAlignedRef.current = leftAligned;
   const look = (css: string) => documentLook(css, themeRef.current, leftAlignedRef.current);
+  const hideBlank = props.hideBlankParagraphs ?? false;
+  const hideBlankRef = useRef(hideBlank);
+  hideBlankRef.current = hideBlank;
   /** The props a block replacement reads (it runs outside rendering). */
   const latest = useRef({ ignored, settings, outOfRangeItems });
   latest.current = { ignored, settings, outOfRangeItems };
@@ -465,6 +472,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     const wrapper = owner.createElement('div');
     wrapper.className = 'doc';
     wrapper.dataset.side = side;
+    // Like the document's look, set before the content goes in.
+    wrapper.classList.toggle(HIDE_BLANK, hideBlankRef.current);
     wrapper.append(...Array.from(document.body.childNodes, (node) => owner.importNode(node, true)));
     if (side === 'resolved') resolvedRef.current = prepareResolvedPanel(wrapper);
     else mergeJoinedParagraphs(wrapper, side);
@@ -503,6 +512,10 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       if (element.getAttribute('style') !== shown) element.setAttribute('style', shown);
     }
   }, [document, side, theme, leftAligned]);
+
+  useLayoutEffect(() => {
+    scrollerRef.current?.shadowRoot?.querySelector('.doc')?.classList.toggle(HIDE_BLANK, hideBlank);
+  }, [document, side, hideBlank]);
 
   useLayoutEffect(() => {
     const root = scrollerRef.current?.shadowRoot;

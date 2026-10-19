@@ -122,6 +122,12 @@ to ~300 pages; no backend.
     aligned to the left (the start of the line), never justified, as justified text reads poorly in
     narrow columns. Centred and right-aligned text keep their alignment. Kept in the browser with
     the other view settings.
+20b. A **Display** option in Compare settings, on by default: paragraphs with no text (blank lines
+    made with empty paragraphs) are not shown, in any column. Blank lines one version has and the
+    other lacks make the synced panels drift apart between the paragraphs they align (FR-22); the
+    sample's Original has 368, its Edited (converted with pandoc) none of its own. A paragraph
+    followed by hidden ones keeps a gap after it, about one paragraph spacing. Kept in the
+    browser with the other view settings.
 21. Left panel: deleted text red, struck through; right panel: inserted text blue, underlined; moves
     their own colour; a small legend. Changes are marked within the text only, with no rules at the
     paragraph edge. Formatting changes have **no mark** in the panels (in a restyled document nearly

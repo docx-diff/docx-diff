@@ -10,14 +10,14 @@ afterEach(cleanup);
 describe('useViewSettings', () => {
   it('starts with three columns and both sidebars collapsed', () => {
     const { result } = renderHook(() => useViewSettings());
-    expect(result.current[0]).toEqual({ inlineCard: true, changesList: false, outline: false, threeColumns: true, leftAligned: true });
+    expect(result.current[0]).toEqual({ inlineCard: true, changesList: false, outline: false, threeColumns: true, leftAligned: true, hideBlankParagraphs: true });
     expect(result.current[0]).toEqual(DEFAULT_VIEW_SETTINGS);
   });
 
   it('keeps stored settings and defaults the ones not stored', () => {
     localStorage.setItem(KEY, JSON.stringify({ inlineCard: false, changesList: true, outline: true }));
     const { result } = renderHook(() => useViewSettings());
-    expect(result.current[0]).toEqual({ inlineCard: false, changesList: true, outline: true, threeColumns: true, leftAligned: true });
+    expect(result.current[0]).toEqual({ inlineCard: false, changesList: true, outline: true, threeColumns: true, leftAligned: true, hideBlankParagraphs: true });
   });
 
   it('stores a change with the other settings', () => {

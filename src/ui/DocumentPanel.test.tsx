@@ -313,3 +313,33 @@ describe('DocumentPanel alignment', () => {
     expect(blockIn(root, 'p').getAttribute('style')).toBe('text-align: justify; color: #000000');
   });
 });
+
+describe('DocumentPanel blank paragraphs', () => {
+  afterEach(cleanup);
+
+  it('marks its content for hiding blank paragraphs while hideBlankParagraphs', () => {
+    const comparison = smallComparison();
+    const element = (hideBlankParagraphs: boolean) => (
+      <DocumentPanel
+        side="left"
+        theme="light"
+        hideBlankParagraphs={hideBlankParagraphs}
+        title="t"
+        document={comparison.document}
+        ignored={new Set()}
+        settings={DEFAULT_COMPARE_SETTINGS}
+        decisions={{}}
+        currentItemId={null}
+        onChangeClick={() => {}}
+        overviewItems={[]}
+        outOfRangeItems={new Set()}
+      />
+    );
+    const view = render(element(true));
+    const root = view.getByTestId('panel-left').shadowRoot!;
+    const wrapper = root.querySelector('.doc')!;
+    expect(wrapper.classList.contains('doc--hide-blank')).toBe(true);
+    view.rerender(element(false));
+    expect(wrapper.classList.contains('doc--hide-blank')).toBe(false);
+  });
+});

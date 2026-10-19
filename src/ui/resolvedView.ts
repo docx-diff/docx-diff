@@ -39,7 +39,7 @@
 // placed again after every change, since joins and decisions move the item's text.
 import type { Decision } from '../model/decisions';
 import type { ResolvedSide } from '../model/resolved';
-import { PARAGRAPH_BLOCK, joinParagraphs, within } from './renderedDocument';
+import { JOINED_TEXT, PARAGRAPH_BLOCK, joinParagraphs, within } from './renderedDocument';
 
 export const RESOLVED_HIDDEN = 'resolved-hidden';
 const MERGED = 'merged-into-next';
@@ -334,7 +334,7 @@ function restore(handle: ResolvedPanel, runs: readonly HTMLElement[][]): void {
     for (const block of run) {
       const children = handle.children.get(block);
       if (children) block.replaceChildren(...children);
-      block.classList.remove(MERGED);
+      block.classList.remove(MERGED, JOINED_TEXT);
     }
   }
 }

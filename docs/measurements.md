@@ -37,6 +37,11 @@ Two compares give byte-identical redlines and identical revision ids.
 - Every content, move and paragraph-mark revision appears in the HTML with its id; 355 of 378
   formatting revisions do. The other 23 are paragraph-mark `rPrChange`s shown through the paragraph
   fallback. 195 deletion revisions render as 4,333 `<del>` elements.
+- **Blank paragraphs** (FR-20b): 368 blocks have no text in either version (of the Original's 375
+  empty `w:p`; 337 the Edited lacks, 31 both have, which in the Edited's panel all hold the
+  preceding paragraph's text). With them hidden, the blocks both panels show in view are 6 px apart on
+  average after a synced scroll (8 positions in the first third), 45 px with them shown
+  (`e2e/compare.spec.ts`).
 
 **Range:** detected end point at Original paragraph index **168** (0-based); the tail covers the other
 579. Out of range: only the tail deletion (with notes 6–20). In range after the tail: the two move

@@ -688,6 +688,7 @@ export function App() {
                 side={side}
                 theme={theme}
                 leftAligned={view.leftAligned}
+                hideBlankParagraphs={view.hideBlankParagraphs}
                 title={side === 'left' ? comparison.originalName : side === 'right' ? comparison.editedName : 'Resolved'}
                 titleTooltip={side === 'resolved' ? 'Shows the resolved text; formatting as in the Edited document' : undefined}
                 headerControls={
