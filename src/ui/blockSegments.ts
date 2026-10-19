@@ -6,7 +6,18 @@
 import { revisionIdFromAuthor } from '../engine/tagRedline';
 import { NOT_TEXT } from '../model/docIndex';
 import { PARAGRAPH_BLOCK } from './renderedDocument';
-import { alignUnits, formattingSource, revisionTexts, segmentUnits, type AlignUnit, type ObjectSegment, type Segment } from '../model/paragraphEdit';
+import {
+  alignUnits,
+  formatRevisions,
+  formattingSource,
+  revisionTexts,
+  segmentUnits,
+  type AlignUnit,
+  type CharacterLook,
+  type ObjectSegment,
+  type Segment,
+  type SegmentFormat,
+} from '../model/paragraphEdit';
 
 /** `Node.TEXT_NODE`, `Node.ELEMENT_NODE` (`Node` is not a global with jsdom in Node). */
 const TEXT_NODE = 3;
@@ -173,7 +184,47 @@ export function visiblePoint(block: Element, offset: number): { node: Node; offs
   return text ? { node: text, offset: 0 } : { node: block, offset: 0 };
 }
 
-function pointAfter(entry: Extract<Entry, { kind: 'char' | 'object' }>, units: number): { node: Node; offset: number } {
+/** A visible character's look as shown (`shown`) and without the reviewer's bold/italic (`look`); `undefined` for an object. */
+export type ShownLook = { look: CharacterLook; shown: { bold: boolean; italic: boolean } } | undefined;
+
+const isBold = (style: CSSStyleDeclaration) => style.fontWeight === 'bold' || style.fontWeight === 'bolder' || Number(style.fontWeight) >= 600;
+const isItalic = (style: CSSStyleDeclaration) => style.fontStyle === 'italic' || style.fontStyle.startsWith('oblique');
+
+/**
+ * The looks of the visible characters `start`…`end` of the block, from the computed style of their
+ * elements (`styleOf`), and the comparison's formatting change each one has (`applyFormat`).
+ */
+export function visibleLooks(
+  block: Element,
+  start: number,
+  end: number,
+  styleOf: (element: Element) => CSSStyleDeclaration = (element) => element.ownerDocument.defaultView!.getComputedStyle(element),
+): ShownLook[] {
+  const looks: ShownLook[] = [];
+  let at = 0;
+  for (const entry of blockEntries(block)) {
+    if (!isVisible(entry)) continue;
+    const length = entry.kind === 'char' ? entry.ch.length : 1;
+    if (at >= start && at < end) {
+      if (entry.kind === 'object') {
+        looks.push(undefined);
+      } else {
+        const parent = entry.node.parentElement ?? block;
+        const own = parent.classList.contains(EDIT_FORMAT) ? (parent.parentElement ?? block) : parent;
+        const [shown, base] = [styleOf(parent), styleOf(own)];
+        const change = entry.chain.findLast((element) => element.matches('span.rev-format-change') && !element.classList.contains(EDIT_FORMAT)) as HTMLElement | undefined;
+        const revisionId = revisionIdFromAuthor(change?.dataset.author);
+        const look: CharacterLook = { bold: isBold(base), italic: isItalic(base) };
+        if (revisionId !== null) look.change = { itemId: change!.dataset.changeId ?? revisionId, revisionId };
+        looks.push({ look, shown: { bold: isBold(shown), italic: isItalic(shown) } });
+      }
+    }
+    at += length;
+  }
+  return looks;
+}
+
+function pointAfter(entry:Extract<Entry, { kind: 'char' | 'object' }>, units: number): { node: Node; offset: number } {
   if (entry.kind === 'char') return { node: entry.node, offset: entry.at + Math.min(units, entry.ch.length) };
   const start = startOf(entry);
   return { node: start.node, offset: start.offset + 1 };
@@ -207,8 +258,18 @@ interface NewChange {
   change: 'del' | 'ins';
   revisionId: string;
 }
-type Frame = Element | NewChange;
-const isNewChange = (frame: Frame): frame is NewChange => !('nodeType' in frame);
+/** The span of the reviewer's bold/italic around text; `marked`: it is also a new formatting change's element. */
+interface NewFormat {
+  format: SegmentFormat;
+  marked: boolean;
+}
+type Frame = Element | NewChange | NewFormat;
+const isNewChange = (frame: Frame): frame is NewChange => 'change' in frame;
+const isNewFormat = (frame: Frame): frame is NewFormat => 'format' in frame;
+
+/** The span a rendering puts around text with the reviewer's bold/italic (`panel.css`). */
+export const EDIT_FORMAT = 'edit-format';
+const isFormatSpan = (frame: Frame) => !isNewChange(frame) && !isNewFormat(frame) && frame.classList.contains(EDIT_FORMAT);
 
 /** What a rendering puts in the block, inside the elements of `chain`. */
 type Piece = { chain: Frame[] } & ({ ch: string } | { node: Node });
@@ -242,7 +303,20 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
     if (!newChanges.has(key)) newChanges.set(key, { change, revisionId });
     return newChanges.get(key)!;
   };
-  const isChangeFrame = (frame: Frame) => isNewChange(frame) || isChangeElement(frame);
+  const newFormats = new Map<string, NewFormat>();
+  const formatItems = new Map([...formatRevisions(segments)].map(([revisionId, { itemId }]) => [revisionId, itemId]));
+  /** The chain without the bold/italic span of an earlier rendering, with the unit's own. */
+  const withLook = (chain: readonly Frame[], unit?: AlignUnit): Frame[] => {
+    const own = chain.filter((frame) => !isFormatSpan(frame));
+    const format = unit && !unit.object && unit.side !== 'del' ? unit.format : undefined;
+    if (format?.bold === undefined && format?.italic === undefined) return own;
+    // A formatting change the text already has an element of (the comparison's) gets no second one.
+    const marked = format.revisionId !== undefined && !own.some((frame) => !isNewChange(frame) && !isNewFormat(frame) && revisionIdFromAuthor((frame as HTMLElement).dataset.author) === format.revisionId);
+    const key = `${format.bold}:${format.italic}:${marked ? format.revisionId : ''}`;
+    if (!newFormats.has(key)) newFormats.set(key, { format, marked });
+    return [...own, newFormats.get(key)!];
+  };
+  const isChangeFrame = (frame: Frame) => isNewChange(frame) || (!isNewFormat(frame) && isChangeElement(frame));
   /** The chain for a unit put inside the elements of `chain` (those of the character it replaces or is typed next to). */
   const chainFor = (unit: AlignUnit, chain: readonly Frame[]): Frame[] => {
     const current = chain.findLast(isChangeFrame);
@@ -250,7 +324,7 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
       ? ['equal', undefined]
       : isNewChange(current)
         ? [current.change, current.revisionId]
-        : [current.localName, revisionIdFromAuthor((current as HTMLElement).dataset.author) ?? undefined];
+        : [(current as Element).localName, revisionIdFromAuthor((current as HTMLElement).dataset.author) ?? undefined];
     if (side === unit.side && revisionId === unit.revisionId) return [...chain];
     const plain = chain.filter((frame) => !isChangeFrame(frame));
     return unit.side === 'equal' ? plain : [newChange(unit.side, unit.revisionId!), ...plain];
@@ -271,7 +345,7 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
       keepsBefore.set(leafOf.get(entry)!, keeps);
       keeps = [];
     } else if (!(entry.filler && units.length > 0)) {
-      keeps.push({ chain: entry.chain, node: entry.node });
+      keeps.push({ chain: withLook(entry.chain), node: entry.node });
     }
   }
 
@@ -285,13 +359,13 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
       waiting = [];
       started = true;
       if (!step.unit) return;
-      const chain = chains.get(step.leaf)!;
+      const chain = withLook(chains.get(step.leaf)!, step.unit);
       const entry = step.leaf.entry;
       pieces.push(entry.kind === 'char' ? { chain, ch: entry.ch } : { chain, node: entry.element });
       return;
     }
     const neighbour = formattingSource(steps, i) ?? fallback;
-    const piece = { chain: chainFor(step.unit, neighbour ? (chains.get(neighbour) ?? neighbour.entry.chain) : fillerChain), ch: step.unit.ch };
+    const piece = { chain: withLook(chainFor(step.unit, neighbour ? (chains.get(neighbour) ?? neighbour.entry.chain) : fillerChain), step.unit), ch: step.unit.ch };
     if (started) pieces.push(piece);
     else waiting.push(piece);
   });
@@ -303,6 +377,19 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
   const document = block.ownerDocument;
   const date = block.querySelector('ins[data-date], del[data-date]')?.getAttribute('data-date');
   const make = (frame: Frame): Element => {
+    if (isNewFormat(frame)) {
+      const { format, marked } = frame;
+      const element = document.createElement('span');
+      element.classList.add(EDIT_FORMAT);
+      if (format.bold !== undefined) element.classList.add(format.bold ? 'edit-bold' : 'edit-not-bold');
+      if (format.italic !== undefined) element.classList.add(format.italic ? 'edit-italic' : 'edit-not-italic');
+      if (marked) {
+        element.classList.add('rev-format-change');
+        element.setAttribute('data-author', `rev:${format.revisionId}`);
+        element.setAttribute('data-change-id', formatItems.get(format.revisionId!) ?? format.revisionId!);
+      }
+      return element;
+    }
     if (!isNewChange(frame)) return frame.cloneNode(false) as Element;
     const element = document.createElement(frame.change);
     element.className = frame.change === 'ins' ? 'rev-ins' : 'rev-del';

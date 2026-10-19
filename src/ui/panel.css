@@ -25,6 +25,25 @@
   cursor: auto;
 }
 
+/* The reviewer's bold and italic (inline edits, blockSegments.ts): a span directly around the text,
+   inside the converter's run span, whose class sets font-weight and font-style. The Original panel
+   shows the text without them. */
+.doc:not([data-side='left']) span.edit-bold {
+  font-weight: bold;
+}
+
+.doc:not([data-side='left']) span.edit-not-bold {
+  font-weight: normal;
+}
+
+.doc:not([data-side='left']) span.edit-italic {
+  font-style: italic;
+}
+
+.doc:not([data-side='left']) span.edit-not-italic {
+  font-style: normal;
+}
+
 .doc .rev-section-format-change {
   color: inherit;
   font-size: inherit;

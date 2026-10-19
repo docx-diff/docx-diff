@@ -4,7 +4,7 @@
 // round trips per revision without edits are in src/engine/exportDocx.test.ts.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DOMParser } from '@xmldom/xmldom';
+import { DOMParser, type Element as XmlElement } from '@xmldom/xmldom';
 import { strFromU8, unzipSync } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -24,7 +24,7 @@ import { originalText, visibleText } from '../src/model/paragraphEdit';
 import { readBlockSegments, renderBlockSegments } from '../src/ui/blockSegments';
 import { applyRangeOrder, applyResolution, prepareResolvedPanel, resolvedText } from '../src/ui/resolvedView';
 import { expectDeliverable } from './deliverable';
-import { editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, spaces, type RedlineParagraph } from './edits';
+import { editableBlocks, editedOverrides, pickScenarios, redlineParagraphs, scopeOfBlock, scriptEdits, scriptFormats, spaces, type RedlineParagraph } from './edits';
 import { engineDecideOne, partsXml } from './engine-decide';
 import { expectedText } from './expectedText';
 import { FIXTURES, FIXTURES_DIR } from './fixtures/make-fixtures';
@@ -280,6 +280,51 @@ describe.each(FIXTURES.map((fixture) => fixture.name))('inline edits on fixture 
     expect(checked).toBeGreaterThan(0);
   });
 });
+
+describe.each(['format-run', 'insert', 'replace', 'table-cell-edit', 'footnote-edit'])('inline bold and italic on fixture %s', (name) => {
+  const read = (side: string) => new Uint8Array(readFileSync(`${FIXTURES_DIR}/${name}.${side}.docx`));
+
+  it('exports with either formatting choice: the text unchanged, the look the choice’s, deliverable', async () => {
+    const result = await runCompare(read('original'), read('edited'));
+    const body = prepareRenderedDocument(result.html, (parsed) => analyzeComparison(result, () => parsed), parse).document.body;
+    const paragraphs = await redlineParagraphs(new Uint8Array(result.redline));
+    const scripted = scriptFormats(editableBlocks(body, paragraphs));
+    expect(scripted.words.length).toBeGreaterThan(0);
+    const revisions = [...result.revisions, ...scripted.revisions];
+    for (const choice of ['edited', 'original'] as const) {
+      const decisions = new Map(revisions.map((r) => [r.id, r.type === 'format' && choice === 'original' ? ('reject' as const) : ('accept' as const)]));
+      const exported = await exportDocx(new Uint8Array(result.redline), revisions, decisions, { edits: scripted.patches, formattingChoice: choice });
+      if (process.env.EXPORT_DIR) {
+        mkdirSync(process.env.EXPORT_DIR, { recursive: true });
+        writeFileSync(join(process.env.EXPORT_DIR, `${name}-bold-italic-${choice}.docx`), exported);
+      }
+      expect(docxText(exported), choice).toEqual(docxText(read('edited')));
+      for (const { word, property } of scripted.words) {
+        // The edits' bold/italic stays with the Edited's formatting; the Original's has none of it.
+        expect(wordHas(exported, word, property), `${choice}: ${property} ${word}`).toBe(choice === 'edited');
+      }
+      await expectDeliverable(exported, read('original'));
+    }
+  });
+});
+
+/** Whether a run holding the word (in any text part) has the property switched on. */
+function wordHas(docx: Uint8Array, word: string, property: 'bold' | 'italic'): boolean {
+  const files = unzipSync(docx);
+  const name = property === 'bold' ? 'b' : 'i';
+  for (const path of ['word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml']) {
+    if (!files[path]) continue;
+    const document = new DOMParser().parseFromString(strFromU8(files[path]), 'text/xml');
+    for (const text of [...document.getElementsByTagNameNS(W_NS, 't')]) {
+      if (!(text.textContent ?? '').includes(word)) continue;
+      const run = text.parentNode as XmlElement;
+      const rPr = [...run.getElementsByTagNameNS(W_NS, 'rPr')].find((element) => element.parentNode === run);
+      const toggle = rPr && [...rPr.getElementsByTagNameNS(W_NS, name)].find((element) => element.parentNode === rPr);
+      if (toggle && !['0', 'false'].includes(toggle.getAttributeNS(W_NS, 'val') ?? '')) return true;
+    }
+  }
+  return false;
+}
 
 describe('inline edits in a heading', () => {
   it('export with the heading’s new text, which keeps its style', async () => {

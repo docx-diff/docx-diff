@@ -106,6 +106,7 @@ describe('DocumentPanel editing', () => {
       reasonOf: (unid) => (unid === 'p' ? undefined : 'move'),
       textOf: (unid) => session.visibleText(unid),
       onEdit: vi.fn(() => 'unchanged' as const),
+      onFormat: vi.fn(),
       onMessage: vi.fn(),
     };
     const element = (editing: EditingOptions | undefined, document: RenderedDocument = session.comparison.document) => (
@@ -246,7 +247,7 @@ describe('DocumentPanel revert icons', () => {
     // The Edited lacks p's mark: the Edited panel shows p's text at the start of q.
     joined.document.body.querySelector('[data-anchor="p"]')!.classList.add('rev-para-del');
     const session = new EditSession(joined);
-    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
+    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onFormat: vi.fn(), onMessage: vi.fn() };
     const { control, root, rerender } = revertPanel(session);
     const ids = () => [...root.querySelectorAll<HTMLElement>('.edit-revert')].map((icon) => [icon.dataset.revertId, icon.closest<HTMLElement>('[data-anchor]')!.dataset.anchor]);
     control.current!.replaceBlock('p', session.update('p', 'the big blue house', 'the big blue'.length)!.block);
@@ -264,7 +265,7 @@ describe('DocumentPanel revert icons', () => {
 
   it('shows no icons while Editable is on (they would trap the cursor), and puts them back when it is turned off', () => {
     const session = new EditSession(smallComparison());
-    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
+    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onFormat: vi.fn(), onMessage: vi.fn() };
     const { control, root, rerender } = revertPanel(session);
     control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
     expect(root.querySelectorAll('.edit-revert')).toHaveLength(1);

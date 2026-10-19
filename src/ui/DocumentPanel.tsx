@@ -13,7 +13,7 @@ import type { ResolvedSide } from '../model/resolved';
 import type { Theme } from './theme';
 import { PARAGRAPH_BLOCK, joinInPanel, joinRun, markCommon, markItems, mergeJoinedParagraphs, within, type RenderedDocument } from './renderedDocument';
 import { readBlockSegments } from './blockSegments';
-import { visibleText } from '../model/paragraphEdit';
+import { visibleText, type FormatProperty } from '../model/paragraphEdit';
 import {
   applyCommentToggles,
   applyRangeOrder,
@@ -38,6 +38,8 @@ export interface PanelControl {
   replaceBlock: (unid: string, block: Element) => void;
   /** The Edited panel while editing: puts the cursor back where it last was (after a revert). */
   restoreCursor: () => void;
+  /** The Edited panel while editing: bold or italic for the selected text (`PanelEditing.format`); `false` without a selection. */
+  format: (property: FormatProperty) => boolean;
 }
 
 /**
@@ -223,7 +225,7 @@ const REVERT_ICON = 'edit-revert';
 
 /**
  * The ↺ icons in `root` (a block, or the whole panel), one after the last piece of each of
- * `itemIds` found in it (its last insertion, else its last deletion, which the Edited panel hides),
+ * `itemIds` found in it (its last insertion or formatting span, else its last deletion, which the Edited panel hides),
  * after the ✓ / ✗ that piece's `::after` shows; the root's other icons go. Not text (`NOT_TEXT`):
  * the segment reader and the cursor offsets skip them. A block gets its icons before the panel
  * joins it into the next paragraph: the join moves its content, icons included, into that one.
@@ -240,11 +242,12 @@ export function placeRevertIcons(root: HTMLElement, itemIds: ReadonlySet<string>
   for (const icon of within(root, `.${REVERT_ICON}`)) icon.remove();
   if (itemIds.size === 0) return;
   const last = new Map<string, HTMLElement>();
-  for (const element of within(root, 'ins[data-change-id], del[data-change-id]')) {
+  // A formatting change's pieces are spans (`span.rev-format-change`), shown like insertions.
+  for (const element of within(root, 'ins[data-change-id], del[data-change-id], span.rev-format-change[data-change-id]')) {
     const id = element.dataset.changeId!;
     if (!itemIds.has(id)) continue;
     const shown = last.get(id);
-    if (!shown || element.localName === 'ins' || shown.localName === 'del') last.set(id, element);
+    if (!shown || element.localName !== 'del' || shown.localName === 'del') last.set(id, element);
   }
   for (const [id, element] of last) {
     const icon = root.ownerDocument.createElement('span');
@@ -456,6 +459,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       },
       restoreCursor() {
         editingRef.current?.restoreCursor();
+      },
+      format(property) {
+        return editingRef.current?.format(property) ?? false;
       },
     }),
     // The helpers read refs only, and the master document's runs.

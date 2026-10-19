@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
+import { EditingHelp } from './EditingHelp';
 import { Legend } from './Legend';
+import { usePopoverDismiss } from './usePopoverDismiss';
 import { SHORTCUTS } from './useKeyboardShortcuts';
 
 const KEY_NAMES: Record<string, string> = { ArrowDown: '↓', ArrowUp: '↑' };
@@ -14,21 +16,8 @@ interface Props {
 /** Help button with a popover listing the keyboard shortcuts and the legend (FR-34). */
 export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange(false);
-    };
-    const onPointer = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) onOpenChange(false);
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('pointerdown', onPointer);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onPointer);
-    };
-  }, [open, onOpenChange]);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  usePopoverDismiss(open, close, containerRef);
 
   return (
     <div className="help" ref={containerRef}>
@@ -61,10 +50,8 @@ export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
               </div>
             ))}
           </dl>
-          <p className="help__note">
-            <strong>Editable</strong>, in the Edited panel’s header, lets you edit its text within a paragraph. While the cursor is in the text, the
-            keys type and these shortcuts are off; Escape leaves the text.
-          </p>
+          <h2>Editing</h2>
+          <EditingHelp />
           <h2>Colours</h2>
           <Legend threeColumns={threeColumns} />
           <p className="help__note">

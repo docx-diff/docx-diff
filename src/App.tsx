@@ -42,9 +42,11 @@ import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
 import { Outline } from './ui/Outline';
 import { CompareProgress, Progress } from './ui/Progress';
-import { EditableToggle, RevertButtons } from './ui/EditableToggle';
+import { EditableToggle, FormatButtons, RevertButtons } from './ui/EditableToggle';
+import { EditingHelpButton } from './ui/EditingHelp';
 import { uneditableReason } from './ui/blockSegments';
-import type { EditOutcome, EditingOptions } from './ui/editing';
+import { EDIT_MESSAGES, type EditOutcome, type EditingOptions } from './ui/editing';
+import type { FormatProperty } from './model/paragraphEdit';
 import { Toast, type ToastMessage } from './ui/Toast';
 import { RangeControl } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
@@ -300,9 +302,29 @@ export function App() {
     },
     [updateEdit, editSession],
   );
+  const formatEdit = edits.format;
+  /** Bold or italic set by the reviewer: shown in every panel like a text edit. */
+  const applyFormat = useCallback<EditingOptions['onFormat']>(
+    (...args) => {
+      const update = formatEdit(...args);
+      if (update) {
+        showBlockUpdates([update], [leftControl.current, middleControl.current, rightControl.current], (itemIds) =>
+          dispatch({ type: 'acceptAllUndecided', itemIds }),
+        );
+      }
+    },
+    [formatEdit],
+  );
   const editingOptions = useMemo<EditingOptions | undefined>(
-    () => (editing ? { reasonOf, textOf, onEdit: applyEdit, onMessage: showMessage, onCursor: setCursorBlock } : undefined),
-    [editing, reasonOf, textOf, applyEdit, showMessage],
+    () => (editing ? { reasonOf, textOf, onEdit: applyEdit, onFormat: applyFormat, onMessage: showMessage, onCursor: setCursorBlock } : undefined),
+    [editing, reasonOf, textOf, applyEdit, applyFormat, showMessage],
+  );
+  /** The header's B / I: on the selected text of an editable paragraph; without one, says so. */
+  const formatSelection = useCallback(
+    (property: FormatProperty) => {
+      if (!rightControl.current?.format(property)) showMessage(EDIT_MESSAGES.noSelection);
+    },
+    [showMessage],
   );
   const toggleEditing = useCallback(() => {
     setCursorBlock(null);
@@ -716,12 +738,14 @@ export function App() {
                   ) : side === 'right' ? (
                     <>
                       <EditableToggle editing={editing} onToggle={toggleEditing} />
+                      <FormatButtons editing={editing} onFormat={formatSelection} />
                       <RevertButtons
                         paragraphEdited={revertParagraph !== null && editedBlockIds.includes(revertParagraph)}
                         anyEdits={editedBlockIds.length > 0}
                         onRevertParagraph={() => revertParagraph !== null && setConfirmation({ type: 'revertParagraph', unid: revertParagraph })}
                         onRevertAll={() => setConfirmation({ type: 'revertAll', count: editedBlockIds.length })}
                       />
+                      <EditingHelpButton />
                       <Toast message={toast} onHide={hideToast} />
                     </>
                   ) : undefined

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EditableToggle, RevertButtons } from './EditableToggle';
+import { EditableToggle, FormatButtons, RevertButtons } from './EditableToggle';
 import { Toast } from './Toast';
 
 describe('EditableToggle', () => {
@@ -63,5 +63,23 @@ describe('Toast', () => {
     expect(onHide).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1000));
     expect(onHide).toHaveBeenCalledOnce();
+  });
+});
+
+describe('FormatButtons', () => {
+  afterEach(cleanup);
+
+  it('applies bold or italic while editing, keeps the focus where it was, and is disabled otherwise', () => {
+    const onFormat = vi.fn();
+    const { getByRole, rerender } = render(<FormatButtons editing={false} onFormat={onFormat} />);
+    const bold = getByRole('button', { name: 'Bold' }) as HTMLButtonElement;
+    const italic = getByRole('button', { name: 'Italic' }) as HTMLButtonElement;
+    expect([bold.title, italic.title]).toEqual(['Bold (Ctrl+B)', 'Italic (Ctrl+I)']);
+    expect([bold.disabled, italic.disabled]).toEqual([true, true]);
+    rerender(<FormatButtons editing onFormat={onFormat} />);
+    expect(fireEvent.mouseDown(bold)).toBe(false);
+    fireEvent.click(bold);
+    fireEvent.click(italic);
+    expect(onFormat.mock.calls).toEqual([['bold'], ['italic']]);
   });
 });

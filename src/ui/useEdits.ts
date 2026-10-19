@@ -10,14 +10,17 @@ import { replaceIndexBlock, type DocIndex } from '../model/docIndex';
 import { collectItemTexts, relabelTextUnchanged, type ItemText } from '../model/equivalence';
 import { editedHeadingBlocks, editedParagraphText, withEditedHeadings } from '../model/outline';
 import {
+  applyFormat,
   applyTextEdit,
+  blockItemIds,
   blockItems,
   editRevisions,
   revertChange,
   revertableItems,
-  revisionTexts,
   visibleText,
   type BlockEdit,
+  type CharacterLook,
+  type FormatProperty,
   type RevisionText,
   type Segment,
 } from '../model/paragraphEdit';
@@ -50,6 +53,7 @@ export function savedItemIds(saved: readonly SavedBlockEdit[]): Set<string> {
     for (const segment of record.current) {
       if (segment.kind === 'del' || segment.kind === 'ins') ids.add(segment.itemId);
       else if (segment.kind === 'object' && segment.owner) ids.add(segment.owner.itemId);
+      else if (segment.kind === 'equal' && segment.format?.itemId) ids.add(segment.format.itemId);
     }
   }
   return ids;
@@ -162,6 +166,17 @@ export class EditSession {
     return this.apply({ ...edit, current: result.segments, nextId: result.nextId }, result.createdItemIds);
   }
 
+  /**
+   * Sets bold or italic on the visible characters `start`…`end` of the block (`applyFormat`;
+   * `looks`: theirs without the reviewer's settings). `null` when it changes nothing.
+   */
+  format(unid: string, range: { start: number; end: number }, property: FormatProperty, value: boolean, looks: readonly (CharacterLook | undefined)[]): BlockUpdate | null {
+    const edit = this.edit(unid);
+    const result = applyFormat(edit.current, range, property, value, looks, { unid, nextId: edit.nextId });
+    if (sameSegments(result.segments, edit.current)) return null;
+    return this.apply({ ...edit, current: result.segments, nextId: result.nextId }, result.createdItemIds);
+  }
+
   /** The block as the comparison produced it; `null` when it has no edits. */
   revert(unid: string): BlockUpdate | null {
     const edit = this.blocks.get(unid);
@@ -251,7 +266,7 @@ export class EditSession {
     // Back to the comparison's segments: its markup and items as they were.
     const reverted = sameSegments(edit.current, edit.original);
 
-    const beforeIds = new Set([...revisionTexts(before.current).values()].map(({ itemId }) => itemId));
+    const beforeIds = blockItemIds(before);
     const parts = blockItems(edit, { items: new Map(this.items.map((item) => [item.id, item])), revisions: this.engineTexts });
     let items = replaceBlockItems(this.items, unid, beforeIds, parts, this.index);
     const afterIds = new Set(parts.map((part) => part.id));
@@ -345,6 +360,7 @@ export interface Edits {
   revert: (unid: string) => BlockUpdate | null;
   revertAll: () => BlockUpdate[];
   revertChange: (unid: string, itemId: string) => BlockUpdate | null;
+  format: EditSession['format'];
   restore: (saved: readonly SavedBlockEdit[]) => { updates: BlockUpdate[]; skipped: number };
 }
 
@@ -360,6 +376,7 @@ export function useEdits(comparison: Comparison | null): Edits {
   const revert = useCallback((unid: string) => changed(session?.revert(unid) ?? null), [session, changed]);
   const revertAll = useCallback(() => changed(session?.revertAll() ?? []), [session, changed]);
   const revertChangeOf = useCallback((unid: string, itemId: string) => changed(session?.revertChange(unid, itemId) ?? null), [session, changed]);
+  const format = useCallback<EditSession['format']>((...args) => changed(session?.format(...args) ?? null), [session, changed]);
   const restore = useCallback((saved: readonly SavedBlockEdit[]) => changed(session?.restore(saved) ?? { updates: [], skipped: 0 }), [session, changed]);
   return {
     session,
@@ -372,6 +389,7 @@ export function useEdits(comparison: Comparison | null): Edits {
     revert,
     revertAll,
     revertChange: revertChangeOf,
+    format,
     restore,
   };
 }

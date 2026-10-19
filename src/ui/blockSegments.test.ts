@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SMALL_HTML } from '../../test/small-html';
-import { applyTextEdit, originalText, visibleText, OBJECT_CHAR, type Segment } from '../model/paragraphEdit';
-import { readBlockSegments, renderBlockSegments, uneditableReason, visibleOffset, visiblePoint } from './blockSegments';
+import { applyFormat, applyTextEdit, originalText, visibleText, OBJECT_CHAR, type Segment } from '../model/paragraphEdit';
+import { readBlockSegments, renderBlockSegments, uneditableReason, visibleLooks, visibleOffset, visiblePoint } from './blockSegments';
 
 const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
 const block = (document: Document, unid: string) => document.querySelector(`[data-anchor="${unid}"]`)!;
@@ -250,6 +250,57 @@ describe('renderBlockSegments', () => {
     const emptied = renderBlockSegments(element, segments);
     expect(emptied.textContent).toBe('\u00a0');
     expect(readBlockSegments(emptied)).toEqual([]);
+  });
+
+  describe('the reviewer’s bold and italic', () => {
+    const plain = { bold: false, italic: false };
+    const formatted = (html: string, start: number, end: number, property: 'bold' | 'italic', change?: { itemId: string; revisionId: string }) => {
+      const element = block(parse(html), 'x');
+      const before = readBlockSegments(element);
+      const { segments } = applyFormat(before, { start, end }, property, true, Array.from({ length: end - start }, () => ({ ...plain, change })), { unid: 'x', nextId: 1 });
+      return { element, segments, rendered: renderBlockSegments(element, segments) };
+    };
+
+    it('puts a new formatting change’s span inside the text’s own span, and renders it again the same', () => {
+      const { segments, rendered } = formatted('<p data-anchor="x"><span class="docx-a">The red house</span></p>', 4, 7, 'bold');
+      expect(rendered.innerHTML).toBe(
+        '<span class="docx-a">The <span class="edit-format edit-bold rev-format-change" data-author="rev:ex.1" data-change-id="ex.1">red</span> house</span>',
+      );
+      expect(readBlockSegments(rendered)).toEqual([{ kind: 'equal', text: 'The red house' }]);
+      expect(renderBlockSegments(rendered, segments).outerHTML).toBe(rendered.outerHTML);
+      expect(renderBlockSegments(rendered, readBlockSegments(rendered)).innerHTML).toBe('<span class="docx-a">The red house</span>');
+    });
+
+    it('gives text of the comparison’s formatting change, and inserted text, a span without a change of its own', () => {
+      const change = { itemId: 'f', revisionId: 'f1' };
+      const engine = formatted('<p data-anchor="x"><span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="docx-a">Heading</span></span></p>', 0, 7, 'italic', change);
+      expect(engine.rendered.innerHTML).toBe('<span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="docx-a"><span class="edit-format edit-italic">Heading</span></span></span>');
+      const inserted = formatted('<p data-anchor="x"><span class="docx-a">A </span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1"><span class="docx-a">big</span></ins></p>', 2, 5, 'bold');
+      expect(inserted.rendered.innerHTML).toBe(
+        '<span class="docx-a">A </span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1"><span class="docx-a"><span class="edit-format edit-bold">big</span></span></ins>',
+      );
+      // Typing on in the bold insertion stays in its span.
+      const typed = applyTextEdit(inserted.segments, 'A bigger', { unid: 'x', nextId: 2, caret: 8 }).segments;
+      expect(renderBlockSegments(inserted.rendered, typed).innerHTML).toBe(
+        '<span class="docx-a">A </span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1"><span class="docx-a"><span class="edit-format edit-bold">bigger</span></span></ins>',
+      );
+    });
+
+    it('reads the looks of the selected characters, with and without the reviewer’s span', () => {
+      const element = block(parse(
+        '<p data-anchor="x"><span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="b">Bo</span></span><span class="n">l<span class="edit-format edit-bold">d</span></span><a class="footnote-ref" data-footnote-id="1">1</a></p>',
+      ), 'x');
+      const styleOf = (element: Element) => ({
+        fontWeight: element.matches('.b, .edit-bold') ? '700' : '400',
+        fontStyle: 'normal',
+      }) as CSSStyleDeclaration;
+      expect(visibleLooks(element, 1, 5, styleOf)).toEqual([
+        { look: { bold: true, italic: false, change: { itemId: 'f', revisionId: 'f1' } }, shown: { bold: true, italic: false } },
+        { look: plain, shown: plain },
+        { look: plain, shown: { bold: true, italic: false } },
+        undefined,
+      ]);
+    });
   });
 
   it('refuses segments whose Original text differs from the block’s', () => {

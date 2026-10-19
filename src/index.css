@@ -849,6 +849,8 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  /* The header's controls get compact in a narrow panel (three columns, below). */
+  container: document-panel / inline-size;
 }
 
 .document-panel + .document-panel {
@@ -920,6 +922,41 @@ body {
   flex: none;
   margin-block: -0.25rem;
   white-space: nowrap;
+}
+
+/* The Edited header in a narrow panel (e.g. three columns beside the changes list): the toggle
+   shows its pencil only (its name stays "Editable"), the controls sit closer. The title gives way
+   first. */
+@container document-panel (max-width: 24rem) {
+  .document-panel__header {
+    gap: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  .editable-toggle__label {
+    display: none;
+  }
+
+  .button.editable-toggle,
+  .button.revert-button {
+    padding-inline: 0.3rem;
+  }
+}
+
+/* B and I: square, the letter in its own look. */
+.button.format-button {
+  min-width: 1.5rem;
+  padding-inline: 0.25rem;
+  justify-content: center;
+}
+
+.format-button--bold span {
+  font-weight: 700;
+}
+
+.format-button--italic span {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
 }
 
 .document-panel--editing .document-panel__scroller {
@@ -1439,6 +1476,26 @@ body {
 .help__note {
   margin: 0.5rem 0 0;
   color: var(--muted);
+}
+
+.editing-help {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.editing-help li + li {
+  margin-top: 0.25rem;
+}
+
+/* The Edited header's ? popover: within the window in a narrow column. */
+.editing-help-button {
+  flex: none;
+}
+
+.editing-help-button .help__popover {
+  width: min(22rem, calc(100vw - 2rem));
+  font-weight: normal;
+  white-space: normal;
 }
 
 kbd {

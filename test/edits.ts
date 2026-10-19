@@ -8,8 +8,18 @@ import { paragraphUnids } from '../src/engine/blockKey';
 import { W_NS, readPart, unzipDocx } from '../src/engine/ooxml';
 import type { BlockEditPatch, FinalDecision, RevisionListEntry } from '../src/engine/types';
 import type { BlockScope } from '../src/model/docIndex';
-import { OBJECT_CHAR, PART_OF_SCOPE, applyTextEdit, editRevisions, visibleText, type BlockEdit, type Segment } from '../src/model/paragraphEdit';
-import { readBlockSegments, uneditableReason } from '../src/ui/blockSegments';
+import {
+  OBJECT_CHAR,
+  PART_OF_SCOPE,
+  applyFormat,
+  applyTextEdit,
+  editRevisions,
+  visibleText,
+  type BlockEdit,
+  type FormatProperty,
+  type Segment,
+} from '../src/model/paragraphEdit';
+import { readBlockSegments, uneditableReason, visibleLooks } from '../src/ui/blockSegments';
 import { PARAGRAPH_BLOCK } from '../src/ui/renderedDocument';
 
 export function scopeOfBlock(block: Element): BlockScope {
@@ -59,6 +69,64 @@ export function scriptEdits(root: ParentNode, edits: readonly ScriptedEdit[]): S
     patches: list.map((block) => ({ unid: block.unid, scope: block.scope, segments: block.current })),
     revisions: list.flatMap(editRevisions),
     createdItemIds,
+  };
+}
+
+/** A word made bold or italic by `scriptFormats`. */
+export interface FormattedWord {
+  word: string;
+  property: FormatProperty;
+  /** Unchanged text (a formatting change) or inserted text (part of its insertion). */
+  on: 'equal' | 'ins';
+}
+
+/**
+ * The reviewer's bold on the first word of unchanged text, and italic on the first word of inserted
+ * text, in the first editable blocks that have one (the same block, if it has both); only words that
+ * occur once in the blocks, so that a check finds their runs. Without
+ * computed styles, every character counts as plain; the comparison's formatting changes come
+ * from the markup.
+ */
+export function scriptFormats(blocks: readonly HTMLElement[]): ScriptedResult & { words: FormattedWord[] } {
+  const edits = new Map<string, BlockEdit>();
+  const words: FormattedWord[] = [];
+  const plain = () => ({ fontWeight: '400', fontStyle: 'normal' }) as CSSStyleDeclaration;
+  const createdItemIds: string[] = [];
+  const all = blocks.map((block) => block.textContent ?? '').join(' ');
+  const once = (word: string) => all.split(word).length === 2;
+  for (const [on, property] of [['equal', 'bold'], ['ins', 'italic']] as const) {
+    for (const element of blocks) {
+      const unid = element.dataset.anchor!;
+      const segments = readBlockSegments(element);
+      let index = -1;
+      let match: RegExpExecArray | undefined;
+      for (const [i, segment] of segments.entries()) {
+        if (segment.kind !== on) continue;
+        match = [...segment.text.matchAll(/\p{L}{3,}/gu)].find((found) => once(found[0]));
+        if (match) {
+          index = i;
+          break;
+        }
+      }
+      if (!match) continue;
+      const start = visibleOffset(segments, index) + match.index;
+      const end = start + match[0].length;
+      const edit = edits.get(unid) ?? { unid, scope: scopeOfBlock(element), original: segments, current: segments, nextId: 1 };
+      const looks = visibleLooks(element, start, end, plain).map((look) => look?.look);
+      const result = applyFormat(edit.current, { start, end }, property, true, looks, { unid, nextId: edit.nextId });
+      edits.set(unid, { ...edit, current: result.segments, nextId: result.nextId });
+      createdItemIds.push(...result.createdItemIds);
+      words.push({ word: match[0], property, on });
+      break;
+    }
+  }
+  const list = [...edits.values()];
+  return {
+    blocks: list,
+    patches: list.map((block) => ({ unid: block.unid, scope: block.scope, segments: block.current })),
+    revisions: list.flatMap(editRevisions),
+    createdItemIds,
+    words,
   };
 }
 

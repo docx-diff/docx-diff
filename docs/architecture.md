@@ -54,7 +54,7 @@ Model (pure TypeScript, main thread)
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
-- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx` (the toggle, ↺ ¶ and ↺ all), `Toast.tsx` ([Inline edits](#inline-edits)).
+- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx` (the toggle, B and I, ↺ ¶ and ↺ all), `EditingHelp.tsx` (the editing help, in the Edited header's ? and the general Help), `usePopoverDismiss.ts` (Escape / a press outside closes a popover), `Toast.tsx` ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -596,6 +596,37 @@ paragraphs newly fall outside the range asks first (`editedBlocksLeftOutside` in
 their changes are then out of range and the export keeps the Original's text there; the edits stay,
 and moving the end point back offers them again.
 
+**Bold and italic.** Ctrl+B / Ctrl+I (`keydown` in `PanelEditing`; the browser's own `format*`
+input stays refused) or the header's **B** / **I** (`mousedown` cancelled, so the selection stays in
+the text; without a selection there, the one the cursor last had) act on the selected text of one
+editable paragraph through `PanelControl.format`. The toggle rule reads the computed style of the
+selected characters (`visibleLooks` in `blockSegments.ts`): all bold → remove, else set. The model
+(`applyFormat`) stores the result as a value, not a toggle, in an optional `format` of `equal` and
+`ins` segments (`{ bold?, italic?, itemId?, revisionId? }`, on top of the text's own formatting; a
+value equal to the text's own look is dropped):
+- unchanged text keeps the formatting change it has (the comparison's, read from the markup's
+  `span.rev-format-change`, or one an earlier action created), else gets one new formatting change
+  per action (`kind: 'formatting'`, an edit id, "Bold added" / "Italic removed" … from the values,
+  `formatRevisions`); a run holds one `w:rPrChange`, which is why text never gets a second change.
+  The comparison's formatting items aren't touched (`blockItemIds` leaves them out): their text
+  and description stay the engine's; only the reviewer's changes are a block's items;
+- inserted text just changes its look, as part of its insertion;
+- deleted text is left alone; typed text takes the `format` (look only) of the text it replaces,
+  else the character before it, else after it, as it takes its formatting (PRD-18); segments that
+  differ in `format` never merge; a deleted character keeps its unchanged text's `format`, so that
+  typing it back gives it back.
+
+All formatting, the reviewer's included, follows the formatting choice (FR-30): with the Original's,
+the export drops it. Reverts cover it: `revertChange` of a formatting change removes the reviewer's
+`format` from its text (one an edit created then disappears); an insertion's look counts as part of
+the insertion (`revertableItems` compares looks too). Display: the converter writes no `b`/`i`, only
+run classes (`span.docx-…`) that set `font-weight`/`font-style`, so `renderBlockSegments` puts a
+`span.edit-format` (`edit-bold`, `edit-not-bold`, `edit-italic`, `edit-not-italic`) directly around
+the text, inside the run's span, with static rules in `panel.css` (not in the Original panel); a new
+formatting change's span is also its element (`rev-format-change`, `data-author`,
+`data-change-id`), so the ↺ icon, the current outline and scrolling find it. A rendering strips the
+previous rendering's spans first.
+
 **Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
 `w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,
 so the later steps find every revision's markup by its keys as usual. An edit never changes the
@@ -613,7 +644,11 @@ engine's author and date, and `w:id`s above every id of the text parts (the engi
 across the parts). Bookmarks, comment ranges, `w:proofErr`, note references, tabs and breaks stay in
 place; runs inside `w:hyperlink`/`w:smartTag` stay inside. A paragraph with anything else (fields,
 `w:sdt`, `w:sym`, drawings, moves, `w:customXml`, nested changes, a hyperlink inside a change, …)
-fails the export (`EditPatchError`): such paragraphs are not editable. `unpatchableContent` is
+fails the export (`EditPatchError`): such paragraphs are not editable. The reviewer's bold/italic
+sets `w:b`+`w:bCs` (`w:i`+`w:iCs`; `w:val="0"` to remove, as it may come from the style) in
+schema order; unchanged text of a formatting change an edit created first gets a `w:rPrChange`
+holding its properties before (`kind=PropsChange` keys), a run that has one already keeps it, and
+inserted runs get none. `unpatchableContent` is
 that rule, and the one place it is written: the editability check uses it too. Afterwards a revision's keys are those outside the edited paragraphs plus its elements
 inside them; one left with none is dropped. The engine may group the patched markup into revisions
 differently (it splits a formatting change that new text interrupts), which doesn't matter: the
@@ -835,7 +870,8 @@ version match.
 
 **Inline edits** are saved as `EditSession.savedEdits()`: the `BlockEdit` of every block an edit
 touched (`original`, `current`, `nextId`), also one reverted since, so that its `nextId` keeps ids
-from being reused after a resume. Decisions are restored while rendering, the moment the comparison
+from being reused after a resume. Segments may carry the reviewer's bold/italic (`format`); records
+saved before it existed have none and stay valid (`isSegment` in `src/storage/reviewStore.ts`). Decisions are restored while rendering, the moment the comparison
 arrives, and keep only known item ids: the ids the saved segments name (`savedItemIds`) count as
 known, so the decisions and comments of edit-created items survive. The replay (`EditSession.restore`)
 runs in a layout effect once the panels show the comparison, and shows its updates like a revert

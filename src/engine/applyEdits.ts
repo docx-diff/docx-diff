@@ -13,10 +13,13 @@
 // To make that simple, the runs the patch changes or types next to are first split into one run per
 // character or object, each inserted or deleted one in a `w:ins`/`w:del` of its own; after the patch,
 // touching pieces of one revision and runs with the same properties are joined again. Split elements get new `w:id`s above
-// every id of the text parts. Works on @xmldom/xmldom documents, since it runs in the worker.
+// every id of the text parts. The reviewer's bold/italic sets `w:b`/`w:i` in the runs' properties;
+// on unchanged text a new formatting change also gets a `w:rPrChange` with the properties before
+// (a run that has one already, the comparison's, keeps it). Works on @xmldom/xmldom documents,
+// since it runs in the worker.
 import type { Document, Element, Node } from '@xmldom/xmldom';
 import type { BlockScope } from '../model/docIndex';
-import { PART_OF_SCOPE, alignUnits, formattingSource, segmentUnits, type AlignUnit } from '../model/paragraphEdit';
+import { PART_OF_SCOPE, alignUnits, formattingSource, segmentUnits, type AlignUnit, type SegmentFormat } from '../model/paragraphEdit';
 import { paragraphUnids } from './blockKey';
 import { ElementIndex, W_NS, parseConstituentKey, readPart, unzipDocx, writePart, type DocxFiles } from './ooxml';
 import type { BlockEditPatch, RevisionListEntry } from './types';
@@ -147,6 +150,7 @@ async function patchPart(
     patchParagraph(paragraph, edit, context);
     for (const segment of edit.segments) {
       if (segment.kind === 'del' || segment.kind === 'ins') touched.add(segment.revisionId);
+      else if (segment.kind === 'equal' && segment.format?.revisionId) touched.add(segment.format.revisionId);
     }
   }
 
@@ -192,7 +196,7 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
     } else if (!step.unit) {
       affected.add(step.leaf.run);
     } else {
-      if (typed || step.leaf.side !== step.unit.side || step.leaf.revisionId !== step.unit.revisionId) affected.add(step.leaf.run);
+      if (typed || step.leaf.side !== step.unit.side || step.leaf.revisionId !== step.unit.revisionId || hasLook(step.unit.format)) affected.add(step.leaf.run);
       previous = step.leaf;
       typed = false;
     }
@@ -214,6 +218,7 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
     }
     if (step.leaf && step.unit) {
       retype(step.leaf, step.unit, context, fail);
+      if (!step.leaf.object) setLook(step.leaf.run, step.unit, context);
       cursor = step.leaf.slot;
       return;
     }
@@ -221,6 +226,7 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
     if (unit.object) throw fail('an object was added');
     const source = formattingSource(steps, i)?.run ?? fallbackRun;
     const run = newRun(context, source, unit.ch, 't');
+    setLook(run, unit, context);
     const slot = wrap(run, 'ins', { revisionId: unit.revisionId!, kind: 'Content' }, context);
     if (cursor) {
       cursor.parentNode!.insertBefore(slot, cursor.nextSibling);
@@ -233,6 +239,54 @@ function patchParagraph(paragraph: Element, edit: BlockEditPatch, context: PartC
   });
 
   joinPieces(paragraph, context);
+}
+
+const hasLook = (format: SegmentFormat | undefined) => format?.bold !== undefined || format?.italic !== undefined;
+
+/** The order of a run's properties (`CT_RPr`); `w:rPrChange` comes last. */
+const RUN_PROPERTIES = [
+  'rStyle', 'rFonts', 'b', 'bCs', 'i', 'iCs', 'caps', 'smallCaps', 'strike', 'dstrike', 'outline', 'shadow', 'emboss', 'imprint',
+  'noProof', 'snapToGrid', 'vanish', 'webHidden', 'color', 'spacing', 'w', 'kern', 'position', 'sz', 'szCs', 'highlight', 'u',
+  'effect', 'bdr', 'shd', 'fitText', 'vertAlign', 'rtl', 'cs', 'em', 'lang', 'eastAsianLayout', 'specVanish', 'oMath',
+];
+
+/**
+ * Gives a one-character run of the unit the reviewer's bold/italic: `w:b`+`w:bCs` (`w:i`+`w:iCs`),
+ * `w:val="0"` to remove it (it may come from the style). Unchanged text of a formatting change an
+ * edit created first keeps its properties in a new `w:rPrChange`, unless the run has one already.
+ */
+function setLook(run: Element, unit: AlignUnit, context: PartContext): void {
+  const format = unit.format;
+  if (!hasLook(format) || unit.side === 'del') return;
+  let rPr = elementChildren(run).find((child) => isW(child, 'rPr'));
+  if (!rPr) {
+    rPr = context.document.createElementNS(W_NS, 'w:rPr');
+    run.insertBefore(rPr, run.firstChild);
+  }
+  if (unit.side === 'equal' && format!.revisionId && !elementChildren(rPr).some((child) => isW(child, 'rPrChange'))) {
+    const change = context.document.createElementNS(W_NS, 'w:rPrChange');
+    change.setAttributeNS(W_NS, 'w:id', String(context.ids.next++));
+    if (context.template.author) change.setAttributeNS(W_NS, 'w:author', context.template.author);
+    if (context.template.date) change.setAttributeNS(W_NS, 'w:date', context.template.date);
+    const before = context.document.createElementNS(W_NS, 'w:rPr');
+    for (const property of elementChildren(rPr)) before.appendChild(property.cloneNode(true));
+    change.appendChild(before);
+    rPr.appendChild(change);
+    context.owners.set(change, { revisionId: format!.revisionId, kind: 'PropsChange' });
+  }
+  const set = (names: [string, string], value: boolean | undefined) => {
+    if (value === undefined) return;
+    for (const child of elementChildren(rPr!)) if (names.includes(child.localName!) && child.namespaceURI === W_NS) rPr!.removeChild(child);
+    for (const name of names) {
+      const element = context.document.createElementNS(W_NS, `w:${name}`);
+      if (!value) element.setAttributeNS(W_NS, 'w:val', '0');
+      const rank = RUN_PROPERTIES.indexOf(name);
+      const next = elementChildren(rPr!).find((child) => child.namespaceURI !== W_NS || !RUN_PROPERTIES.includes(child.localName!) || RUN_PROPERTIES.indexOf(child.localName!) > rank);
+      rPr!.insertBefore(element, next ?? null);
+    }
+  };
+  set(['b', 'bCs'], format!.bold);
+  set(['i', 'iCs'], format!.italic);
 }
 
 /** Turns an Original-side character unchanged ↔ deleted, as the segments have it. */

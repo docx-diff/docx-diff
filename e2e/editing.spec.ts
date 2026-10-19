@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { strFromU8, unzipSync } from 'fflate';
 import { readFileSync } from 'node:fs';
 import { minimalDocx } from '../test/minimal-docx';
 import { readSamples, samplesAvailable } from '../test/samples';
@@ -677,5 +678,101 @@ test.describe('three columns', () => {
     await expect(cards(page)).toHaveCount(2);
     await expect.poll(() => shown(page, 'resolved', 'Second paragraph.')).toBe('Second paragraph. More');
     expect(await shown(page, 'left', 'Second paragraph.')).toBe('Second paragraph.');
+  });
+});
+
+test.describe('bold and italic', () => {
+  test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
+
+  const button = (page: Page, name: 'Bold' | 'Italic') => page.getByRole('button', { name, exact: true });
+  const weight = (locator: ReturnType<Page['locator']>) => locator.evaluate((element) => getComputedStyle(element).fontWeight);
+
+  test('Ctrl+B and the I button make formatting changes; ↺ reverts one; a reload replays them; the export follows the formatting choice', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph here.']), minimalDocx(['The quick red fox.', 'Second paragraph here.']));
+    await expect(button(page, 'Bold')).toBeDisabled();
+    await expect(button(page, 'Italic')).toHaveAttribute('title', 'Italic (Ctrl+I)');
+    await startEditing(page);
+    await expect(button(page, 'Bold')).toBeEnabled();
+
+    // Without a selection: Ctrl+B does nothing, the button says what to do.
+    await cursorAtEnd(page, 'Second paragraph');
+    await page.keyboard.press('Control+b');
+    await button(page, 'Italic').click();
+    await expect(toast(page)).toHaveText('Select text within one paragraph first.');
+    const right = page.getByTestId('panel-right');
+    await expect(right.locator('.edit-format')).toHaveCount(0);
+
+    // Bold with Ctrl+B; the selection stays, so Ctrl+B again removes it.
+    await selectWord(page, 'Second paragraph', 'Second');
+    await page.keyboard.press('Control+b');
+    await expect(right.locator('.edit-bold')).toHaveText('Second');
+    expect(await weight(right.locator('.edit-bold'))).toBe('700');
+    // The Original panel shows the Original's look.
+    expect(await weight(page.getByTestId('panel-left').locator('.edit-bold'))).toBe('400');
+    await page.keyboard.press('Control+b');
+    await expect(right.locator('.edit-format')).toHaveCount(0);
+    await page.keyboard.press('Control+b');
+    await expect(right.locator('.edit-bold')).toHaveText('Second');
+    // Italic with the button: the click keeps the selection in the text.
+    await selectWord(page, 'Second paragraph', 'paragraph');
+    await button(page, 'Italic').click();
+    await expect(right.locator('.edit-italic')).toHaveText('paragraph');
+    // Text typed right after the italic word is italic too, as part of its insertion.
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.type(' long');
+    await expect(right.locator('ins .edit-italic')).toContainText('long');
+
+    // In the formatting group, described like the editor's formatting changes; the text change is a card of its own.
+    await page.getByRole('button', { name: /^Fmt/ }).click();
+    const group = page.getByTestId('formatting-group');
+    await expect(group).toContainText('Formatting changes (2)');
+    await group.getByRole('button', { name: /Formatting changes/ }).click();
+    await expect(cards(page).filter({ hasText: 'Bold added' })).toHaveCount(1);
+    await expect(cards(page).filter({ hasText: 'Italic added' })).toHaveCount(1);
+
+    // ↺ reverts the bold only.
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await right.locator('.edit-bold + .edit-revert').click();
+    await page.getByRole('dialog', { name: 'Revert your edit of this change?' }).getByRole('button', { name: 'Revert' }).click();
+    await expect(right.locator('.edit-bold')).toHaveCount(0);
+    await expect(right.locator('.edit-italic')).toHaveCount(2);
+    await expect(group).toContainText('Formatting changes (1)');
+
+    // Replayed after a reload.
+    await expect.poll(async () => JSON.stringify((await savedReview(page))?.edits ?? null)).not.toContain('"bold":true');
+    await page.reload();
+    await page.getByRole('dialog', { name: /^Resume review/ }).getByRole('button', { name: 'Resume' }).click();
+    await expect(right.locator('.edit-italic').first()).toHaveText('paragraph', { timeout: 60_000 });
+    await expect(right.locator('.edit-bold')).toHaveCount(0);
+
+    // The export: italic with the Edited's formatting, none with the Original's.
+    const xml = (bytes: Uint8Array) => strFromU8(unzipSync(bytes)['word/document.xml']!);
+    const edited = (await downloadReviewed(page, 'accept')).bytes;
+    expect(docxText(edited)).toEqual(['The quick red fox.', 'Second paragraph long here.']);
+    expect(xml(edited)).toMatch(/<w:rPr><w:i ?\/><w:iCs ?\/><\/w:rPr><w:t[^>]*>paragraph<\/w:t>/);
+    await page.getByRole('button', { name: /^Fmt/ }).click();
+    await page.getByRole('radio', { name: "Keep the Original's formatting" }).check();
+    const original = (await downloadReviewed(page, 'accept')).bytes;
+    expect(docxText(original)).toEqual(['The quick red fox.', 'Second paragraph long here.']);
+    expect(xml(original)).not.toMatch(/<w:i ?\/>/);
+  });
+});
+
+test.describe('the Edited header in three columns', () => {
+  test.beforeEach(({ page }) => pinView(page, { ...TWO_COLUMNS, threeColumns: true }));
+
+  test('fits Editable, B, I, ↺ ¶, ↺ all and ?, and ? opens the editing help', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.']), minimalDocx(['The quick red fox.']));
+    const header = page.locator('.document-panel__header').filter({ has: page.getByRole('button', { name: 'Editable' }) });
+    const box = (await header.boundingBox())!;
+    for (const name of ['Editable', 'Bold', 'Italic', 'Revert my edits in this paragraph', 'Revert all my edits', 'About editing']) {
+      const control = (await header.getByRole('button', { name, exact: true }).boundingBox())!;
+      expect(control.x, name).toBeGreaterThanOrEqual(box.x);
+      expect(control.x + control.width, name).toBeLessThanOrEqual(box.x + box.width + 0.5);
+    }
+    await header.getByRole('button', { name: 'About editing' }).click();
+    await expect(page.getByRole('dialog', { name: 'About editing' })).toContainText('There is no undo.');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'About editing' })).toHaveCount(0);
   });
 });

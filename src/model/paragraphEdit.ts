@@ -15,10 +15,23 @@ export const PART_OF_SCOPE: Record<BlockScope, string> = {
 /** Stands for an inline object (note reference, tab, break, …) in visible and Original text. */
 export const OBJECT_CHAR = '\uFFFC';
 
+/**
+ * Bold or italic the reviewer set (a value, applied on top of the text's own formatting), and on
+ * unchanged text the formatting change it belongs to: one an edit created, or the comparison's
+ * that the text already had. Inserted text has none: its look is part of its insertion.
+ */
+export interface SegmentFormat {
+  bold?: boolean;
+  italic?: boolean;
+  itemId?: string;
+  revisionId?: string;
+}
+
 /** Text both versions have. */
 export interface EqualSegment {
   kind: 'equal';
   text: string;
+  format?: SegmentFormat;
 }
 
 /** Text of one revision of one item: a deletion (hidden in the Edited panel) or an insertion. */
@@ -27,6 +40,8 @@ export interface ChangeSegment {
   text: string;
   itemId: string;
   revisionId: string;
+  /** Insertions only. */
+  format?: SegmentFormat;
 }
 
 /** An inline object; `owner` when it is inserted or deleted content. */
@@ -131,7 +146,21 @@ interface Unit {
   removed?: boolean;
   /** A character of an item an earlier edit created, joined to this edit's new piece: it keeps its ids. */
   kept?: { itemId: string; revisionId: string };
+  /** As in its segment; a deleted character keeps its unchanged text's, in case it is typed back. */
+  format?: SegmentFormat;
 }
+
+/** The format's bold and italic, without a formatting change (as inserted text has it); `undefined` without either. */
+function lookOnly(format: SegmentFormat | undefined): SegmentFormat | undefined {
+  if (format?.bold === undefined && format?.italic === undefined) return undefined;
+  return { ...(format.bold !== undefined ? { bold: format.bold } : {}), ...(format.italic !== undefined ? { italic: format.italic } : {}) };
+}
+
+const sameFormat = (a: SegmentFormat | undefined, b: SegmentFormat | undefined) =>
+  a?.bold === b?.bold && a?.italic === b?.italic && a?.itemId === b?.itemId && a?.revisionId === b?.revisionId;
+
+/** `{ format }` when there is one, to spread into a segment. */
+const withFormat = (format: SegmentFormat | undefined) => (format ? { format } : {});
 
 const isChange = (unit: Unit) => unit.kind === 'del' || unit.kind === 'ins' || unit.kind === 'newDel' || unit.kind === 'newIns';
 const isNew = (unit: Unit) => unit.kind === 'newDel' || unit.kind === 'newIns';
@@ -155,8 +184,8 @@ function toUnits(segments: readonly Segment[]): Unit[] {
     }
     for (const ch of segment.text.split('')) {
       units.push(segment.kind === 'equal'
-        ? { kind: 'equal', ch }
-        : { kind: segment.kind, ch, itemId: segment.itemId, revisionId: segment.revisionId });
+        ? { kind: 'equal', ch, ...withFormat(segment.format) }
+        : { kind: segment.kind, ch, itemId: segment.itemId, revisionId: segment.revisionId, ...withFormat(segment.format) });
     }
   }
   return units;
@@ -236,9 +265,17 @@ export function applyTextEdit(
     middle = typed.slice(lead, typed.length - trail);
     trailing = typed.slice(typed.length - trail);
   }
+  // Typed text takes the reviewer's bold/italic of the text it replaces, else of the character
+  // before it, else of the one after it (as it takes their formatting, PRD-18).
+  const isChar = (unit: Unit | undefined) => !!unit && unit.kind !== 'object';
+  const look = lookOnly((
+    visible.slice(span.start, span.end).find(isChar) ??
+    visible.slice(0, span.start).findLast(isChar) ??
+    visible.slice(span.end).find(isChar)
+  )?.format);
   const owned = (text: string, owner: { itemId: string; revisionId: string } | undefined): Unit[] =>
-    text.split('').map((ch) => ({ kind: 'ins', ch, itemId: owner!.itemId, revisionId: owner!.revisionId, touched: true }));
-  const fresh: Unit[] = middle.split('').map((ch) => ({ kind: 'newIns', ch, touched: true }));
+    text.split('').map((ch) => ({ kind: 'ins', ch, itemId: owner!.itemId, revisionId: owner!.revisionId, touched: true, ...withFormat(look) }));
+  const fresh: Unit[] = middle.split('').map((ch) => ({ kind: 'newIns', ch, touched: true, ...withFormat(look) }));
 
   // New text goes after the deleted span, or after the hidden deletions at the cursor; text
   // joining an insertion goes next to it.
@@ -258,6 +295,62 @@ export function applyTextEdit(
   const widened = widenToWords(joinEditedItems(placed, ids.unid));
   const cancelled = cancelTypedBack(widened);
   return toSegments(trimSharedWords(cancelled, ids.unid), ids.unid, ids.nextId);
+}
+
+export type FormatProperty = 'bold' | 'italic';
+
+/**
+ * A visible character's look without the reviewer's bold/italic (as the comparison rendered it),
+ * and the comparison's formatting change it belongs to, if any.
+ */
+export interface CharacterLook {
+  bold: boolean;
+  italic: boolean;
+  change?: { itemId: string; revisionId: string };
+}
+
+/**
+ * Sets bold or italic (`value`, not a toggle) on the visible characters `start`…`end` of the
+ * block; `looks[i]` is the look of character `start + i` (objects and hidden deletions are left
+ * alone). Where the value is the character's own look, the reviewer's setting goes. Which change
+ * the setting belongs to (PRD-33): unchanged text keeps the formatting change it has (the
+ * comparison's, or one an earlier action created), else gets one new formatting change for this
+ * action; inserted text just changes its look, as part of its insertion. A formatting change left
+ * without text disappears.
+ */
+export function applyFormat(
+  segments: readonly Segment[],
+  range: { start: number; end: number },
+  property: FormatProperty,
+  value: boolean,
+  looks: readonly (CharacterLook | undefined)[],
+  ids: { unid: string; nextId: number },
+): TextEditResult {
+  const units = toUnits(segments);
+  const visible = units.filter(isVisible);
+  let nextId = ids.nextId;
+  let created: string | undefined;
+  visible.slice(range.start, range.end).forEach((unit, i) => {
+    if (unit.kind === 'object') return;
+    const look = looks[i] ?? { bold: false, italic: false };
+    const next: SegmentFormat = { ...lookOnly(unit.format) };
+    if (look[property] === value) delete next[property];
+    else next[property] = value;
+    const set = lookOnly(next);
+    if (!set || unit.kind === 'ins') {
+      unit.format = set;
+      return;
+    }
+    let owner = unit.format?.itemId !== undefined ? { itemId: unit.format.itemId, revisionId: unit.format.revisionId! } : look.change;
+    if (!owner) {
+      created ??= editId(ids.unid, nextId++);
+      owner = { itemId: created, revisionId: created };
+    }
+    unit.format = { ...set, ...owner };
+  });
+  const result = unitSegments(units);
+  const createdItemIds = created && result.some((segment) => formatItemOf(segment) === created) ? [created] : [];
+  return { segments: result, nextId, createdItemIds };
 }
 
 /**
@@ -295,7 +388,7 @@ function trimSharedWords(units: Unit[], unid: string): Unit[] {
     const length = (tokens: string[]) => tokens.join('').length;
     const head = length(a.slice(0, prefix));
     const tail = length(a.slice(a.length - suffix));
-    const equal = (from: Unit[]) => from.map((unit): Unit => ({ kind: 'equal', ch: unit.ch }));
+    const equal = (from: Unit[]) => from.map((unit): Unit => ({ kind: 'equal', ch: unit.ch, ...withFormat(unit.format) }));
     units.splice(start, end - start,
       ...equal(deleted.slice(0, head)),
       ...deleted.slice(head, deleted.length - tail),
@@ -329,7 +422,7 @@ function widenToWords(units: Unit[]): Unit[] {
     }
   }
   const expanded = units.flatMap((unit): Unit[] => split.has(unit)
-    ? [{ kind: 'newDel', ch: unit.ch, touched: true }, { kind: 'newIns', ch: unit.ch, touched: true }]
+    ? [{ kind: 'newDel', ch: unit.ch, touched: true, ...withFormat(unit.format) }, { kind: 'newIns', ch: unit.ch, touched: true, ...withFormat(lookOnly(unit.format)) }]
     : [unit]);
   const ordered: Unit[] = [];
   let last = 0;
@@ -370,7 +463,7 @@ function cancelTypedBack(units: Unit[]): Unit[] {
     const deleted = run.filter((unit) => unit.kind === 'del' || unit.kind === 'newDel');
     const inserted = run.filter((unit) => unit.kind === 'ins' || unit.kind === 'newIns');
     if (deleted.length !== inserted.length || !deleted.every((unit, i) => sameChar(unit.ch, inserted[i]!.ch))) continue;
-    units.splice(start, end - start, ...deleted.map((unit): Unit => ({ kind: 'equal', ch: unit.ch })));
+    units.splice(start, end - start, ...deleted.map((unit): Unit => ({ kind: 'equal', ch: unit.ch, ...withFormat(unit.format) })));
   }
   return units;
 }
@@ -411,21 +504,28 @@ function toSegments(units: Unit[], unid: string, firstId: number): TextEditResul
     }
   }
 
+  return { segments: unitSegments(units), nextId, createdItemIds };
+}
+
+/** Units as segments: touching characters of the same kind, owner and format form one. */
+function unitSegments(units: readonly Unit[]): Segment[] {
   const segments: Segment[] = [];
   for (const unit of units) {
     const last = segments.at(-1);
+    // A deletion has no format of its own: it shows the Original's look.
+    const format = unit.kind === 'del' ? undefined : unit.format;
     if (unit.kind === 'object') {
       segments.push(unit.object!);
     } else if (unit.kind === 'equal') {
-      if (last?.kind === 'equal') last.text += unit.ch;
-      else segments.push({ kind: 'equal', text: unit.ch });
-    } else if (last?.kind === unit.kind && last.revisionId === unit.revisionId && last.itemId === unit.itemId) {
+      if (last?.kind === 'equal' && sameFormat(last.format, format)) last.text += unit.ch;
+      else segments.push({ kind: 'equal', text: unit.ch, ...withFormat(format) });
+    } else if (last?.kind === unit.kind && last.revisionId === unit.revisionId && last.itemId === unit.itemId && sameFormat(last.format, format)) {
       last.text += unit.ch;
     } else {
-      segments.push({ kind: unit.kind as 'del' | 'ins', text: unit.ch, itemId: unit.itemId!, revisionId: unit.revisionId! });
+      segments.push({ kind: unit.kind as 'del' | 'ins', text: unit.ch, itemId: unit.itemId!, revisionId: unit.revisionId!, ...withFormat(format) });
     }
   }
-  return { segments, nextId, createdItemIds };
+  return segments;
 }
 
 /** The block as the comparison produced it. */
@@ -438,17 +538,29 @@ function itemOf(segment: Segment): string | undefined {
   return segment.kind === 'object' ? segment.owner?.itemId : segment.kind === 'equal' ? undefined : segment.itemId;
 }
 
+/** The formatting change unchanged text belongs to through the reviewer's bold/italic. */
+function formatItemOf(segment: Segment): string | undefined {
+  return segment.kind === 'equal' ? segment.format?.itemId : undefined;
+}
+
+const lookText = (format: SegmentFormat | undefined) => `${format?.bold ?? ''}/${format?.italic ?? ''}`;
+
 /** Each item's segments, in order, as comparable strings. */
 function itemPieces(segments: readonly Segment[]): Map<string, string[]> {
   const pieces = new Map<string, string[]>();
-  for (const segment of segments) {
-    const itemId = itemOf(segment);
-    if (itemId === undefined) continue;
-    const piece = segment.kind === 'object'
-      ? `object:${segment.owner!.change}:${segment.owner!.revisionId}:${segment.key}`
-      : `${segment.kind}:${(segment as ChangeSegment).revisionId}:${segment.text}`;
+  const add = (itemId: string, piece: string) => {
     if (!pieces.has(itemId)) pieces.set(itemId, []);
     pieces.get(itemId)!.push(piece);
+  };
+  for (const segment of segments) {
+    if (segment.kind === 'equal' && segment.format?.itemId !== undefined) {
+      add(segment.format.itemId, `format:${segment.format.revisionId}:${segment.text}:${lookText(segment.format)}`);
+    }
+    const itemId = itemOf(segment);
+    if (itemId === undefined) continue;
+    add(itemId, segment.kind === 'object'
+      ? `object:${segment.owner!.change}:${segment.owner!.revisionId}:${segment.key}`
+      : `${segment.kind}:${(segment as ChangeSegment).revisionId}:${segment.text}:${lookText(segment.format)}`);
   }
   return pieces;
 }
@@ -456,7 +568,8 @@ function itemPieces(segments: readonly Segment[]): Map<string, string[]> {
 /**
  * The items of the block that can be reverted on their own (`revertChange`): those the edits
  * created, and those of the comparison whose segments the edits changed (e.g. a typo fixed inside
- * an insertion). An item the edits removed completely has no segment left: it isn't one of them.
+ * an insertion, a word of it made bold, unchanged text of a formatting change made italic). An
+ * item the edits removed completely has no segment left: it isn't one of them.
  */
 export function revertableItems(edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>): Set<string> {
   const before = itemPieces(edit.original);
@@ -473,11 +586,11 @@ function mergeSegments(segments: readonly Segment[]): Segment[] {
   const merged: Segment[] = [];
   for (const segment of segments) {
     const last = merged.at(-1);
-    if (segment.kind === 'equal' && last?.kind === 'equal') {
-      merged[merged.length - 1] = { kind: 'equal', text: last.text + segment.text };
+    if (segment.kind === 'equal' && last?.kind === 'equal' && sameFormat(last.format, segment.format)) {
+      merged[merged.length - 1] = { ...last, text: last.text + segment.text };
     } else if (
       (segment.kind === 'del' || segment.kind === 'ins') && last?.kind === segment.kind &&
-      last.itemId === segment.itemId && last.revisionId === segment.revisionId
+      last.itemId === segment.itemId && last.revisionId === segment.revisionId && sameFormat(last.format, segment.format)
     ) {
       merged[merged.length - 1] = { ...last, text: last.text + segment.text };
     } else if (segment.kind !== 'equal' || segment.text !== '') {
@@ -490,6 +603,7 @@ function mergeSegments(segments: readonly Segment[]): Segment[] {
 /**
  * The block's current segments with only one item's edit undone (one of `revertableItems`); the
  * rest of the block, other edits included, stays as it is:
+ * - a formatting change loses the reviewer's bold/italic: one an edit created goes;
  * - an item the edits created goes: its deleted text is unchanged text again (an edit only ever
  *   deletes unchanged text), its inserted text goes;
  * - an item of the comparison gets its inserted text (and inserted objects) from `original` back,
@@ -500,7 +614,9 @@ function mergeSegments(segments: readonly Segment[]): Segment[] {
 export function revertChange(edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>, itemId: string): Segment[] {
   const { current, original } = edit;
   let reverted: Segment[];
-  if (isEditIdOf(edit.unid, itemId)) {
+  if (current.some((segment) => formatItemOf(segment) === itemId)) {
+    reverted = current.map((segment): Segment => formatItemOf(segment) === itemId ? { kind: 'equal', text: (segment as EqualSegment).text } : segment);
+  } else if (isEditIdOf(edit.unid, itemId)) {
     reverted = current.flatMap((segment): Segment[] => {
       if (itemOf(segment) !== itemId) return [segment];
       return segment.kind === 'del' ? [{ kind: 'equal', text: segment.text }] : [];
@@ -549,6 +665,44 @@ export function revisionTexts(segments: readonly Segment[]): Map<string, Revisio
   return texts;
 }
 
+export interface FormatRevision {
+  itemId: string;
+  /** The text it covers. */
+  text: string;
+  /** What changed, e.g. "Bold added", as the engine's formatting changes describe it. */
+  description: string;
+}
+
+/** Each formatting revision the reviewer's bold/italic gives unchanged text, in order of appearance. */
+export function formatRevisions(segments: readonly Segment[]): Map<string, FormatRevision> {
+  const found = new Map<string, FormatRevision & { phrases: Set<string> }>();
+  for (const segment of segments) {
+    const format = segment.kind === 'equal' ? segment.format : undefined;
+    if (!format?.revisionId) continue;
+    let entry = found.get(format.revisionId);
+    if (!entry) {
+      entry = { itemId: format.itemId ?? format.revisionId, text: '', description: '', phrases: new Set() };
+      found.set(format.revisionId, entry);
+    }
+    entry.text += (segment as EqualSegment).text;
+    if (format.bold !== undefined) entry.phrases.add(format.bold ? 'Bold added' : 'Bold removed');
+    if (format.italic !== undefined) entry.phrases.add(format.italic ? 'Italic added' : 'Italic removed');
+  }
+  const order = ['Bold added', 'Bold removed', 'Italic added', 'Italic removed'];
+  return new Map([...found].map(([id, { phrases, ...entry }]) => [id, { ...entry, description: order.filter((phrase) => phrases.has(phrase)).join(', ') }]));
+}
+
+/**
+ * The ids of the block's items that its segments decide: insertions, deletions, and the formatting
+ * changes edits created (the comparison's formatting changes stay as they are, whatever bold/italic
+ * the reviewer gives their text).
+ */
+export function blockItemIds(edit: Pick<BlockEdit, 'unid' | 'current'>): Set<string> {
+  const ids = new Set([...revisionTexts(edit.current).values()].map(({ itemId }) => itemId));
+  for (const { itemId } of formatRevisions(edit.current).values()) if (isEditIdOf(edit.unid, itemId)) ids.add(itemId);
+  return ids;
+}
+
 /**
  * Revision list entries for the revisions edits created in the block, as the engine lists its own
  * (without `constituentKeys`: the export's patch gives them, `src/engine/applyEdits.ts`).
@@ -556,30 +710,38 @@ export function revisionTexts(segments: readonly Segment[]): Map<string, Revisio
 export function editRevisions(edit: Pick<BlockEdit, 'unid' | 'scope' | 'current'>): RevisionListEntry[] {
   // Kind `p` for headings too: the model reads only an anchor's `unid` (`src/model/changes.ts`).
   const anchor = { id: `p:${edit.scope}:${edit.unid}`, kind: 'p', scope: edit.scope, unid: edit.unid };
-  return [...revisionTexts(edit.current)]
-    .filter(([revisionId]) => isEditIdOf(edit.unid, revisionId))
-    .map(([id, { type, text }]) => ({
-      id,
-      type,
-      family: type === 'insert' ? 'content_insert' : 'content_delete',
-      constituentKeys: [],
-      text,
-      partUri: PART_OF_SCOPE[edit.scope],
-      scope: edit.scope,
-      anchorId: anchor.id,
-      affectedAnchors: [anchor],
-      resolutionStatus: 'supported',
-    }));
+  const entry = (id: string, type: RevisionListEntry['type'], family: string, text: string): RevisionListEntry => ({
+    id,
+    type,
+    family,
+    constituentKeys: [],
+    text,
+    partUri: PART_OF_SCOPE[edit.scope],
+    scope: edit.scope,
+    anchorId: anchor.id,
+    affectedAnchors: [anchor],
+    resolutionStatus: 'supported',
+  });
+  return [
+    ...[...revisionTexts(edit.current)]
+      .filter(([revisionId]) => isEditIdOf(edit.unid, revisionId))
+      .map(([id, { type, text }]) => entry(id, type, type === 'insert' ? 'content_insert' : 'content_delete', text)),
+    ...[...formatRevisions(edit.current)]
+      .filter(([revisionId]) => isEditIdOf(edit.unid, revisionId))
+      .map(([id, { text }]) => entry(id, 'format', 'properties_change', text)),
+  ];
 }
 
-export type BlockItem = Pick<ChangeItem, 'id' | 'kind' | 'revisionIds' | 'removedText' | 'addedText' | 'wordDelta'>;
+export type BlockItem = Pick<ChangeItem, 'id' | 'kind' | 'revisionIds' | 'removedText' | 'addedText' | 'wordDelta'> &
+  Partial<Pick<ChangeItem, 'text' | 'description'>>;
 
 /**
  * The items of an edited block, in order of appearance, as the parts of a `ChangeItem` its
- * segments decide. An existing item (in `context.items`) keeps its id and the order of its
+ * segments decide (`blockItemIds`). An existing item (in `context.items`) keeps its id and the order of its
  * revisions; it loses the revisions the edits removed, and keeps those outside the block (a note's,
  * for an item that inserts a note reference), whose text comes from `context.revisions`. A
  * revision the edits left as it was keeps the engine's text from there too. Kinds are recomputed.
+ * A formatting change an edit created is a `formatting` item with its text and description.
  */
 export function blockItems(
   edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>,
@@ -587,14 +749,18 @@ export function blockItems(
 ): BlockItem[] {
   const current = revisionTexts(edit.current);
   const original = revisionTexts(edit.original);
-  const order: string[] = [];
   const own = new Map<string, string[]>();
   for (const [revisionId, { itemId }] of current) {
-    if (!own.has(itemId)) {
-      order.push(itemId);
-      own.set(itemId, []);
-    }
+    if (!own.has(itemId)) own.set(itemId, []);
     own.get(itemId)!.push(revisionId);
+  }
+  const formats = new Map([...formatRevisions(edit.current)].filter(([revisionId]) => isEditIdOf(edit.unid, revisionId)));
+  const formatItems = new Map([...formats].map(([revisionId, format]) => [format.itemId, { revisionId, ...format }]));
+  const order: string[] = [];
+  for (const segment of edit.current) {
+    for (const id of [formatItemOf(segment), itemOf(segment)]) {
+      if (id !== undefined && (own.has(id) || formatItems.has(id)) && !order.includes(id)) order.push(id);
+    }
   }
 
   const textOf = (revisionId: string): RevisionText | undefined => {
@@ -603,7 +769,20 @@ export function blockItems(
     if (!now) return engine;
     return engine && original.get(revisionId)?.text === now.text ? engine : now;
   };
-  return order.map((id) => {
+  return order.map((id): BlockItem => {
+    const format = formatItems.get(id);
+    if (format) {
+      return {
+        id,
+        kind: 'formatting',
+        revisionIds: [format.revisionId],
+        removedText: '',
+        addedText: '',
+        text: format.text,
+        description: format.description,
+        wordDelta: { removed: 0, added: 0 },
+      };
+    }
     const existing = context?.items.get(id);
     const revisionIds = existing
       ? existing.revisionIds.filter((r) => current.has(r) || (!original.has(r) && !isEditIdOf(edit.unid, r)))
@@ -638,6 +817,8 @@ export interface AlignUnit {
   ch: string;
   side: 'equal' | 'del' | 'ins';
   revisionId?: string;
+  /** The reviewer's bold/italic (segment units only). */
+  format?: SegmentFormat;
 }
 
 /** An Original-side character in both, or an inserted one only in the old block (removed), only in the new segments (typed), or in both. */
@@ -693,7 +874,7 @@ export function segmentUnits(segments: readonly Segment[]): AlignUnit[] {
       units.push({ object: true, ch: '', side: segment.owner?.change ?? 'equal', revisionId: segment.owner?.revisionId });
     } else {
       const revisionId = segment.kind === 'equal' ? undefined : segment.revisionId;
-      for (const ch of Array.from(segment.text)) units.push({ object: false, ch, side: segment.kind, revisionId });
+      for (const ch of Array.from(segment.text)) units.push({ object: false, ch, side: segment.kind, revisionId, ...withFormat(segment.format) });
     }
   }
   return units;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeItem } from './changes';
 import {
+  applyFormat,
   applyTextEdit,
+  blockItemIds,
   blockItems,
   editId,
   editSpan,
@@ -12,7 +14,9 @@ import {
   revertableItems,
   visibleText,
   type BlockEdit,
+  type CharacterLook,
   type Segment,
+  type SegmentFormat,
 } from './paragraphEdit';
 
 const UNID = 'b';
@@ -403,5 +407,90 @@ describe('blockItems', () => {
       { id: 'eb.0', kind: 'deleted', revisionIds: ['eb.0'], removedText: 'hosue', addedText: '', wordDelta: { removed: 1, added: 0 } },
     ]);
     expect(editId(UNID, 1)).toBe('eb.1');
+  });
+});
+
+describe('applyFormat', () => {
+  const plain: CharacterLook = { bold: false, italic: false };
+  /** `show` with each format after its text: `{b+i-:item}` (bold set, italic removed). */
+  function looks(segments: readonly Segment[]): string {
+    const flags = (format: SegmentFormat) =>
+      `${format.bold === undefined ? '' : format.bold ? 'b+' : 'b-'}${format.italic === undefined ? '' : format.italic ? 'i+' : 'i-'}${format.itemId ? `:${format.itemId}` : ''}`;
+    return segments.map((segment) => {
+      const text = show([segment]);
+      return segment.kind !== 'object' && segment.format ? `${text}{${flags(segment.format)}}` : text;
+    }).join('');
+  }
+  function format(segments: readonly Segment[], start: number, end: number, property: 'bold' | 'italic', value: boolean, nextId = 0, look: (i: number) => CharacterLook = () => plain) {
+    return applyFormat(segments, { start, end }, property, value, Array.from({ length: end - start }, (_, i) => look(start + i)), { unid: UNID, nextId });
+  }
+
+  it('gives unchanged text a new formatting change, one per action, and keeps the segments apart', () => {
+    const result = format([eq('the red house')], 4, 7, 'bold', true);
+    expect(looks(result.segments)).toBe('the red{b+:eb.0} house');
+    expect(result).toMatchObject({ nextId: 1, createdItemIds: ['eb.0'] });
+    const block = { unid: UNID, original: [eq('the red house')], current: result.segments };
+    expect(blockItems(block)).toEqual([
+      { id: 'eb.0', kind: 'formatting', revisionIds: ['eb.0'], removedText: '', addedText: '', text: 'red', description: 'Bold added', wordDelta: { removed: 0, added: 0 } },
+    ]);
+    expect([...blockItemIds(block)]).toEqual(['eb.0']);
+  });
+
+  it('removes the setting where the value is the text’s own look, and a change left without text', () => {
+    const bold = format([eq('the red house')], 4, 7, 'bold', true).segments;
+    const back = format(bold, 4, 7, 'bold', false, 1);
+    expect(back.segments).toEqual([eq('the red house')]);
+    expect(back.createdItemIds).toEqual([]);
+    const removed = format([eq('the red house')], 0, 3, 'bold', false, 0, (i) => ({ bold: i < 3, italic: false }));
+    expect(looks(removed.segments)).toBe('the{b-:eb.0} red house');
+    expect(blockItems({ unid: UNID, original: [eq('the red house')], current: removed.segments })[0]!.description).toBe('Bold removed');
+  });
+
+  it('joins text of a formatting change to that change: the comparison’s, or one an earlier action created', () => {
+    const change = { itemId: 'f', revisionId: 'f1' };
+    const result = format([eq('the red house')], 4, 13, 'italic', true, 0, (i) => (i < 7 ? { ...plain, change } : plain));
+    expect(looks(result.segments)).toBe('the red{i+:f} house{i+:eb.0}');
+    const block = { unid: UNID, original: [eq('the red house')], current: result.segments };
+    // The comparison's formatting item stays as it was: only the new one is the block's.
+    expect(blockItems(block).map((item) => item.id)).toEqual(['eb.0']);
+    expect([...blockItemIds(block)]).toEqual(['eb.0']);
+    const again = format(result.segments, 8, 13, 'bold', true, result.nextId);
+    expect(looks(again.segments)).toBe('the red{i+:f} {i+:eb.0}house{b+i+:eb.0}');
+    expect(again.createdItemIds).toEqual([]);
+    expect(blockItems({ ...block, current: again.segments })[0]).toMatchObject({ text: ' house', description: 'Bold added, Italic added' });
+  });
+
+  it('changes only the look of inserted text, and leaves hidden deletions and objects alone', () => {
+    const original = [eq('a '), del('old ', 'x'), ins('new', 'y'), obj('fn:1'), eq(' b')];
+    const result = format(original, 0, 8, 'bold', true);
+    expect(looks(result.segments)).toBe('a {b+:eb.0}[-old :x-][+new:y+]{b+}<fn:1> b{b+:eb.0}');
+    const block = { unid: UNID, original, current: result.segments };
+    expect(blockItems(block).map((item) => [item.id, item.kind])).toEqual([['eb.0', 'formatting'], ['x', 'deleted'], ['y', 'inserted']]);
+  });
+
+  it('gives typed text the reviewer’s look of the text it replaces or follows', () => {
+    const bold = format([eq('the red house')], 4, 7, 'bold', true);
+    const typed = edit(bold.segments, 'the reddish house', bold.nextId, 11);
+    expect(looks(typed.segments)).toBe('the [-red:eb.1-][+reddish:eb.1/eb.2+]{b+} house');
+    const replaced = edit(bold.segments, 'the big house', bold.nextId, 7);
+    expect(looks(replaced.segments)).toBe('the [-red:eb.1-][+big:eb.1/eb.2+]{b+} house');
+    const inside = format([eq('a '), ins('big', 'x'), eq(' b')], 2, 5, 'italic', true);
+    expect(looks(edit(inside.segments, 'a bigger b', 0, 8).segments)).toBe('a [+bigger:x+]{i+} b');
+  });
+
+  it('is undone by revertChange, for every kind of change, and by a revert of the block', () => {
+    const change = { itemId: 'f', revisionId: 'f1' };
+    const original = [eq('the '), ins('big', 'x'), eq(' red house')];
+    const looksOf = (i: number) => (i >= 12 ? { ...plain, change } : plain);
+    const current = format(original, 0, 17, 'bold', true, 0, looksOf).segments;
+    expect(looks(current)).toBe('the {b+:eb.0}[+big:x+]{b+} red {b+:eb.0}house{b+:f}');
+    const block = { unid: UNID, original, current };
+    expect([...revertableItems(block)]).toEqual(['eb.0', 'x', 'f']);
+    expect(looks(revertChange(block, 'eb.0'))).toBe('the [+big:x+]{b+} red house{b+:f}');
+    expect(looks(revertChange(block, 'x'))).toBe('the {b+:eb.0}[+big:x+] red {b+:eb.0}house{b+:f}');
+    expect(looks(revertChange(block, 'f'))).toBe('the {b+:eb.0}[+big:x+]{b+} red {b+:eb.0}house');
+    let reverted = current;
+    for (const itemId of revertableItems(block)) reverted = revertChange({ ...block, current: reverted }, itemId);
+    expect(reverted).toBe(original);
   });
 });

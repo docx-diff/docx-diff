@@ -1,7 +1,7 @@
 import { strFromU8, strToU8 } from 'fflate';
 import type { Element } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
-import type { Segment } from '../model/paragraphEdit';
+import type { Segment, SegmentFormat } from '../model/paragraphEdit';
 import { OBJECT_CHAR } from '../model/paragraphEdit';
 import { EditPatchError, applyEdits, unpatchableContent } from './applyEdits';
 import { paragraphUnids } from './blockKey';
@@ -354,5 +354,62 @@ describe('applyEdits keeps other paragraph content in place', () => {
     const parts = files('<w:p><w:r><w:t>Kept</w:t></w:r></w:p>');
     const unid = await unidOf(parts);
     await expect(applyEdits(parts, [], [{ unid, scope: 'body', segments: [eq('Kept'), ins('!', 'n1')] }])).rejects.toThrow(/no entry/);
+  });
+});
+
+describe('applyEdits with the reviewer’s bold and italic', () => {
+  const look = (text: string, format: SegmentFormat): Segment => ({ kind: 'equal', text, format });
+  const change = (id: number) => `kind=PropsChange:${W_NS}:rPrChange:${id}`;
+
+  it('gives unchanged text of a new formatting change w:b and w:bCs in schema order, and its old properties in a new w:rPrChange', async () => {
+    const paragraph = '<w:p><w:r><w:rPr><w:rFonts w:ascii="A"/><w:sz w:val="24"/></w:rPr><w:t>Kept text here</w:t></w:r></w:p>';
+    const { parts, revisions } = await patch(paragraph, [revision('f1', 'format', [])], () => [
+      eq('Kept '),
+      look('text', { bold: true, itemId: 'f1', revisionId: 'f1' }),
+      eq(' here'),
+    ]);
+    expect(bodyXml(parts)).toBe(
+      '<w:p><w:r><w:rPr><w:rFonts w:ascii="A"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">Kept </w:t></w:r>' +
+        '<w:r><w:rPr><w:rFonts w:ascii="A"/><w:b/><w:bCs/><w:sz w:val="24"/>' +
+        '<w:rPrChange w:id="1" w:author="Docxodus"><w:rPr><w:rFonts w:ascii="A"/><w:sz w:val="24"/></w:rPr></w:rPrChange></w:rPr><w:t xml:space="preserve">text</w:t></w:r>' +
+        '<w:r><w:rPr><w:rFonts w:ascii="A"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve"> here</w:t></w:r></w:p>',
+    );
+    expect(revisions).toEqual([revision('f1', 'format', [change(1)])]);
+    const rejected = unzipDocx(rejectRevisions(zipDocx(parts), revisions, new Set(['f1'])));
+    expect(strFromU8(rejected[DOCUMENT]!)).not.toContain('<w:b/>');
+  });
+
+  it('removes bold that may come from the style with w:val="0"', async () => {
+    const paragraph = '<w:p><w:r><w:rPr><w:b/><w:i/></w:rPr><w:t>Bold</w:t></w:r></w:p>';
+    const { parts } = await patch(paragraph, [revision('f1', 'format', [])], () => [look('Bold', { bold: false, itemId: 'f1', revisionId: 'f1' })]);
+    expect(bodyXml(parts)).toContain('<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/><w:i/><w:rPrChange w:id="1" w:author="Docxodus"><w:rPr><w:b/><w:i/></w:rPr></w:rPrChange></w:rPr>');
+  });
+
+  it('keeps the one w:rPrChange of text that has the comparison’s formatting change, and changes only its properties', async () => {
+    const paragraph = `<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id="5" ${AUTHOR}><w:rPr/></w:rPrChange></w:rPr><w:t>bold words</w:t></w:r></w:p>`;
+    const format = revision('F', 'format', [change(5)]);
+    const { parts, revisions } = await patch(paragraph, [format], () => [eq('bold '), look('words', { italic: true, itemId: 'F', revisionId: 'F' })]);
+    const xml = bodyXml(parts);
+    expect(xml.match(/<w:rPrChange/g)).toHaveLength(2);
+    expect(xml).toMatch(/<w:rPr><w:b\/><w:i\/><w:iCs\/><w:rPrChange w:id="\d+" [^>]*><w:rPr\/><\/w:rPrChange><\/w:rPr><w:t xml:space="preserve">words<\/w:t>/);
+    expect(revisions[0]!.constituentKeys).toHaveLength(2);
+    const rejected = strFromU8(unzipDocx(rejectRevisions(zipDocx(parts), revisions, new Set(['F'])))[DOCUMENT]!);
+    expect(rejected).not.toMatch(/<w:[bi]\/>/);
+  });
+
+  it('changes the properties of inserted text without a formatting change, typed text included', async () => {
+    const paragraph = `<w:p><w:r><w:t xml:space="preserve">A </w:t></w:r><w:ins w:id="3" ${AUTHOR}><w:r><w:t>big</w:t></w:r></w:ins></w:p>`;
+    const inserted = revision('I', 'insert', [content('ins', 3)]);
+    const { parts, revisions } = await patch(paragraph, [inserted, revision('n1', 'insert', [])], () => [
+      eq('A '),
+      { kind: 'ins', text: 'big', itemId: 'I', revisionId: 'I', format: { italic: true } },
+      { kind: 'ins', text: ' red', itemId: 'n1', revisionId: 'n1', format: { italic: true } },
+    ]);
+    const xml = bodyXml(parts);
+    expect(xml).not.toContain('rPrChange');
+    expect(xml).toMatch(/<w:ins w:id="3" [^>]*><w:r><w:rPr><w:i\/><w:iCs\/><\/w:rPr><w:t xml:space="preserve">big<\/w:t><\/w:r><\/w:ins>/);
+    expect(xml).toMatch(/<w:ins w:id="\d+" [^>]*><w:r><w:rPr><w:i\/><w:iCs\/><\/w:rPr><w:t xml:space="preserve"> red<\/w:t><\/w:r><\/w:ins>/);
+    expect([text(parts, 'accepted'), text(parts, 'rejected')]).toEqual(['A big red', 'A ']);
+    expect(revisions.map((entry) => entry.constituentKeys.length)).toEqual([1, 1]);
   });
 });

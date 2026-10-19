@@ -80,6 +80,37 @@ describe('EditSession', () => {
     expect(block(session, 'q').outerHTML).toBe(originalMarkup);
   });
 
+  it('makes bold on unchanged text a formatting item, shown, saved, revertable and replayed', () => {
+    const plain = { bold: false, italic: false };
+    const fresh = comparison();
+    const originalMarkup = fresh.document.body.querySelector('[data-anchor="q"]')!.outerHTML;
+    const session = new EditSession(fresh);
+    // "The house stood." — "The" and "stood" bold; "house" is the comparison's insertion.
+    const update = session.format('q', { start: 0, end: 16 }, 'bold', true, Array(16).fill(plain))!;
+    expect(update).toMatchObject({ addedItemIds: ['eq.1'], createdItemIds: ['eq.1'], removedItemIds: [] });
+    expect(session.items.find((item) => item.id === 'eq.1')).toMatchObject({
+      kind: 'formatting', revisionIds: ['eq.1'], text: 'The  stood.', description: 'Bold added', anchors: ['q'],
+    });
+    expect([...block(session, 'q').querySelectorAll('.edit-bold')].map((span) => [span.textContent, span.getAttribute('data-change-id')])).toEqual([
+      ['The ', 'eq.1'],
+      ['hosue', null],
+      [' stood.', 'eq.1'],
+    ]);
+    expect(session.revisions().at(-1)).toMatchObject({ id: 'eq.1', type: 'format', family: 'properties_change', text: 'The  stood.' });
+    expect(savedItemIds(session.savedEdits())).toEqual(new Set(['r3', 'eq.1']));
+    expect([...session.revertableItems('q')]).toEqual(['eq.1', 'r3']);
+
+    const replay = new EditSession(comparison());
+    expect(replay.restore(session.savedEdits()).updates).toHaveLength(1);
+    expect(replay.items).toEqual(session.items);
+
+    expect(session.revertChange('q', 'eq.1')).toMatchObject({ removedItemIds: ['eq.1'] });
+    expect(session.revertChange('q', 'r3')).not.toBeNull();
+    expect(session.isEdited('q')).toBe(false);
+    expect(block(session, 'q').outerHTML).toBe(originalMarkup);
+    expect(session.items).toEqual(fresh.analysis.items);
+  });
+
   it('restores saved edits with the same items and ids, none of them created, and skips records that don’t match', () => {
     const live = new EditSession(comparison());
     live.update('p', 'the big blue house', 'the big blue'.length);

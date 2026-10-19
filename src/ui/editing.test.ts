@@ -72,6 +72,7 @@ describe('PanelEditing', () => {
       reasonOf: (unid) => reasons[unid],
       textOf: (unid) => ({ a: `Kept new text${OBJECT_CHAR}`, c: 'Cell' })[unid] ?? '',
       onEdit: vi.fn<EditingOptions['onEdit']>(() => 'updated'),
+      onFormat: vi.fn<EditingOptions['onFormat']>(),
       onMessage: vi.fn<EditingOptions['onMessage']>(),
     };
     editing = new PanelEditing(root, wrapper, () => options, block);
@@ -138,6 +139,18 @@ describe('PanelEditing', () => {
     key(block('c'), { key: 'Z', metaKey: true });
     expect(options.onMessage.mock.calls).toEqual([[EDIT_MESSAGES.noUndo]]);
     expect(EDIT_MESSAGES.noUndo).toBe('Undo isn’t available here: use ↺ to revert your edits.');
+  });
+
+  it('takes Ctrl+B / Ctrl+I in an editable paragraph from the browser, and does nothing without a selection', () => {
+    // The selected-text path needs a selection inside the shadow root (e2e/editing.spec.ts).
+    const key = (target: Element, init: KeyboardEventInit) => fire(target, new KeyboardEvent('keydown', { bubbles: true, composed: true, cancelable: true, ...init }));
+    expect(key(block('a'), { key: 'b', ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(key(block('c'), { key: 'I', metaKey: true }).defaultPrevented).toBe(true);
+    expect(editing.format('italic')).toBe(false);
+    expect(options.onFormat).not.toHaveBeenCalled();
+    expect(options.onMessage).not.toHaveBeenCalled();
+    // Not in a paragraph that can't be edited.
+    expect(key(block('b'), { key: 'b', ctrlKey: true }).defaultPrevented).toBe(false);
   });
 
   it('says why a clicked paragraph can’t be edited', () => {

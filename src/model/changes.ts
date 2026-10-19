@@ -263,12 +263,15 @@ export function replaceBlockItems(
     if (!existing) {
       return { ...part, location: locate('body', [unid], index), order: 0, anchors: [unid] };
     }
-    const same = existing.removedText === part.removedText && existing.addedText === part.addedText && existing.revisionIds.join(' ') === part.revisionIds.join(' ');
+    const same = existing.removedText === part.removedText && existing.addedText === part.addedText && existing.revisionIds.join(' ') === part.revisionIds.join(' ') &&
+      existing.text === (part.text ?? existing.text) && existing.description === (part.description ?? existing.description);
     if (same) return existing;
     const changed: ChangeItem = { ...existing, ...part };
-    // A relabelled formatting item is a text change again (the caller may relabel it anew).
-    delete changed.text;
-    delete changed.description;
+    if (part.kind !== 'formatting') {
+      // A relabelled formatting item is a text change again (the caller may relabel it anew).
+      delete changed.text;
+      delete changed.description;
+    }
     return changed;
   });
 

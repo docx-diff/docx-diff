@@ -4,8 +4,8 @@
 // replaces the block (in every panel) with the markup rendered from the edit model. Where the
 // browser put the typed characters doesn't matter: only the text does.
 import { NOT_TEXT } from '../model/docIndex';
-import { OBJECT_CHAR, editSpan, visibleText } from '../model/paragraphEdit';
-import { UNEDITABLE_MESSAGES, readBlockSegments, visibleOffset, visiblePoint, type UneditableReason } from './blockSegments';
+import { OBJECT_CHAR, editSpan, visibleText, type CharacterLook, type FormatProperty } from '../model/paragraphEdit';
+import { UNEDITABLE_MESSAGES, readBlockSegments, visibleLooks, visibleOffset, visiblePoint, type UneditableReason } from './blockSegments';
 import { PARAGRAPH_BLOCK } from './renderedDocument';
 
 /** How an update went: the panel's block has been replaced in each case. */
@@ -18,6 +18,11 @@ export interface EditingOptions {
   textOf: (unid: string) => string;
   /** Applies the block's new visible text (`caret`: the cursor's offset in it) and replaces the panel's block. */
   onEdit: (unid: string, text: string, caret: number | undefined) => EditOutcome;
+  /**
+   * Sets bold or italic on the visible characters `start`…`end` of the block (`looks`: theirs
+   * without the reviewer's settings) and replaces the panel's block.
+   */
+  onFormat: (unid: string, range: { start: number; end: number }, property: FormatProperty, value: boolean, looks: (CharacterLook | undefined)[]) => void;
   /** Shows a short message (a blocked action). */
   onMessage: (message: string) => void;
   /** The editable block the cursor moved into (it stays the last one when the panel loses the focus). */
@@ -33,6 +38,7 @@ export const EDIT_MESSAGES = {
   crossBlock: `${SIMPLE} Edits must stay within one paragraph.`,
   object: 'Footnote references and other objects can’t be deleted here.',
   noUndo: 'Undo isn’t available here: use ↺ to revert your edits.',
+  noSelection: 'Select text within one paragraph first.',
 } as const;
 
 /** The update runs this long after the last input in a block. */
@@ -274,6 +280,53 @@ export class PanelEditing {
     selectInBlock(block, cursor.selection);
   }
 
+  /**
+   * Bold or italic for the selected text of an editable block (the current selection, else the
+   * one the cursor last had there): removed when all of its visible text has it, else set
+   * (PRD-33). `false` when no text is selected.
+   */
+  format(property: FormatProperty): boolean {
+    this.flush();
+    const target = this.selectedText();
+    if (!target) return false;
+    const { unid, selection } = target;
+    const block = this.findBlock(unid)!;
+    const start = Math.min(selection.start, selection.end);
+    const end = Math.max(selection.start, selection.end);
+    const looks = visibleLooks(block, start, end);
+    const characters = looks.filter((look) => look !== undefined);
+    if (characters.length === 0) return false;
+    const value = !characters.every((look) => look.shown[property]);
+    this.updating = true;
+    try {
+      this.options().onFormat(unid, { start, end }, property, value, looks.map((look) => look?.look));
+    } finally {
+      this.updating = false;
+    }
+    const replaced = this.findBlock(unid);
+    if (replaced) {
+      replaced.focus({ preventScroll: true });
+      selectInBlock(replaced, selection);
+      this.cursor = { unid, selection };
+    }
+    return true;
+  }
+
+  /** The selected text in an editable block: the current selection, else the cursor's last one. */
+  private selectedText(): { unid: string; selection: TextSelection } | null {
+    const points = selectionPoints(this.root);
+    const node = points?.startContainer;
+    const element = node instanceof Element ? node : node?.parentElement;
+    const block = element?.closest<HTMLElement>(PARAGRAPH_BLOCK);
+    if (block && this.wrapper.contains(block) && block.getAttribute('contenteditable') === 'true') {
+      const selection = blockSelection(this.root, block);
+      if (selection && selection.start !== selection.end) return { unid: block.dataset.anchor!, selection };
+    }
+    const cursor = this.cursor;
+    if (!cursor || cursor.selection.start === cursor.selection.end) return null;
+    return this.findBlock(cursor.unid)?.getAttribute('contenteditable') === 'true' ? cursor : null;
+  }
+
   private schedule(): void {
     clearTimeout(this.timer);
     this.timer = window.setTimeout(() => this.flush(), UPDATE_DELAY_MS);
@@ -368,6 +421,14 @@ export class PanelEditing {
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.isComposing) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && (key === 'b' || key === 'i')) {
+      if (!this.blockOf(event)) return;
+      // The browser's own bold/italic would change the markup; without a selection, nothing happens.
+      event.preventDefault();
+      this.format(key === 'b' ? 'bold' : 'italic');
+      return;
+    }
     // The browser's undo is cancelled (`onBeforeInput`): it doesn't know about the updates.
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'z') {
       if (this.toldNoUndo || !this.blockOf(event)) return;

@@ -82,14 +82,24 @@ function isStoredReview(value: unknown): value is StoredReview {
 const isString = (value: unknown): value is string => typeof value === 'string';
 const SCOPES: readonly unknown[] = ['body', 'fn', 'en'] satisfies BlockScope[];
 
+/** The reviewer's bold/italic of a segment: absent in records written before it existed. */
+function isFormat(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isObject(value)) return false;
+  const isFlag = (flag: unknown) => flag === undefined || typeof flag === 'boolean';
+  const isId = (id: unknown) => id === undefined || isString(id);
+  return isFlag(value.bold) && isFlag(value.italic) && isId(value.itemId) && isId(value.revisionId) && (value.itemId === undefined) === (value.revisionId === undefined);
+}
+
 function isSegment(value: unknown): value is Segment {
   if (!isObject(value)) return false;
   switch (value.kind) {
     case 'equal':
-      return isString(value.text);
+      return isString(value.text) && isFormat(value.format);
     case 'del':
+      return isString(value.text) && isString(value.itemId) && isString(value.revisionId) && value.format === undefined;
     case 'ins':
-      return isString(value.text) && isString(value.itemId) && isString(value.revisionId);
+      return isString(value.text) && isString(value.itemId) && isString(value.revisionId) && isFormat(value.format);
     case 'object': {
       const owner = value.owner;
       return (
