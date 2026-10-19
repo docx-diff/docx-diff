@@ -7,9 +7,10 @@ export function EditingHelp() {
     <ul className="editing-help">
       <li>
         <strong>Editable</strong>, in the Edited panel’s header, lets you edit the Edited text one paragraph at a time: type, delete, replace or
-        paste plain text. Paragraph breaks can’t be added or removed. Moved text, the text after the comparison range and some content, such as
-        fields, can’t be edited.
+        paste plain text.
       </li>
+      <li>Paragraph breaks can’t be added or removed.</li>
+      <li>Moved text, the text after the comparison range and some content, such as fields, can’t be edited.</li>
       <li>Your edits become changes like the editor’s: a new change starts accepted, and an edit inside a change keeps its decision.</li>
       <li>
         <strong>B</strong> and <strong>I</strong> (Ctrl+B, Ctrl+I) make the selected text bold or italic, or plain again. They are formatting

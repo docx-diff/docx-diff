@@ -13,7 +13,7 @@ interface Props {
   threeColumns: boolean;
 }
 
-/** Help button with a popover listing the keyboard shortcuts and the legend (FR-34). */
+/** Help button with a popover listing the keyboard shortcuts, the legend (FR-34) and the editing notes. */
 export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
@@ -50,8 +50,6 @@ export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
               </div>
             ))}
           </dl>
-          <h2>Editing</h2>
-          <EditingHelp />
           <h2>Colours</h2>
           <Legend threeColumns={threeColumns} />
           <p className="help__note">
@@ -59,6 +57,8 @@ export function HelpPopover({ open, onOpenChange, threeColumns }: Props) {
             changes are dimmed with ✓, rejected ones with ✗.
             {threeColumns && ' The Resolved column shows the result: decided changes on yellow with ✓ or ✗, undecided ones dotted.'}
           </p>
+          <h2>Editing</h2>
+          <EditingHelp />
         </div>
       )}
     </div>
