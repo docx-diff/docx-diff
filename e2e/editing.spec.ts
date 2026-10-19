@@ -353,6 +353,179 @@ test.describe('two columns', () => {
   });
 });
 
+test.describe('revert and guards', () => {
+  test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
+
+  const dialog = (page: Page, name: string) => page.getByRole('dialog', { name });
+  const revertParagraph = (page: Page) => page.getByRole('button', { name: 'Revert my edits in this paragraph' });
+  const revertAll = (page: Page) => page.getByRole('button', { name: 'Revert all my edits' });
+
+  test('one change is reverted by its ↺ or its card, after a confirmation; the rest of the paragraph stays', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph here.']), minimalDocx(['The quick red fox.', 'Second paragraph here.']));
+    await startEditing(page);
+    await cursorAtEnd(page, 'Second paragraph');
+    await page.keyboard.type(' Really');
+    await expect(cards(page)).toHaveCount(2);
+    await selectWord(page, 'Second paragraph', 'paragraph');
+    await page.keyboard.type('line');
+    await expect(cards(page)).toHaveCount(3);
+    // No undo while typing: Ctrl+Z says what to use instead.
+    await page.keyboard.press('Control+z');
+    await expect(toast(page)).toHaveText('Undo isn’t available here: use ↺ to revert your edits.');
+
+    const right = page.getByTestId('panel-right');
+    await expect(right.locator('.edit-revert')).toHaveCount(2);
+    const icon = right.locator('ins:has-text("Really") + .edit-revert');
+    await expect(icon).toHaveAttribute('title', 'Revert my edit of this change');
+    await icon.click();
+    await expect(dialog(page, 'Revert your edit of this change?')).toContainText('This can’t be undone.');
+    await dialog(page, 'Revert your edit of this change?').getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards(page)).toHaveCount(3);
+    await icon.click();
+    await dialog(page, 'Revert your edit of this change?').getByRole('button', { name: 'Revert' }).click();
+    await expect(cards(page)).toHaveCount(2);
+    await expect.poll(() => shown(page, 'right', 'Second')).toBe('Second line here.');
+
+    // The comparison's own change has no Revert; the edit's card does, also with Editable off.
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect(cards(page).nth(0).getByRole('button', { name: 'Revert my edit of this change' })).toHaveCount(0);
+    await cards(page).nth(1).getByRole('button', { name: 'Revert my edit of this change' }).click();
+    await dialog(page, 'Revert your edit of this change?').getByRole('button', { name: 'Revert' }).click();
+    await expect(cards(page)).toHaveCount(1);
+    await expect(right.locator('.edit-revert')).toHaveCount(0);
+    expect(await shown(page, 'right', 'Second')).toBe('Second paragraph here.');
+    expect(await shown(page, 'left', 'Second')).toBe('Second paragraph here.');
+  });
+
+  test('↺ ¶ reverts the cursor’s paragraph (the current change’s with Editable off), ↺ all every edit', async ({ page }) => {
+    await openAndCompare(
+      page,
+      minimalDocx(['Alpha beta gamma.', 'Delta epsilon zeta.', 'Eta theta iota.']),
+      minimalDocx(['Alpha beta gamma.', 'Delta epsilon zeta.', 'Eta theta iota kappa.']),
+    );
+    await expect(revertParagraph(page)).toBeDisabled();
+    await expect(revertAll(page)).toBeDisabled();
+    await startEditing(page);
+    await cursorAtEnd(page, 'Alpha');
+    await page.keyboard.type(' one');
+    await expect(cards(page)).toHaveCount(2);
+    await cursorAtEnd(page, 'Delta');
+    await page.keyboard.type(' two');
+    await expect(cards(page)).toHaveCount(3);
+    await expect(revertParagraph(page)).toBeEnabled();
+
+    await revertParagraph(page).click();
+    const paragraphDialog = dialog(page, 'Revert your edits in this paragraph?');
+    await expect(paragraphDialog).toContainText('This can’t be undone.');
+    await paragraphDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards(page)).toHaveCount(3);
+    await revertParagraph(page).click();
+    await paragraphDialog.getByRole('button', { name: 'Revert' }).click();
+    await expect(cards(page)).toHaveCount(2);
+    await expect.poll(() => shown(page, 'right', 'Delta')).toBe('Delta epsilon zeta.');
+    expect(await shown(page, 'right', 'Alpha')).toBe('Alpha beta gamma. one');
+    // The cursor's paragraph has no edits left; another one has.
+    await expect(revertParagraph(page)).toBeDisabled();
+    await expect(revertAll(page)).toBeEnabled();
+
+    // Editable off: the current change's paragraph.
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect(revertParagraph(page)).toBeDisabled();
+    await cards(page).nth(0).click();
+    await expect(revertParagraph(page)).toBeEnabled();
+    await cards(page).nth(1).click();
+    await expect(revertParagraph(page)).toBeDisabled();
+    await cards(page).nth(0).click();
+    await revertParagraph(page).click();
+    await paragraphDialog.getByRole('button', { name: 'Revert' }).click();
+    await expect(cards(page)).toHaveCount(1);
+    await expect(revertParagraph(page)).toBeDisabled();
+    await expect(revertAll(page)).toBeDisabled();
+
+    // ↺ all, with the number of paragraphs.
+    await startEditing(page);
+    await cursorAtEnd(page, 'Alpha');
+    await page.keyboard.type(' one');
+    await cursorAtEnd(page, 'Delta');
+    await page.keyboard.type(' two');
+    await expect(cards(page)).toHaveCount(3);
+    await revertAll(page).click();
+    const allDialog = dialog(page, 'Revert your edits in 2 paragraphs?');
+    await allDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards(page)).toHaveCount(3);
+    await revertAll(page).click();
+    await allDialog.getByRole('button', { name: 'Revert all' }).click();
+    await expect(cards(page)).toHaveCount(1);
+    await expect(revertAll(page)).toBeDisabled();
+    expect(await shown(page, 'right', 'Alpha')).toBe('Alpha beta gamma.');
+    expect(await shown(page, 'right', 'Delta')).toBe('Delta epsilon zeta.');
+  });
+
+  test('Swap and opening another file ask first when there are edits; Swap discards them', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph.']), minimalDocx(['The quick red fox.', 'Second paragraph.']));
+    await startEditing(page);
+    await cursorAtEnd(page, 'Second paragraph.');
+    await page.keyboard.type(' More');
+    await expect(cards(page)).toHaveCount(2);
+    await page.getByRole('button', { name: 'Swap' }).click();
+    const swapDialog = dialog(page, 'Swap the documents?');
+    await expect(swapDialog).toContainText('Swapping discards your edits in 1 paragraph.');
+    await swapDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards(page)).toHaveCount(2);
+    expect(await shown(page, 'right', 'Second paragraph.')).toBe('Second paragraph. More');
+    // Opening another file with the toolbar's picker asks too.
+    await page.getByLabel('Original document').setInputFiles({ name: 'other.docx', mimeType: DOCX_TYPE, buffer: Buffer.from(minimalDocx(['Other.'])) });
+    const fileDialog = dialog(page, 'Open another file?');
+    await expect(fileDialog).toContainText('Opening another file discards your edits in 1 paragraph.');
+    await fileDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards(page)).toHaveCount(2);
+    await page.getByRole('button', { name: 'Swap' }).click();
+    await swapDialog.getByRole('button', { name: 'Swap' }).click();
+    await expect.poll(() => shown(page, 'right', 'The quick')).toBe('The quick brown fox.');
+    await expect(cards(page)).toHaveCount(1);
+    expect(await shown(page, 'right', 'Second paragraph.')).toBe('Second paragraph.');
+    await expect(revertAll(page)).toBeDisabled();
+  });
+
+  test('moving the end point over edited paragraphs asks first; the edits are kept either way', async ({ page }) => {
+    await openAndCompare(
+      page,
+      minimalDocx(['One two three.', 'Four five six.', 'Seven eight nine.', 'Ten eleven twelve.']),
+      minimalDocx(['One 2 three.', 'Four five six.', 'Seven eight nine.', 'Ten eleven twelve.']),
+    );
+    const control = page.getByTestId('range-control');
+    await startEditing(page);
+    await cursorAtEnd(page, 'Seven');
+    await page.keyboard.type(' ten');
+    await expect(cards(page)).toHaveCount(2);
+
+    await control.getByRole('button', { name: /Set an end point/ }).click();
+    await control.getByLabel(/Compare the Original up to paragraph/).fill('2');
+    await control.getByRole('button', { name: 'Apply' }).click();
+    const rangeDialog = dialog(page, 'Move the end point?');
+    await expect(rangeDialog).toContainText(
+      'Your edits in 1 paragraph will be outside the comparison range. Their changes won’t be offered for decision, and the export keeps the Original’s text there.',
+    );
+    await rangeDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(control).toContainText('Comparing the full documents.');
+    await expect(cards(page)).toHaveCount(2);
+
+    // Picking the paragraph in the left panel asks too.
+    await control.getByRole('button', { name: /Set an end point/ }).click();
+    await control.getByRole('button', { name: 'Pick in left panel' }).click();
+    await page.getByTestId('panel-left').getByText('Four').click();
+    await rangeDialog.getByRole('button', { name: 'Move the end point' }).click();
+    await expect(control).toContainText('Comparing the Original up to paragraph 2.');
+    await expect(cards(page)).toHaveCount(1);
+    expect(await shown(page, 'right', 'Seven')).toBe('Seven eight nine. ten');
+
+    // Back to the full documents (no edited paragraph left outside: no question): the change is offered again.
+    await control.getByRole('button', { name: 'Compare the full documents' }).click();
+    await expect(control).toContainText('Comparing the full documents.');
+    await expect(cards(page)).toHaveCount(2);
+  });
+});
+
 test.describe('three columns', () => {
   test.beforeEach(({ page }) => pinView(page, { ...TWO_COLUMNS, threeColumns: true }));
 

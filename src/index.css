@@ -915,6 +915,13 @@ body {
   display: block;
 }
 
+/* ↺ ¶ and ↺ all after the Editable toggle. */
+.revert-button {
+  flex: none;
+  margin-block: -0.25rem;
+  white-space: nowrap;
+}
+
 .document-panel--editing .document-panel__scroller {
   outline: 2px solid var(--accent-border);
   outline-offset: -2px;

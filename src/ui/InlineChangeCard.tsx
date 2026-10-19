@@ -21,6 +21,7 @@ interface Props {
   comment: string | undefined;
   onComment: (itemId: string, text: string | null) => void;
   onClose: () => void;
+  onRevert?: (itemId: string) => void;
 }
 
 /**

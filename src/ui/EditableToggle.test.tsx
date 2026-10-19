@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EditableToggle } from './EditableToggle';
+import { EditableToggle, RevertButtons } from './EditableToggle';
 import { Toast } from './Toast';
 
 describe('EditableToggle', () => {
@@ -17,6 +17,30 @@ describe('EditableToggle', () => {
     rerender(<EditableToggle editing onToggle={onToggle} />);
     expect(button.getAttribute('aria-pressed')).toBe('true');
     expect(button.title).toBe('Stop editing');
+  });
+});
+
+describe('RevertButtons', () => {
+  afterEach(cleanup);
+
+  it('reverts the paragraph or all edits, each disabled only when there is nothing to revert', () => {
+    const onRevertParagraph = vi.fn();
+    const onRevertAll = vi.fn();
+    const element = (paragraphEdited: boolean, anyEdits: boolean) => (
+      <RevertButtons paragraphEdited={paragraphEdited} anyEdits={anyEdits} onRevertParagraph={onRevertParagraph} onRevertAll={onRevertAll} />
+    );
+    const { getByRole, rerender } = render(element(false, false));
+    const paragraph = getByRole('button', { name: 'Revert my edits in this paragraph' }) as HTMLButtonElement;
+    const all = getByRole('button', { name: 'Revert all my edits' }) as HTMLButtonElement;
+    expect([paragraph.disabled, all.disabled]).toEqual([true, true]);
+    expect([paragraph.textContent, all.textContent]).toEqual(['↺ ¶', '↺ all']);
+    rerender(element(false, true));
+    expect([paragraph.disabled, all.disabled]).toEqual([true, false]);
+    rerender(element(true, true));
+    fireEvent.click(paragraph);
+    fireEvent.click(all);
+    expect(onRevertParagraph).toHaveBeenCalledOnce();
+    expect(onRevertAll).toHaveBeenCalledOnce();
   });
 });
 

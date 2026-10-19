@@ -360,6 +360,99 @@ export function revertBlock(edit: BlockEdit): Segment[] {
   return edit.original;
 }
 
+/** The item a segment belongs to, if it is a change or an inserted or deleted object. */
+function itemOf(segment: Segment): string | undefined {
+  return segment.kind === 'object' ? segment.owner?.itemId : segment.kind === 'equal' ? undefined : segment.itemId;
+}
+
+/** Each item's segments, in order, as comparable strings. */
+function itemPieces(segments: readonly Segment[]): Map<string, string[]> {
+  const pieces = new Map<string, string[]>();
+  for (const segment of segments) {
+    const itemId = itemOf(segment);
+    if (itemId === undefined) continue;
+    const piece = segment.kind === 'object'
+      ? `object:${segment.owner!.change}:${segment.owner!.revisionId}:${segment.key}`
+      : `${segment.kind}:${(segment as ChangeSegment).revisionId}:${segment.text}`;
+    if (!pieces.has(itemId)) pieces.set(itemId, []);
+    pieces.get(itemId)!.push(piece);
+  }
+  return pieces;
+}
+
+/**
+ * The items of the block that can be reverted on their own (`revertChange`): those the edits
+ * created, and those of the comparison whose segments the edits changed (e.g. a typo fixed inside
+ * an insertion). An item the edits removed completely has no segment left: it isn't one of them.
+ */
+export function revertableItems(edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>): Set<string> {
+  const before = itemPieces(edit.original);
+  const revertable = new Set<string>();
+  for (const [itemId, pieces] of itemPieces(edit.current)) {
+    const compared = before.get(itemId);
+    if (isEditIdOf(edit.unid, itemId) || !compared || compared.join('\u0000') !== pieces.join('\u0000')) revertable.add(itemId);
+  }
+  return revertable;
+}
+
+/** Adjacent unchanged text, and adjacent pieces of the same revision, as one segment. */
+function mergeSegments(segments: readonly Segment[]): Segment[] {
+  const merged: Segment[] = [];
+  for (const segment of segments) {
+    const last = merged.at(-1);
+    if (segment.kind === 'equal' && last?.kind === 'equal') {
+      merged[merged.length - 1] = { kind: 'equal', text: last.text + segment.text };
+    } else if (
+      (segment.kind === 'del' || segment.kind === 'ins') && last?.kind === segment.kind &&
+      last.itemId === segment.itemId && last.revisionId === segment.revisionId
+    ) {
+      merged[merged.length - 1] = { ...last, text: last.text + segment.text };
+    } else if (segment.kind !== 'equal' || segment.text !== '') {
+      merged.push(segment);
+    }
+  }
+  return merged;
+}
+
+/**
+ * The block's current segments with only one item's edit undone (one of `revertableItems`); the
+ * rest of the block, other edits included, stays as it is:
+ * - an item the edits created goes: its deleted text is unchanged text again (an edit only ever
+ *   deletes unchanged text), its inserted text goes;
+ * - an item of the comparison gets its inserted text (and inserted objects) from `original` back,
+ *   where its first inserted piece is now, else right after its last deleted piece (its deletions
+ *   never change).
+ * The result is `original` itself when it is the same: the block then has no edits.
+ */
+export function revertChange(edit: Pick<BlockEdit, 'unid' | 'original' | 'current'>, itemId: string): Segment[] {
+  const { current, original } = edit;
+  let reverted: Segment[];
+  if (isEditIdOf(edit.unid, itemId)) {
+    reverted = current.flatMap((segment): Segment[] => {
+      if (itemOf(segment) !== itemId) return [segment];
+      return segment.kind === 'del' ? [{ kind: 'equal', text: segment.text }] : [];
+    });
+  } else {
+    const isInserted = (segment: Segment) =>
+      itemOf(segment) === itemId && (segment.kind === 'ins' || (segment.kind === 'object' && segment.owner!.change === 'ins'));
+    const compared = original.filter(isInserted);
+    let at = current.findIndex(isInserted);
+    if (at < 0) {
+      const lastDeleted = current.findLastIndex((segment) => itemOf(segment) === itemId);
+      if (lastDeleted < 0) return current.slice();
+      at = lastDeleted + 1;
+    }
+    reverted = [];
+    current.forEach((segment, i) => {
+      if (i === at) reverted.push(...compared);
+      if (!isInserted(segment)) reverted.push(segment);
+    });
+    if (at === current.length) reverted.push(...compared);
+  }
+  const merged = mergeSegments(reverted);
+  return JSON.stringify(merged) === JSON.stringify(mergeSegments(original)) ? original : merged;
+}
+
 export interface RevisionText {
   type: 'insert' | 'delete';
   text: string;

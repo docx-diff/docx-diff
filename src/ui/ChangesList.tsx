@@ -35,6 +35,9 @@ interface Props {
   totals: ListTotals;
   /** Collapses the list (FR-26b). */
   onHide: () => void;
+  /** The changes whose inline edit can be reverted on their own, and the card's Revert button for them. */
+  revertable?: ReadonlySet<string>;
+  onRevert?: (itemId: string) => void;
 }
 
 /**
@@ -114,6 +117,7 @@ export function ChangesList(props: Props) {
                     onDecideUntil={props.onDecideUntil}
                     comment={props.comments[entry.item.id]}
                     onComment={props.onComment}
+                    onRevert={props.revertable?.has(entry.item.id) ? props.onRevert : undefined}
                   />
                 ) : (
                   <FormattingGroupHeader

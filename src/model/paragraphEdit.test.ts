@@ -8,6 +8,8 @@ import {
   OBJECT_CHAR,
   originalText,
   revertBlock,
+  revertChange,
+  revertableItems,
   visibleText,
   type BlockEdit,
   type Segment,
@@ -217,6 +219,90 @@ describe('revertBlock and replay', () => {
 
   it('restores the block as the comparison produced it', () => {
     expect(revertBlock(replay())).toBe(original);
+  });
+});
+
+describe('revertableItems and revertChange', () => {
+  /** The block after applying the edits (text, caret) in turn. */
+  function edited(original: Segment[], ...steps: [string, number?][]) {
+    let current = original;
+    let nextId = 0;
+    for (const [text, caret] of steps) ({ segments: current, nextId } = edit(current, text, nextId, caret));
+    return { unid: UNID, original, current };
+  }
+
+  it('reverts a new word change: its deleted text is unchanged again, its inserted text goes', () => {
+    const block = edited([eq('the hosue is')], ['the house is']);
+    expect([...revertableItems(block)]).toEqual(['eb.0']);
+    expect(revertChange(block, 'eb.0')).toBe(block.original);
+  });
+
+  it('reverts a typo fixed inside an insertion: the insertion as compared, with its id', () => {
+    const block = edited([eq('the '), ins('hosue', 'x'), eq(' is')], ['the house is']);
+    expect([...revertableItems(block)]).toEqual(['x']);
+    expect(revertChange(block, 'x')).toBe(block.original);
+  });
+
+  it('reverts one of two edits in a paragraph and keeps the other', () => {
+    const block = edited([eq('the red house is old')], ['the big red house is old', 8], ['the big red house is new', 24]);
+    expect(show(block.current)).toBe('the [+big :eb.0+]red house is [-old:eb.1-][+new:eb.1/eb.2+]');
+    expect([...revertableItems(block)]).toEqual(['eb.0', 'eb.1']);
+    expect(show(revertChange(block, 'eb.0'))).toBe('the red house is [-old:eb.1-][+new:eb.1/eb.2+]');
+    expect(show(revertChange(block, 'eb.1'))).toBe('the [+big :eb.0+]red house is old');
+  });
+
+  it('reverts only the chosen one of a new change and the existing change it touched', () => {
+    const original = [eq('a '), ins('big', 'x'), eq(' red house')];
+    const block = edited(original, ['a bigger blue house', 13]);
+    expect(show(block.current)).toBe('a [+bigger:x+][- red:eb.0-][+ blue:eb.0/eb.1+] house');
+    expect([...revertableItems(block)]).toEqual(['x', 'eb.0']);
+    expect(show(revertChange(block, 'x'))).toBe('a [+big:x+][- red:eb.0-][+ blue:eb.0/eb.1+] house');
+    expect(show(revertChange(block, 'eb.0'))).toBe('a [+bigger:x+] red house');
+  });
+
+  it('leaves out items as compared and items the edits removed completely', () => {
+    const original = [eq('the '), ins('big ', 'x'), eq('red '), ins('hosue', 'h')];
+    const block = edited(original, ['the red hosue']);
+    expect(revertableItems(block).size).toBe(0);
+    const typo = edited(original, ['the big red house']);
+    expect([...revertableItems(typo)]).toEqual(['h']);
+  });
+
+  it('puts back an existing item’s inserted text after its deletion when the edits removed all of it', () => {
+    const original = [eq('the '), del('old', 'r'), ins('new', 'r', 'r2'), eq(' house')];
+    const block = edited(original, ['the  house']);
+    expect(show(block.current)).toBe('the [-old:r-] house');
+    expect([...revertableItems(block)]).toEqual(['r']);
+    expect(revertChange(block, 'r')).toBe(original);
+  });
+
+  it('keeps objects in place, its inserted objects included', () => {
+    const original = [eq('a '), ins('note', 'x'), obj('fn:1', { change: 'ins', itemId: 'x' }), ins(' text', 'x'), eq(' b')];
+    const block = edited(original, [`a note${OBJECT_CHAR} texts b`]);
+    expect(revertChange(block, 'x')).toBe(original);
+    const plain = edited([eq('see'), obj('fn:1'), eq(' here')], [`see${OBJECT_CHAR} there`]);
+    expect(show(revertChange(plain, 'eb.0'))).toBe('see<fn:1> here');
+  });
+
+  it('doesn’t merge a reverted change with neighbours that read as the Original typed back', () => {
+    const original = [eq('a '), del('big ', 'x'), ins('big ', 'y'), eq('old house')];
+    const current = [eq('a '), del('big ', 'x'), ins('big ', 'y'), del('old', 'eb.0'), ins('new', 'eb.0', 'eb.1'), eq(' house')];
+    expect(show(revertChange({ unid: UNID, original, current }, 'eb.0'))).toBe('a [-big :x-][+big :y+]old house');
+    const kept = edited([eq('a '), del('big ', 'x'), eq('house')], ['a tall house', 7]);
+    expect(show(kept.current)).toBe('a [-big :x-][+tall :eb.0+]house');
+    expect(show(revertChange(kept, 'eb.0'))).toBe('a [-big :x-]house');
+  });
+
+  it('keeps the Original text, and reverting every revertable item gives the block as compared', () => {
+    const original = [eq('the '), ins('big', 'a'), eq(' red '), ins('hosue', 'h'), eq(' is old')];
+    const block = edited(original, ['the big blue hosue is old', 12], ['the big blue house is old', 16], ['the big blue house is new', 25]);
+    let current = block.current;
+    for (const itemId of revertableItems(block)) {
+      const next = revertChange({ ...block, current }, itemId);
+      expect(originalText(next)).toBe(originalText(original));
+      current = next;
+    }
+    expect(current).toBe(original);
   });
 });
 

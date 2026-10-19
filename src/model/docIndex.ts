@@ -74,8 +74,8 @@ const parseWithDomParser: HtmlParser = (html) => new DOMParser().parseFromString
 const NOT_ORIGINAL = { content: 'ins, .rev-move-to', paragraphMark: 'rev-para-ins' };
 /** Content that is not in the Edited document (hidden in the right panel), and the class of a deleted paragraph mark. */
 const NOT_EDITED = { content: 'del, .rev-move-from', paragraphMark: 'rev-para-del' };
-/** Rendering aids and list labels (numbering, not text). */
-export const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, [data-list-marker]';
+/** Rendering aids and list labels (numbering, not text), and the Edited panel's revert icons. */
+export const NOT_TEXT = '.rev-para-mark-del, .fn-backref, .en-backref, [data-list-marker], .edit-revert';
 /** `NodeFilter.SHOW_TEXT`; `NodeFilter` is not a global when the document comes from jsdom in Node tests. */
 const SHOW_TEXT = 0x4;
 

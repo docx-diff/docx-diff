@@ -163,3 +163,14 @@ export function outOfRangeBlocks(index: DocIndex, endPoint: number | null, posit
   }
   return blocks;
 }
+
+/**
+ * How many edited blocks a new range leaves outside it (`after`, from `outOfRangeBlocks`), when it
+ * leaves outside any that the range before (`before`) didn't; else 0. Moving the end point over
+ * edited paragraphs asks first (their changes are no longer offered, and the export keeps the
+ * Original's text there).
+ */
+export function editedBlocksLeftOutside(edited: Iterable<string>, before: ReadonlySet<string>, after: ReadonlySet<string>): number {
+  const outside = [...edited].filter((unid) => after.has(unid));
+  return outside.some((unid) => !before.has(unid)) ? outside.length : 0;
+}

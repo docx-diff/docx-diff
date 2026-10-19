@@ -6,6 +6,7 @@ import type { CompareSettings } from '../model/equivalence';
 import { darkColors } from './darkColors';
 import { BUBBLE_SLOT, CONTENT_CHANGED } from './CommentBubbles';
 import { PanelEditing, type EditingOptions } from './editing';
+import { REVERT_LABEL } from './ChangeCard';
 import { CARD_SLOT } from './InlineChangeCard';
 import { OverviewBar, measureMarks, measureOffset, type OverviewMark } from './OverviewBar';
 import type { ResolvedSide } from '../model/resolved';
@@ -35,6 +36,14 @@ export interface PanelControl {
    * of the panel stays where it is.
    */
   replaceBlock: (unid: string, block: Element) => void;
+  /** The Edited panel while editing: puts the cursor back where it last was (after a revert). */
+  restoreCursor: () => void;
+}
+
+/** The Edited panel's revert icons: the changes of a block whose edit can be reverted on their own, and what a click on one does. */
+export interface RevertIcons {
+  of: (unid: string) => ReadonlySet<string>;
+  onRevert: (unid: string, itemId: string) => void;
 }
 
 const SIDE_NAMES: Record<PanelSide, string> = { left: 'Original', right: 'Edited', resolved: 'Resolved' };
@@ -94,6 +103,8 @@ interface Props {
    * select a change (`editing.ts`).
    */
   editing?: EditingOptions;
+  /** The Edited panel: a ↺ after each change whose edit can be reverted on its own (`placeRevertIcons`). */
+  revertIcons?: RevertIcons;
 }
 
 const NO_BLOCKS: ReadonlySet<string> = new Set();
@@ -196,6 +207,36 @@ function takeParagraphLook(block: HTMLElement, source: HTMLElement): void {
   else block.setAttribute('style', style);
 }
 
+const REVERT_ICON = 'edit-revert';
+
+/**
+ * The block's ↺ icons, one after the last piece of each of `itemIds` (its last insertion, else its
+ * last deletion, which the Edited panel hides), after the ✓ / ✗ that piece's `::after` shows. Not
+ * text (`NOT_TEXT`): the segment reader and the cursor offsets skip them.
+ */
+export function placeRevertIcons(block: HTMLElement, itemIds: ReadonlySet<string>): void {
+  for (const icon of within(block, `.${REVERT_ICON}`)) icon.remove();
+  if (itemIds.size === 0) return;
+  const last = new Map<string, HTMLElement>();
+  for (const element of within(block, 'ins[data-change-id], del[data-change-id]')) {
+    const id = element.dataset.changeId!;
+    if (!itemIds.has(id)) continue;
+    const shown = last.get(id);
+    if (!shown || element.localName === 'ins' || shown.localName === 'del') last.set(id, element);
+  }
+  for (const [id, element] of last) {
+    const icon = block.ownerDocument.createElement('span');
+    icon.className = REVERT_ICON;
+    icon.dataset.revertId = id;
+    icon.setAttribute('role', 'button');
+    icon.setAttribute('contenteditable', 'false');
+    icon.tabIndex = 0;
+    icon.title = REVERT_LABEL;
+    icon.setAttribute('aria-label', REVERT_LABEL);
+    element.after(icon);
+  }
+}
+
 /** The first block shown at the top of the panel, and its offset from the panel's top. */
 function topBlock(scroller: HTMLElement, wrapper: Element): { block: Element; offset: number } | null {
   const top = scroller.getBoundingClientRect().top;
@@ -252,6 +293,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   if (props.editing) editingOptions.current = props.editing;
   const editingOn = props.editing !== undefined;
 
+  const revertIconsRef = useRef(props.revertIcons);
+  revertIconsRef.current = props.revertIcons;
+
   /** The Edited panel shows the paragraphs it joins one by one (while editing): each can be edited as itself. */
   const unjoinedRef = useRef(false);
 
@@ -303,6 +347,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
     const current = appliedCurrent.current;
     if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
+    const icons = revertIconsRef.current;
+    if (icons) for (const block of swapped) for (const paragraph of within(block, '[data-anchor]')) placeRevertIcons(paragraph, icons.of(paragraph.dataset.anchor!));
     for (const block of swapped) for (const paragraph of within(block, PARAGRAPH_BLOCK)) editingRef.current?.prepareBlock(paragraph);
     return true;
   };
@@ -372,6 +418,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
           if (current !== null) for (const element of within(block, '[data-change-id]')) if (element.dataset.changeId === current) element.classList.add('change-current');
           return true;
         });
+      },
+      restoreCursor() {
+        editingRef.current?.restoreCursor();
       },
     }),
     // The helpers read refs only, and the master document's runs.
@@ -566,11 +615,25 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       toggleHandler.current?.(toggle.dataset.commentFor!);
       return true;
     };
+    /** A revert icon reverts its change (after a confirmation); it doesn't select it or move the cursor. */
+    const revert = (event: Event) => {
+      const icon = event.target instanceof Element ? event.target.closest<HTMLElement>(`.${REVERT_ICON}`) : null;
+      const block = icon?.closest<HTMLElement>('[data-anchor]');
+      if (!icon || !block) return false;
+      event.preventDefault();
+      revertIconsRef.current?.onRevert(block.dataset.anchor!, icon.dataset.revertId!);
+      return true;
+    };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') toggleComment(event);
+      if (event.key === 'Enter' || event.key === ' ') {
+        if (!revert(event)) toggleComment(event);
+      }
+    };
+    const onMouseDown = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest(`.${REVERT_ICON}`)) event.preventDefault();
     };
     const onClick = (event: Event) => {
-      if (toggleComment(event)) return;
+      if (toggleComment(event) || revert(event)) return;
       // While editing, a click places the cursor (or says why the paragraph can't be edited).
       if (editingRef.current) {
         editingRef.current.click(event);
@@ -594,9 +657,11 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       if (ids.length > 0) clickHandler.current(ids);
     };
     root.addEventListener('click', onClick);
+    root.addEventListener('mousedown', onMouseDown);
     root.addEventListener('keydown', onKeyDown as EventListener);
     return () => {
       root.removeEventListener('click', onClick);
+      root.removeEventListener('mousedown', onMouseDown);
       root.removeEventListener('keydown', onKeyDown as EventListener);
     };
   }, [contentVersion]);

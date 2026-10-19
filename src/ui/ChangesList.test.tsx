@@ -225,6 +225,17 @@ describe('ChangesList', () => {
     expect(next.onComment).toHaveBeenCalledWith('a', '');
   });
 
+  it('shows Revert on the cards of changes whose inline edit can be reverted, without selecting the card', () => {
+    const props = renderList(false, { revertable: new Set(['b']), onRevert: vi.fn() });
+    const cards = screen.getAllByTestId('change-card');
+    expect(within(cards[0]!).queryByRole('button', { name: 'Revert my edit of this change' })).toBeNull();
+    const revert = within(cards[1]!).getByRole('button', { name: 'Revert my edit of this change' });
+    expect(revert.title).toBe('Revert my edit of this change');
+    fireEvent.click(revert);
+    expect(props.onRevert).toHaveBeenCalledWith('b');
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
   it('hides itself with the » button', () => {
     const props = renderList(false);
     fireEvent.click(screen.getByRole('button', { name: 'Hide the changes list' }));

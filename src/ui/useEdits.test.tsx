@@ -57,6 +57,29 @@ describe('EditSession', () => {
     expect(session.items[1]!.id).toBe('ep.3');
   });
 
+  it('reverts one change and keeps the block’s other edits, with nothing created', () => {
+    const fresh = comparison();
+    const originalMarkup = fresh.document.body.querySelector('[data-anchor="q"]')!.outerHTML;
+    const session = new EditSession(fresh);
+    session.update('p', 'the big blue house', 'the big blue'.length);
+    session.update('p', 'the big blue house now', 'the big blue house now'.length);
+    expect([...session.revertableItems('p')]).toEqual(['ep.1', 'ep.3']);
+    const update = session.revertChange('p', 'ep.1')!;
+    expect(update).toMatchObject({ removedItemIds: ['ep.1'], addedItemIds: [], createdItemIds: [] });
+    expect(block(session, 'p').textContent).toBe('the big red house now');
+    expect(session.items.map((item) => item.id)).toEqual(['r1', 'r2', 'ep.3', 'r3']);
+    expect(session.revertChange('p', 'ep.1')).toBeNull();
+    expect(session.revertChange('p', 'r1')).toBeNull();
+
+    // A change of the comparison's keeps its id (and so its decision and comment) with its text as compared.
+    session.update('q', 'The house stood.');
+    expect([...session.revertableItems('q')]).toEqual(['r3']);
+    expect(session.revertChange('q', 'r3')).toMatchObject({ removedItemIds: [], addedItemIds: [], createdItemIds: [] });
+    expect(session.isEdited('q')).toBe(false);
+    expect(session.items.find((item) => item.id === 'r3')).toEqual({ ...fresh.analysis.items.find((item) => item.id === 'r3'), order: 3 });
+    expect(block(session, 'q').outerHTML).toBe(originalMarkup);
+  });
+
   it('restores saved edits with the same items and ids, none of them created, and skips records that don’t match', () => {
     const live = new EditSession(comparison());
     live.update('p', 'the big blue house', 'the big blue'.length);

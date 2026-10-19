@@ -127,6 +127,19 @@ describe('PanelEditing', () => {
     expect(beforeInput(block('b'), 'insertText').defaultPrevented).toBe(true);
   });
 
+  it('says once that there is no undo when Ctrl+Z is pressed in an editable paragraph', () => {
+    const key = (target: Element, init: KeyboardEventInit) => fire(target, new KeyboardEvent('keydown', { bubbles: true, composed: true, cancelable: true, ...init }));
+    key(block('b'), { key: 'z', ctrlKey: true });
+    expect(options.onMessage).not.toHaveBeenCalled();
+    key(block('a'), { key: 'z', ctrlKey: true, shiftKey: true });
+    key(block('a'), { key: 'y', ctrlKey: true });
+    expect(options.onMessage).not.toHaveBeenCalled();
+    key(block('a'), { key: 'z', ctrlKey: true });
+    key(block('c'), { key: 'Z', metaKey: true });
+    expect(options.onMessage.mock.calls).toEqual([[EDIT_MESSAGES.noUndo]]);
+    expect(EDIT_MESSAGES.noUndo).toBe('Undo isn’t available here: use ↺ to revert your edits.');
+  });
+
   it('says why a clicked paragraph can’t be edited', () => {
     const click = (target: Element) => {
       const event = new MouseEvent('click', { bubbles: true });

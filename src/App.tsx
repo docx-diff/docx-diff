@@ -18,6 +18,7 @@ import { buildOutline } from './model/outline';
 import {
   blockPositions,
   classify,
+  editedBlocksLeftOutside,
   initialRange,
   outOfRangeBlocks,
   restoredRange,
@@ -33,7 +34,7 @@ import { ColumnsToggle } from './ui/ColumnsToggle';
 import { CommentBubbles, CommentsToggle, type BubbleComment } from './ui/CommentBubbles';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { CompareSettingsDialog } from './ui/CompareSettingsDialog';
-import { DocumentPanel, type PanelControl } from './ui/DocumentPanel';
+import { DocumentPanel, type PanelControl, type RevertIcons } from './ui/DocumentPanel';
 import { EngineStatus } from './ui/EngineStatus';
 import { ExportDialog, exportFailure, type ExportStatus } from './ui/ExportDialog';
 import { FileDropZones, type DocumentRole } from './ui/FileDropZones';
@@ -41,7 +42,7 @@ import { InlineChangeCard } from './ui/InlineChangeCard';
 import { LoadingModal } from './ui/LoadingModal';
 import { Outline } from './ui/Outline';
 import { CompareProgress, Progress } from './ui/Progress';
-import { EditableToggle } from './ui/EditableToggle';
+import { EditableToggle, RevertButtons } from './ui/EditableToggle';
 import { uneditableReason } from './ui/blockSegments';
 import type { EditOutcome, EditingOptions } from './ui/editing';
 import { Toast, type ToastMessage } from './ui/Toast';
@@ -65,6 +66,18 @@ import { useKeyboardShortcuts, type ShortcutAction } from './ui/useKeyboardShort
 import { registerServiceWorker } from './serviceWorker';
 
 const NO_ITEMS: readonly ChangeItem[] = [];
+const NO_IDS: ReadonlySet<string> = new Set();
+
+/** An action that asks first: a revert, or one that discards the inline edits or leaves them outside the range. */
+type Confirmation =
+  | { type: 'revertChange'; unid: string; itemId: string }
+  | { type: 'revertParagraph'; unid: string }
+  | { type: 'revertAll'; count: number }
+  | { type: 'swap'; count: number }
+  | { type: 'file'; role: DocumentRole; file: File; count: number }
+  | { type: 'range'; range: RangeState; count: number };
+
+const paragraphs = (count: number) => (count === 1 ? '1 paragraph' : `${count} paragraphs`);
 
 export function App() {
   const { state: engineState, retry } = useEngine();
@@ -133,6 +146,9 @@ export function App() {
   const [picking, setPicking] = useState(false);
   /** The Edited panel's text can be edited (its Editable toggle); off for every review shown. */
   const [editing, setEditing] = useState(false);
+  /** The editable paragraph the cursor was last in while editing (↺ ¶ reverts it). */
+  const [cursorBlock, setCursorBlock] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   /** The comment bubbles the reviewer closed in the Resolved column; not saved (FR-27c). */
   const [closedBubbles, setClosedBubbles] = useState<ReadonlySet<string>>(new Set());
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
@@ -163,6 +179,8 @@ export function App() {
     setCurrentItemId(null);
     setPicking(false);
     setEditing(false);
+    setCursorBlock(null);
+    setConfirmation(null);
     setClosedBubbles(new Set());
   }
 
@@ -275,8 +293,49 @@ export function App() {
     [updateEdit, editSession],
   );
   const editingOptions = useMemo<EditingOptions | undefined>(
-    () => (editing ? { reasonOf, textOf, onEdit: applyEdit, onMessage: showMessage } : undefined),
+    () => (editing ? { reasonOf, textOf, onEdit: applyEdit, onMessage: showMessage, onCursor: setCursorBlock } : undefined),
     [editing, reasonOf, textOf, applyEdit, showMessage],
+  );
+  const toggleEditing = useCallback(() => {
+    setCursorBlock(null);
+    setEditing((on) => !on);
+  }, []);
+
+  // Reverting inline edits: one change, one paragraph, or all of them, each after a confirmation.
+  // Nothing is accepted (no item is created); a change that disappears stops being the current one.
+  // Keyed on `edits.version`: the session changes in place.
+  const revertable = useMemo(() => editSession?.revertableChanges() ?? new Map<string, string>(), [editSession, edits.version]);
+  const revertableIds = useMemo(() => (revertable.size === 0 ? NO_IDS : new Set(revertable.keys())), [revertable]);
+  const editedBlockIds = useMemo(() => editSession?.editedBlocks().map((edit) => edit.unid) ?? [], [editSession, edits.version]);
+  const revertIcons = useMemo<RevertIcons>(
+    () => ({
+      of: (unid) => editSession?.revertableItems(unid) ?? NO_IDS,
+      onRevert: (unid, itemId) => setConfirmation({ type: 'revertChange', unid, itemId }),
+    }),
+    [editSession],
+  );
+  const requestRevertChange = useCallback(
+    (itemId: string) => {
+      const unid = revertable.get(itemId);
+      if (unid !== undefined) setConfirmation({ type: 'revertChange', unid, itemId });
+    },
+    [revertable],
+  );
+  const showReverts = (updates: BlockUpdate[]) => {
+    showBlockUpdates(updates, [leftControl.current, middleControl.current, rightControl.current], () => {});
+    if (currentItemId !== null && !editSession?.items.some((item) => item.id === currentItemId)) setCurrentItemId(null);
+    rightControl.current?.restoreCursor();
+  };
+
+  /** A new comparison range; it asks first when it leaves edited paragraphs outside. */
+  const requestRange = useCallback(
+    (next: RangeState) => {
+      const after = comparison ? outOfRangeBlocks(comparison.analysis.index, next.endPoint, positions) : new Set<string>();
+      const count = editedBlocksLeftOutside(editedBlockIds, outsideBlocks, after);
+      if (count > 0) setConfirmation({ type: 'range', range: next, count });
+      else setRangeState(next);
+    },
+    [comparison, positions, editedBlockIds, outsideBlocks],
   );
 
   const paragraphIndex = useMemo(() => new Map((comparison?.analysis.index.bodyParagraphs ?? []).map((unid, i) => [unid, i])), [comparison]);
@@ -288,10 +347,10 @@ export function App() {
     (unids: string[]) => {
       const at = unids.map((unid) => paragraphIndex.get(unid)).find((i) => i !== undefined);
       if (at === undefined) return;
-      setRangeState(at + 1 >= paragraphIndex.size ? { mode: 'off', endPoint: null } : { mode: 'manual', endPoint: at + 1 });
+      requestRange(at + 1 >= paragraphIndex.size ? { mode: 'off', endPoint: null } : { mode: 'manual', endPoint: at + 1 });
       setPicking(false);
     },
-    [paragraphIndex],
+    [paragraphIndex, requestRange],
   );
   useEffect(() => {
     if (!picking) return;
@@ -472,6 +531,46 @@ export function App() {
     setResumeNotice(null);
   }, []);
   const swap = useCallback(() => setFiles(({ original, edited }) => ({ original: edited, edited: original })), []);
+  // Swapping or opening another file compares anew: the inline edits are discarded, after a confirmation.
+  const requestSwap = () => (editedBlockIds.length > 0 ? setConfirmation({ type: 'swap', count: editedBlockIds.length }) : swap());
+  const requestFile = (role: DocumentRole, file: File) =>
+    editedBlockIds.length > 0 ? setConfirmation({ type: 'file', role, file, count: editedBlockIds.length }) : setFile(role, file);
+
+  // The Edited panel header's ↺ ¶: the paragraph with the cursor while editing, else the current change's.
+  const currentItem = currentItemId === null ? undefined : itemById.get(currentItemId);
+  const revertParagraph = editing
+    ? cursorBlock
+    : (currentItem?.anchors.find((unid) => editedBlockIds.includes(unid)) ?? currentItem?.anchors[0] ?? null);
+
+  const confirmAction = () => {
+    const action = confirmation;
+    setConfirmation(null);
+    if (!action) return;
+    switch (action.type) {
+      case 'revertChange': {
+        const update = edits.revertChange(action.unid, action.itemId);
+        if (update) showReverts([update]);
+        return;
+      }
+      case 'revertParagraph': {
+        const update = edits.revert(action.unid);
+        if (update) showReverts([update]);
+        return;
+      }
+      case 'revertAll':
+        showReverts(edits.revertAll());
+        return;
+      case 'swap':
+        swap();
+        return;
+      case 'file':
+        setFile(action.role, action.file);
+        return;
+      case 'range':
+        setRangeState(action.range);
+        return;
+    }
+  };
 
   const download = async (current: Comparison, state: DecisionState, { undecided, author }: { undecided: UndecidedChoice; author: string }) => {
     if (!engine) return;
@@ -512,8 +611,8 @@ export function App() {
           <Toolbar
             original={files.original}
             edited={files.edited}
-            onFile={setFile}
-            onSwap={swap}
+            onFile={requestFile}
+            onSwap={requestSwap}
             scrollLock={scrollLock}
             onScrollLockChange={setScrollLock}
             onDownload={openExport}
@@ -558,7 +657,7 @@ export function App() {
           range={rangeState}
           paragraphCount={comparison.analysis.index.bodyParagraphs.length}
           suggestedEndPoint={comparison.analysis.suggestedEndPoint}
-          onChange={setRangeState}
+          onChange={requestRange}
           spanning={spanning}
           picking={picking}
           onPickingChange={setPicking}
@@ -592,12 +691,19 @@ export function App() {
                     <CommentsToggle comments={bubbleComments} closed={closedBubbles} onToggleAll={toggleAllBubbles} />
                   ) : side === 'right' ? (
                     <>
-                      <EditableToggle editing={editing} onToggle={() => setEditing((on) => !on)} />
+                      <EditableToggle editing={editing} onToggle={toggleEditing} />
+                      <RevertButtons
+                        paragraphEdited={revertParagraph !== null && editedBlockIds.includes(revertParagraph)}
+                        anyEdits={editedBlockIds.length > 0}
+                        onRevertParagraph={() => revertParagraph !== null && setConfirmation({ type: 'revertParagraph', unid: revertParagraph })}
+                        onRevertAll={() => setConfirmation({ type: 'revertAll', count: editedBlockIds.length })}
+                      />
                       <Toast message={toast} onHide={hideToast} />
                     </>
                   ) : undefined
                 }
                 editing={side === 'right' ? editingOptions : undefined}
+                revertIcons={side === 'right' ? revertIcons : undefined}
                 document={comparison.document}
                 ignored={ignored}
                 settings={settings}
@@ -628,6 +734,7 @@ export function App() {
                       comment={review.comments[cardItem.id]}
                       onComment={setComment}
                       onClose={() => setCardClosed(true)}
+                      onRevert={revertableIds.has(cardItem.id) ? requestRevertChange : undefined}
                     />
                   ) : undefined
                 }
@@ -655,6 +762,8 @@ export function App() {
               onFormattingExpanded={setFormattingExpanded}
               totals={totals}
               onHide={() => setView({ changesList: false })}
+              revertable={revertableIds}
+              onRevert={requestRevertChange}
             />
           ) : (
             <div className="changes-rail">
@@ -712,6 +821,7 @@ export function App() {
           document first if you need it.
         </ConfirmDialog>
       )}
+      {confirmation && <ConfirmAction confirmation={confirmation} onConfirm={confirmAction} onCancel={() => setConfirmation(null)} />}
       {settingsOpen && (
         <CompareSettingsDialog
           settings={settings}
@@ -730,6 +840,36 @@ function useSameSet<T>(set: ReadonlySet<T>): ReadonlySet<T> {
   const kept = useRef(set);
   if (kept.current !== set && (kept.current.size !== set.size || [...set].some((value) => !kept.current.has(value)))) kept.current = set;
   return kept.current;
+}
+
+/** The confirmation of an action that reverts inline edits, discards them or leaves them outside the range. */
+function ConfirmAction({ confirmation, onConfirm, onCancel }: { confirmation: Confirmation; onConfirm: () => void; onCancel: () => void }) {
+  const undone = 'This can’t be undone.';
+  const [title, label, text] = ((): [string, string, string] => {
+    switch (confirmation.type) {
+      case 'revertChange':
+        return ['Revert your edit of this change?', 'Revert', undone];
+      case 'revertParagraph':
+        return ['Revert your edits in this paragraph?', 'Revert', undone];
+      case 'revertAll':
+        return [`Revert your edits in ${paragraphs(confirmation.count)}?`, 'Revert all', undone];
+      case 'swap':
+        return ['Swap the documents?', 'Swap', `Swapping discards your edits in ${paragraphs(confirmation.count)}.`];
+      case 'file':
+        return ['Open another file?', 'Open', `Opening another file discards your edits in ${paragraphs(confirmation.count)}.`];
+      case 'range':
+        return [
+          'Move the end point?',
+          'Move the end point',
+          `Your edits in ${paragraphs(confirmation.count)} will be outside the comparison range. Their changes won’t be offered for decision, and the export keeps the Original’s text there.`,
+        ];
+    }
+  })();
+  return (
+    <ConfirmDialog title={title} confirmLabel={label} onConfirm={onConfirm} onCancel={onCancel}>
+      {text}
+    </ConfirmDialog>
+  );
 }
 
 function Notices(props: {

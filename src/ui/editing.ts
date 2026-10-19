@@ -20,6 +20,8 @@ export interface EditingOptions {
   onEdit: (unid: string, text: string, caret: number | undefined) => EditOutcome;
   /** Shows a short message (a blocked action). */
   onMessage: (message: string) => void;
+  /** The editable block the cursor moved into (it stays the last one when the panel loses the focus). */
+  onCursor?: (unid: string) => void;
 }
 
 const SIMPLE = 'Only simple edits within a paragraph are supported, to keep the comparison fast.';
@@ -30,6 +32,7 @@ export const EDIT_MESSAGES = {
   join: `${SIMPLE} Paragraphs can’t be joined here.`,
   crossBlock: `${SIMPLE} Edits must stay within one paragraph.`,
   object: 'Footnote references and other objects can’t be deleted here.',
+  noUndo: 'Undo isn’t available here: use ↺ to revert your edits.',
 } as const;
 
 /** The update runs this long after the last input in a block. */
@@ -153,6 +156,10 @@ export class PanelEditing {
   private composing = false;
   /** Set while the App replaces the block: its removal is not the reviewer leaving it. */
   private updating = false;
+  /** The last cursor in an editable block, to put back after a revert replaced the block. */
+  private cursor: { unid: string; selection: TextSelection } | null = null;
+  /** Ctrl+Z says once that there is no undo here. */
+  private toldNoUndo = false;
   private readonly listeners: [EventTarget, string, (event: Event) => void][];
 
   constructor(
@@ -255,6 +262,18 @@ export class PanelEditing {
     return outcome;
   }
 
+  /**
+   * Puts the cursor back where it last was in an editable block (after the block was replaced, e.g.
+   * by a revert); offsets past the block's end give its end.
+   */
+  restoreCursor(): void {
+    const cursor = this.cursor;
+    const block = cursor && this.findBlock(cursor.unid);
+    if (!cursor || !block || block.getAttribute('contenteditable') !== 'true') return;
+    block.focus({ preventScroll: true });
+    selectInBlock(block, cursor.selection);
+  }
+
   private schedule(): void {
     clearTimeout(this.timer);
     this.timer = window.setTimeout(() => this.flush(), UPDATE_DELAY_MS);
@@ -348,7 +367,15 @@ export class PanelEditing {
   }
 
   private onKeyDown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || event.isComposing) return;
+    if (event.isComposing) return;
+    // The browser's undo is cancelled (`onBeforeInput`): it doesn't know about the updates.
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'z') {
+      if (this.toldNoUndo || !this.blockOf(event)) return;
+      this.toldNoUndo = true;
+      this.options().onMessage(EDIT_MESSAGES.noUndo);
+      return;
+    }
+    if (event.key !== 'Escape') return;
     const block = this.blockOf(event);
     if (!block) return;
     // Out of the text: the review's shortcuts work again. The panel keeps the focus (its arrow keys scroll it).
@@ -379,6 +406,7 @@ export class PanelEditing {
    * contiguous span of the paragraph (typing elsewhere would replace the text between).
    */
   private onSelectionChange(): void {
+    if (!this.updating) this.trackCursor();
     const pending = this.pending;
     if (!pending || this.composing || this.updating) return;
     const block = this.findBlock(pending.unid);
@@ -386,5 +414,20 @@ export class PanelEditing {
     const selection = blockSelection(this.root, block);
     if (!selection) return;
     if (selection.start < pending.span[0] || selection.end > pending.span[1]) this.flush();
+  }
+
+  /** Remembers the cursor when it is in an editable block, and reports a move to another block. */
+  private trackCursor(): void {
+    const points = selectionPoints(this.root);
+    const node = points?.startContainer;
+    const element = node instanceof Element ? node : node?.parentElement;
+    const block = element?.closest<HTMLElement>(PARAGRAPH_BLOCK);
+    if (!block || !this.wrapper.contains(block) || block.getAttribute('contenteditable') !== 'true') return;
+    const selection = blockSelection(this.root, block);
+    if (!selection) return;
+    const unid = block.dataset.anchor!;
+    const moved = this.cursor?.unid !== unid;
+    this.cursor = { unid, selection };
+    if (moved) this.options().onCursor?.(unid);
   }
 }

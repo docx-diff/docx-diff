@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { smallComparison } from '../../test/small-comparison';
 import { DEFAULT_COMPARE_SETTINGS } from '../model/equivalence';
 import type { Decision } from '../model/decisions';
-import { DocumentPanel, type PanelControl, type PanelSide } from './DocumentPanel';
+import { readBlockSegments } from './blockSegments';
+import { DocumentPanel, type PanelControl, type PanelSide, type RevertIcons } from './DocumentPanel';
 import type { EditingOptions } from './editing';
 import type { RenderedDocument } from './renderedDocument';
 import { EditSession, showBlockUpdates } from './useEdits';
@@ -174,6 +175,72 @@ describe('DocumentPanel editing', () => {
     type(blockIn(root, 'p'), 'y');
     rerender(undefined, smallComparison().document);
     expect(options.onEdit).toHaveBeenCalledOnce();
+  });
+});
+
+describe('DocumentPanel revert icons', () => {
+  afterEach(cleanup);
+
+  function revertPanel(session: EditSession, editing?: EditingOptions) {
+    const control = createRef<PanelControl>();
+    const onChangeClick = vi.fn();
+    const icons: RevertIcons = { of: (unid) => session.revertableItems(unid), onRevert: vi.fn() };
+    const element = (
+      <DocumentPanel
+        side="right"
+        theme="light"
+        title="t"
+        document={session.comparison.document}
+        ignored={new Set()}
+        settings={DEFAULT_COMPARE_SETTINGS}
+        decisions={{ r3: 'accepted' }}
+        currentItemId={null}
+        onChangeClick={onChangeClick}
+        overviewItems={[]}
+        outOfRangeItems={new Set()}
+        controlRef={control}
+        editing={editing}
+        revertIcons={icons}
+      />
+    );
+    const root = render(element).getByTestId('panel-right').shadowRoot!;
+    return { control, root, icons, onChangeClick };
+  }
+
+  it('puts a ↺ after the last piece of each change an edit created or changed, which the text readers skip', () => {
+    const session = new EditSession(smallComparison());
+    const { control, root } = revertPanel(session);
+    expect(root.querySelector('.edit-revert')).toBeNull();
+    control.current!.replaceBlock('p', session.update('p', 'the big blue house', 'the big blue'.length)!.block);
+    control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
+    const [created] = blockIn(root, 'p').querySelectorAll<HTMLElement>('.edit-revert');
+    expect(blockIn(root, 'p').querySelectorAll('.edit-revert')).toHaveLength(1);
+    expect(created!.dataset.revertId).toBe('ep.1');
+    expect(created!.previousElementSibling).toBe(blockIn(root, 'p').querySelector('ins[data-change-id="ep.1"]'));
+    expect(created!.title).toBe('Revert my edit of this change');
+    // After the decided insertion, which carries the ✓.
+    const typo = blockIn(root, 'q').querySelector<HTMLElement>('.edit-revert')!;
+    expect(typo.previousElementSibling!.className).toContain('change-decided-end');
+    for (const unid of ['p', 'q']) expect(readBlockSegments(blockIn(root, unid))).toEqual(session.blocks.get(unid)!.current);
+    expect(blockIn(root, 'p').textContent).toBe(session.blockElement('p')!.textContent);
+
+    control.current!.replaceBlock('p', session.revertChange('p', 'ep.1')!.block);
+    expect(blockIn(root, 'p').querySelector('.edit-revert')).toBeNull();
+  });
+
+  it('asks to revert on a click or Enter on the icon, without selecting the change, also while editing', () => {
+    const session = new EditSession(smallComparison());
+    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
+    const { control, root, icons, onChangeClick } = revertPanel(session, editing);
+    control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
+    const icon = blockIn(root, 'q').querySelector<HTMLElement>('.edit-revert')!;
+    expect(icon.getAttribute('contenteditable')).toBe('false');
+    icon.click();
+    icon.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+    expect(icons.onRevert).toHaveBeenCalledTimes(2);
+    expect(icons.onRevert).toHaveBeenCalledWith('q', 'r3');
+    expect(onChangeClick).not.toHaveBeenCalled();
+    expect(editing.onMessage).not.toHaveBeenCalled();
   });
 });
 

@@ -15,3 +15,40 @@ export function EditableToggle({ editing, onToggle }: { editing: boolean; onTogg
     </button>
   );
 }
+
+/**
+ * The Edited panel header's revert buttons after the toggle, whether or not Editable is on: ↺ ¶
+ * reverts the edits of one paragraph (the cursor's while editing, else the current change's), ↺ all
+ * every edit. Each asks first (the App's confirmation); disabled only when there is nothing to revert.
+ */
+export function RevertButtons({ paragraphEdited, anyEdits, onRevertParagraph, onRevertAll }: {
+  paragraphEdited: boolean;
+  anyEdits: boolean;
+  onRevertParagraph: () => void;
+  onRevertAll: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="button button--small revert-button"
+        title="Revert my edits in this paragraph"
+        aria-label="Revert my edits in this paragraph"
+        disabled={!paragraphEdited}
+        onClick={onRevertParagraph}
+      >
+        <span aria-hidden="true">↺ ¶</span>
+      </button>
+      <button
+        type="button"
+        className="button button--small revert-button"
+        title="Revert all my edits"
+        aria-label="Revert all my edits"
+        disabled={!anyEdits}
+        onClick={onRevertAll}
+      >
+        <span aria-hidden="true">↺ all</span>
+      </button>
+    </>
+  );
+}

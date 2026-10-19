@@ -3,7 +3,7 @@ import { SMALL_HTML } from '../../test/small-html';
 import type { RevisionListEntry } from '../engine/types';
 import { buildChangeItems, type ChangeItem, type ChangeKind } from './changes';
 import { buildDocIndex } from './docIndex';
-import { blockPositions, classify, detectTrailingRegion, initialRange, outOfRangeBlocks, restoredRange, spanningItems } from './range';
+import { blockPositions, classify, detectTrailingRegion, editedBlocksLeftOutside, initialRange, outOfRangeBlocks, restoredRange, spanningItems } from './range';
 
 // Original body paragraphs of SMALL_HTML: a(0) c(1) d(2) e(3) t(4); b, f and g are not in the Original;
 // footnote paragraph n is referenced from a, endnote paragraph m from t.
@@ -168,5 +168,17 @@ describe('restoredRange', () => {
   it('falls back to the detected range otherwise', () => {
     expect(restoredRange({ mode: 'manual', endPoint: 10 }, 10, 8)).toEqual({ mode: 'auto', endPoint: 8 });
     expect(restoredRange({ mode: 'auto', endPoint: 0 }, 10, null)).toEqual({ mode: 'off', endPoint: null });
+  });
+});
+
+describe('editedBlocksLeftOutside', () => {
+  it('counts the edited blocks outside a new range when it leaves any outside that weren’t before', () => {
+    const none = new Set<string>();
+    expect(editedBlocksLeftOutside(['a', 'b', 'c'], none, new Set(['b', 'c', 'd']))).toBe(2);
+    expect(editedBlocksLeftOutside(['a'], none, new Set(['b']))).toBe(0);
+    expect(editedBlocksLeftOutside([], none, new Set(['b']))).toBe(0);
+    // Already outside, or brought back in: nothing to warn about.
+    expect(editedBlocksLeftOutside(['b'], new Set(['b', 'c']), new Set(['b']))).toBe(0);
+    expect(editedBlocksLeftOutside(['b', 'c'], new Set(['c']), new Set(['b', 'c']))).toBe(2);
   });
 });

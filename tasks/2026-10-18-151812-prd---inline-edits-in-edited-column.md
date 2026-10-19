@@ -38,7 +38,7 @@ have to leave the tool, and the comparison doesn't slow down.
    LibreOffice.
 5. Edits are saved with the review and are back, with the same changes, ids and decisions, after a
    reload or on resuming.
-6. The reviewer can undo while typing, and can revert their edits per paragraph or all at once.
+6. The reviewer can revert their edits one change at a time, or all at once.
 
 ## 3. User stories
 
@@ -51,8 +51,7 @@ have to leave the tool, and the comparison doesn't slow down.
 - As a reviewer, I want my own new changes to start as accepted, because I made them on purpose.
 - As a reviewer, I want editing to be off unless I turn it on, so a click still selects a change and
   I can't change the text by accident.
-- As a reviewer, I want to undo a slip while typing, and to throw away all my edits in a paragraph
-  (or the whole document) if I change my mind.
+- As a reviewer, I want to throw away one of my edits (or all of them) if I change my mind.
 - As a reviewer, I want my edits kept when I reload the page, like my decisions.
 
 ## 4. Functional requirements
@@ -151,7 +150,7 @@ have to leave the tool, and the comparison doesn't slow down.
       separately;
     - an existing change whose text the edit removes completely, or that no longer differs from the
       Original (the reviewer typed the Original's text back), **disappears** from the list. Its
-      decision and comment are kept in the review state (unused), so that Revert (requirement 22)
+      decision and comment are kept in the review state (unused), so that a revert (requirements 22a, 23)
       brings it back as it was.
     An edit inside a **rejected** change keeps it rejected: the reviewer is editing the Edited's
     wording (perhaps with a comment) and decides it separately.
@@ -174,21 +173,45 @@ have to leave the tool, and the comparison doesn't slow down.
 20. Editing a heading updates the outline (FR-24a) after the update: the heading stays in it, with
     its new text.
 
-### Undo and revert
+### Revert
 
-21. **Undo while editing:** Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) undo and redo the reviewer's text
-    edits in the Edited panel, step by step, **also after** an update has re-rendered the paragraph.
-    The browser's native undo is not enough here: it breaks when the markup is rewritten. The
-    history lasts until Editable is turned off or the page is reloaded.
-22. **Revert this paragraph:** while Editable is on, a paragraph with edits shows a small revert
-    button (↺, tooltip "Revert my edits in this paragraph") at its right edge when the cursor is in
-    it or the mouse is over it. A click restores the paragraph as the comparison produced it. Its
-    original items come back with their decisions and comments. The items the edits created
-    disappear, with their decisions and comments.
-23. **Revert all edits:** while Editable is on and at least one paragraph has edits, the Edited
-    panel's header shows a **Revert all edits** button next to the toggle. It asks for confirmation
-    ("Revert your edits in N paragraphs? This can't be undone.") and then reverts every paragraph as
-    in requirement 22.
+(Simplified 2026-10-19, user request: no undo/redo stack; three grades of revert instead: this
+change, this paragraph, all edits. Each asks for confirmation, and each works whether or not
+Editable is on.)
+
+21. **No undo while editing.** The browser's undo and redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, the Edit
+    menu) do nothing in the Edited panel: they don't know about the updates, which rewrite the
+    paragraph's markup. Ctrl+Z shows the message "Undo isn't available here: use ↺ to revert your
+    edits." (once per editing session is enough; later presses do nothing). Reverting is
+    requirements 22, 22a and 23.
+22. **Revert this:** a change that the reviewer's edits created or changed (a new change, a typo
+    fixed inside the editor's insertion) can be reverted on its own:
+    - in the Edited panel, a small revert icon button (↺, tooltip "Revert my edit of this
+      change") follows the change's last piece, after its ✓/✗ when it is decided;
+    - the change's card (side list and inline card, FR-28/28a) has a **Revert** icon button with the
+      same tooltip.
+    A click reverts **only that change**; the rest of the paragraph, other edits included, stays
+    as it is:
+    - a change the edits created disappears, with its decision and comment: its deleted text is
+      unchanged text again, its inserted text goes;
+    - a change of the comparison's that the edits changed gets its text as the comparison produced
+      it back, keeping its id, decision and comment.
+    It asks for confirmation first ("Revert your edit of this change? This can't be undone.").
+    A change that an edit removed completely (the editor's insertion deleted, the Original's text
+    typed back) has no piece left to carry the icon: it comes back with Revert paragraph or Revert
+    all.
+22a. **Revert paragraph:** the Edited panel's header has a revert icon button labelled **¶**
+    (↺ ¶, tooltip "Revert my edits in this paragraph") right after the Editable toggle. Its
+    paragraph: the one with the cursor while Editable is on, otherwise the current change's
+    paragraph. After a confirmation ("Revert your edits in this paragraph? This can't be undone.")
+    it restores that paragraph as the comparison produced it: the changes the edits created
+    disappear, with their decisions and comments; the comparison's changes come back with theirs
+    (requirement 16). It is always there, enabled whether or not Editable is on; disabled and greyed
+    out only when there is no such paragraph or it has no edits.
+23. **Revert all edits:** a revert icon button labelled **all** (↺ all, tooltip "Revert all my
+    edits") right after ↺ ¶. It is always there, enabled whether or not Editable is on; disabled
+    and greyed out only when there are no edits. It asks for confirmation ("Revert your edits in N paragraphs? This can't be
+    undone.") and then restores every edited paragraph as in requirement 22a.
 24. **Swap** (FR-3) and a new comparison discard the edits. When there are edits, Swap and
     replacing either file with the toolbar's file pickers (FR-1) first ask for confirmation
     ("Swapping discards your edits in N paragraphs." / "Opening another file discards …"). Close review (FR-48)
@@ -255,16 +278,19 @@ have to leave the tool, and the comparison doesn't slow down.
 
 - **Header:** the Edited panel header already accepts controls (`headerControls` in
   `src/ui/DocumentPanel.tsx`; the Resolved column uses it for its Comments button,
-  `src/App.tsx`). Toggle: icon + "Editable", same look as the Comments button. **Revert all
-  edits** appears to its right only while Editable is on and there are edits.
+  `src/App.tsx`). Toggle: icon + "Editable", same look as the Comments button. Then **↺ ¶** (Revert
+  paragraph) and **↺ all** (Revert all edits), same look, always present and usable whether or not
+  Editable is on; disabled and greyed out only when they have nothing to revert.
 - **Editable panel:** a subtle tint or a 2 px outline in the accent colour (light and dark,
   FR-25a, tokens in `index.css`/`panel.css`). Non-editable regions stay as they are, with an arrow
   cursor.
 - **Toast:** small, near the Edited header, `role="status"`, auto-hides. One at a time. A repeated
   message restarts its timer.
-- **Revert ↺ button:** in the panel's right margin, aligned with the paragraph's first line. Placed
-  like the inline card (light-DOM child through a slot, `reveal.ts`/`InlineChangeCard.tsx`
-  pattern), so it scrolls with the text.
+- **Revert ↺ icon of a change:** inline, right after the change's last piece and its ✓/✗, small,
+  in the muted text colour (accent on hover), not editable, so it flows and scrolls with the text.
+  Only in the Edited panel, whether or not Editable is on.
+- **Change card:** a **Revert** icon button (↺) next to the card's other buttons, only on changes
+  requirement 22 applies to.
 - **Colours:** no new colours for edited text. It is an ordinary insertion/deletion (blue / red).
 - **Help popover:** add a line about Editable and that shortcuts are off while typing.
 
@@ -427,10 +453,8 @@ checked against the code on 2026-10-18.
   references, list labels `[data-list-marker]`, images, our markers), and intercept `beforeinput` to
   enforce requirements 11–13 (`insertParagraph`, `insertLineBreak`, cross-block `deleteContent*`,
   `insertFromDrop`, `insertFromPaste` → plain text).
-- **Undo (requirement 21):** cancel `beforeinput` with `inputType` `historyUndo`/`historyRedo`
-  (cancelable in Chrome; the browser's Edit-menu undo state is then meaningless), and also handle
-  Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on `keydown`. Keep the own stack as segment-model snapshots with
-  cursor offsets.
+- **No undo (requirement 21):** cancel `beforeinput` with `inputType` `historyUndo`/`historyRedo`
+  (cancelable in Chrome; already done in task 4). Ctrl+Z on `keydown` only shows the message.
 - **Input methods:** Hungarian (the sample's language) uses dead keys for ő/ű. Don't run the
   update during composition (`compositionstart`…`compositionend`, `event.isComposing`). Start the
   300 ms debounce at `compositionend`.
@@ -458,7 +482,7 @@ checked against the code on 2026-10-18.
 - **What is saved:** per edited block, its key (see the mapping spike) and its segment sequence
   as last updated (text, segment kind, owning item and revision id, formatting source), plus the
   sequence the comparison produced, so that Revert and replay can check that the block still
-  matches (requirement 26). Not keystrokes, and not the undo history.
+  matches (requirement 26). Not keystrokes.
 - `src/storage/reviewStore.ts`: add `edits` to `ReviewState` and `sanitizeState` (a record without
   them loads with none; malformed records are dropped). The schema version can stay 1 (an addition
   with a default).
@@ -466,9 +490,9 @@ checked against the code on 2026-10-18.
   arrives, and **drops decisions whose item id is unknown** (`known` set, ~line 139). The saved
   segments name their item ids, so add the ids found in the saved edits to `known`. The decisions
   of edit-created items are then kept, whatever order the replay runs in.
-- **Only brand-new items start accepted.** A replay, an undo/redo or a revert brings back items
-  whose decisions are already in the state (the reviewer may have rejected them since). Accept only
-  items whose id was just allocated by a live edit, never on replay, undo, redo or revert.
+- **Only brand-new items start accepted.** A replay or a revert brings back items whose decisions
+  are already in the state (the reviewer may have rejected them since). Accept only items whose id
+  was just allocated by a live edit, never on replay or revert.
 - The master rendered document (`comparison.document.body`) must stay in sync with the panels:
   switching to three columns mounts the Resolved column from it.
 - `useAutoSave` saves `reviewState`. Add the edits to it (debounced 300 ms; typing produces an update
@@ -489,7 +513,7 @@ checked against the code on 2026-10-18.
    Mixed decisions ≡ an extended `test/expectedText.ts` model.
 2. Exports with edits pass `verifyDeliverable` and `scripts/check-libreoffice.sh`.
 3. **Id rules** (unit tests): existing item keeps id/decision/comment when edited; an edit next to
-   decided changes never changes their decisions (requirement 16's example); new items accepted; a reverted paragraph restores its items exactly.
+   decided changes never changes their decisions (requirement 16's example); new items accepted; a reverted change restores only itself; a reverted paragraph restores its items exactly.
 4. **Replay** (unit + e2e): reload after edits gives identical items, ids, decisions, comments.
 5. **Performance** (e2e `PERF=1`): an update after typing a word is visible within 400 ms of the
    last keystroke, and no update task is over 100 ms, on the sample and on the ~300-page pair. No

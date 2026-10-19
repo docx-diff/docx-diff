@@ -13,6 +13,8 @@ import {
   applyTextEdit,
   blockItems,
   editRevisions,
+  revertChange,
+  revertableItems,
   revisionTexts,
   visibleText,
   type BlockEdit,
@@ -146,7 +148,27 @@ export class EditSession {
     return this.editedBlocks().flatMap((edit) => this.revert(edit.unid) ?? []);
   }
 
-  /** Sets blocks to saved segments (a replay, an undo or redo): no item counts as created. */
+  /** The items of the block that can be reverted on their own (`revertableItems`). */
+  revertableItems(unid: string): Set<string> {
+    const edit = this.blocks.get(unid);
+    return edit ? revertableItems(edit) : new Set();
+  }
+
+  /** Every change that can be reverted on its own, with its block. */
+  revertableChanges(): Map<string, string> {
+    return new Map(this.editedBlocks().flatMap((edit) => [...revertableItems(edit)].map((itemId) => [itemId, edit.unid] as const)));
+  }
+
+  /** The block with one item's edit undone (`revertChange`); `null` when it changes nothing. */
+  revertChange(unid: string, itemId: string): BlockUpdate | null {
+    const edit = this.blocks.get(unid);
+    if (!edit || !revertableItems(edit).has(itemId)) return null;
+    const current = revertChange(edit, itemId);
+    if (sameSegments(current, edit.current)) return null;
+    return this.apply({ ...edit, current }, []);
+  }
+
+  /** Sets blocks to saved segments (a replay): no item counts as created. */
   restore(saved: readonly SavedBlockEdit[]): { updates: BlockUpdate[]; skipped: number } {
     const updates: BlockUpdate[] = [];
     let skipped = 0;
@@ -297,6 +319,7 @@ export interface Edits {
   update: (unid: string, newVisible: string, caret?: number) => BlockUpdate | null;
   revert: (unid: string) => BlockUpdate | null;
   revertAll: () => BlockUpdate[];
+  revertChange: (unid: string, itemId: string) => BlockUpdate | null;
   restore: (saved: readonly SavedBlockEdit[]) => { updates: BlockUpdate[]; skipped: number };
 }
 
@@ -311,6 +334,7 @@ export function useEdits(comparison: Comparison | null): Edits {
   const update = useCallback((unid: string, text: string, caret?: number) => changed(session?.update(unid, text, caret) ?? null), [session, changed]);
   const revert = useCallback((unid: string) => changed(session?.revert(unid) ?? null), [session, changed]);
   const revertAll = useCallback(() => changed(session?.revertAll() ?? []), [session, changed]);
+  const revertChangeOf = useCallback((unid: string, itemId: string) => changed(session?.revertChange(unid, itemId) ?? null), [session, changed]);
   const restore = useCallback((saved: readonly SavedBlockEdit[]) => changed(session?.restore(saved) ?? { updates: [], skipped: 0 }), [session, changed]);
   return {
     session,
@@ -322,6 +346,7 @@ export function useEdits(comparison: Comparison | null): Edits {
     update,
     revert,
     revertAll,
+    revertChange: revertChangeOf,
     restore,
   };
 }

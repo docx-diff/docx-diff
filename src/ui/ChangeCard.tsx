@@ -3,6 +3,9 @@ import type { ChangeItem, ChangeKind } from '../model/changes';
 import type { Decision } from '../model/decisions';
 import { DecisionButton } from './DecisionButton';
 
+/** The tooltip of the buttons that revert one change's inline edit (the card's, the Edited panel's ↺). */
+export const REVERT_LABEL = 'Revert my edit of this change';
+
 export const KIND_LABELS: Record<ChangeKind, string> = {
   inserted: 'Inserted',
   deleted: 'Deleted',
@@ -69,6 +72,8 @@ interface Props {
   onComment: (itemId: string, text: string | null) => void;
   /** Shows a close button in the corner (the card in the Edited's panel, FR-28a). */
   onClose?: () => void;
+  /** Shows a Revert button: for a change the reviewer's inline edits created or changed (it asks first). */
+  onRevert?: (itemId: string) => void;
   testId?: string;
 }
 
@@ -77,7 +82,7 @@ interface Props {
  * change in the Edited's panel (FR-28a). Formatting items have no Accept/Reject (FR-30).
  */
 export const ChangeCard = memo(function ChangeCard(props: Props) {
-  const { item, label, decision, current, onSelect, onDecide, onDecideUntil, comment, onComment, onClose } = props;
+  const { item, label, decision, current, onSelect, onDecide, onDecideUntil, comment, onComment, onClose, onRevert } = props;
   const formatting = item.kind === 'formatting';
   const commentRef = useRef<HTMLTextAreaElement>(null);
   // Bumped by "… with comment": focuses the comment once it is there.
@@ -164,6 +169,20 @@ export const ChangeCard = memo(function ChangeCard(props: Props) {
               }}
             >
               Reset
+            </button>
+          )}
+          {onRevert && (
+            <button
+              type="button"
+              className="button button--small button--plain change-card__revert"
+              title={REVERT_LABEL}
+              aria-label={REVERT_LABEL}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRevert(item.id);
+              }}
+            >
+              <span aria-hidden="true">↺</span> Revert
             </button>
           )}
         </div>

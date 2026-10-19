@@ -54,7 +54,7 @@ Model (pure TypeScript, main thread)
 
 UI (`src/ui/`, entry `src/App.tsx`)
 - `useEngine`, `useComparison`, `useCompareSettings`, `useExportSettings` (the export dialog's last choices, kept in the browser), `useReviewStorage`/`useAutoSave`, `useKeyboardShortcuts` — the app's state hooks.
-- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx`, `Toast.tsx` ([Inline edits](#inline-edits)).
+- `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx` (the toggle, ↺ ¶ and ↺ all), `Toast.tsx` ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
 - `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
@@ -381,7 +381,7 @@ segments leaves everything outside it as it was:
   and becomes one new item (Replaced when it has both). A run of changes the edit touched whose
   deleted and inserted text are the same (the Original typed back) becomes unchanged text: its
   items lose those segments, and an item left without any disappears (its decision and comment stay
-  in the review state, for revert).
+  in the review state, for a revert).
 - **Ids** of new items are `editId(unid, n)` = `e<unid>.<n>`, `n` counting up in the block's
   `nextId` (never reused): the deletion's id, then the insertion's; the item's id is the first. They
   can't collide with the engine's ids (`rev…` strings) and are the same when the edits are replayed. An
@@ -433,7 +433,7 @@ sample), so a paragraph the panel lets the reviewer edit can always be exported.
 `useEdits` hook). A `Comparison` stays as compared (a new one still means a new review); the session
 holds the `BlockEdit`s and the values derived from them, which the App uses instead of the
 comparison's: the items, their texts, the `DocIndex`, the headings. An update (`update`, `revert`,
-`revertAll`, `restore`) touches one block:
+`revertChange`, `revertAll`, `restore`) touches one block:
 - its segments (`applyTextEdit`), then its items: `blockItems` gives the block's items now, and
   `replaceBlockItems` (`src/model/changes.ts`) puts them where its old ones were, keeping the object
   of an item the edit left alone (so a relabelled kind stays) and every existing id; `order` is
@@ -450,7 +450,7 @@ comparison's: the items, their texts, the `DocIndex`, the headings. An update (`
 A block whose segments are back to the comparison's gets its element, items and texts as compared.
 `nextId` is never reset, so a later edit's item never takes an earlier one's id (and its decision).
 The update returns the new master element and the items removed, added and created; only items a
-live edit created start as accepted (`showBlockUpdates`), never those a revert, undo or replay
+live edit created start as accepted (`showBlockUpdates`), never those a revert or replay
 brings back. The export gets `revisions()` (the engine's plus `editRevisions` of every edited
 block) and `patches()`.
 
@@ -505,13 +505,44 @@ change there; in a block that can't be edited it shows why. The current change's
 - `beforeinput` enforces the rules: paragraph and line breaks, deletes at a paragraph's start or end
   (they would join paragraphs), selections beyond one block, and deletes or replacements that include
   an object are cancelled with a message (`EDIT_MESSAGES`, shown by `Toast`); the browser's undo/redo,
-  formatting and drops silently. A paste inserts its plain text (`plainText`: line breaks and tabs as
+  formatting and drops silently. There is **no undo**: the browser's history doesn't know about the
+  updates, which rewrite the block's markup, and an own undo stack was more than the feature needs.
+  Ctrl+Z says so once per editing session (`EDIT_MESSAGES.noUndo`); the reverts below replace it. A paste inserts its plain text (`plainText`: line breaks and tabs as
   spaces) through the model at once, like typed text the browser can't be left to insert.
 - Selection in the shadow root: `getSelection().getComposedRanges({ shadowRoots })` (fallback
   `ShadowRoot.getSelection`, then the document's), never `document.getSelection()` alone (Chromium
   reports a cursor in a shadow root at the host). A key event reaches `window` retargeted to the
   panel, so `useKeyboardShortcuts` checks `composedPath()[0]`: keys typed into the text are not
   shortcuts. Escape takes the cursor out of the text (to the panel, whose arrow keys scroll it).
+
+**Reverts** come in three grades, each after a confirmation (`ConfirmDialog`, App's `Confirmation`)
+and whether or not Editable is on; none accepts anything, and a change that disappears stops being
+the current one. While editing, the cursor goes back to where it last was in an editable block
+(`PanelEditing.restoreCursor`, offsets clamped to the block's end).
+- **One change** (`revertChange` in `paragraphEdit.ts`, `EditSession.revertChange`). The changes
+  that can be reverted on their own are `revertableItems`: those the edits created and those of the
+  comparison whose segments differ from their segments in `original` (a typo fixed inside an
+  insertion); one rule for the panel's icons and the cards. Only the chosen item's segments change:
+  an item the edits created loses its deletions to unchanged text (an edit only ever deletes
+  unchanged text) and its insertions; an item of the comparison gets its inserted segments from
+  `original` back where its first inserted piece is now, else right after its last deleted piece (its
+  deletions never change). No typed-back cancellation runs, so neighbours are never merged; a result
+  equal to `original` is `original` (the block has no edits). An item an edit removed completely has
+  no segment left: only ↺ ¶ and ↺ all bring it back. In the Edited panel a `span.edit-revert` (no
+  text, `contenteditable=false`, `NOT_TEXT`: the segment reader and cursor offsets skip it) follows
+  each such item's last insertion (else its last deletion), after the ✓/✗ of that piece's `::after`;
+  `placeRevertIcons` places them whenever the panel swaps a block in (`swapRuns`), as only an update of
+  a block changes its revertable items. A click or Enter asks first; a mousedown on it is cancelled, so
+  the cursor doesn't move. The change's card (list and inline) has a Revert button for the same items.
+- **One paragraph** (↺ ¶ in the Edited header, `revert`): the paragraph the cursor was last in while
+  editing (`EditingOptions.onCursor`, from `selectionchange`), else the current change's.
+- **All edits** (↺ all, `revertAll`).
+
+**Guards.** Swap and opening another file with the toolbar's pickers discard the edits (a new
+comparison): with edits they ask first. Moving the end point (number or picking) so that edited
+paragraphs newly fall outside the range asks first (`editedBlocksLeftOutside` in `src/model/range.ts`):
+their changes are then out of range and the export keeps the Original's text there; the edits stay,
+and moving the end point back offers them again.
 
 **Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
 `w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,

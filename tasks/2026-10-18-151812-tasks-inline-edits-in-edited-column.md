@@ -6,8 +6,8 @@ PRD: [`2026-10-18-151812-prd---inline-edits-in-edited-column.md`](2026-10-18-151
 ## Relevant Files
 
 New:
-- `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment`/`BlockEdit` types, `visibleText`/`originalText`, `editSpan`, `applyTextEdit` (old visible text → new visible text applied to the segments: ownership, whole-word widening, typed-back cancellation, new ids), `revertBlock`, `revisionTexts`, `blockItems`. Shared by the main thread and the worker.
-- `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`.
+- `src/model/paragraphEdit.ts` - The paragraph edit model, pure (no DOM): `Segment`/`BlockEdit` types, `visibleText`/`originalText`, `editSpan`, `applyTextEdit` (old visible text → new visible text applied to the segments: ownership, whole-word widening, typed-back cancellation, new ids), `revertBlock`, `revertableItems` / `revertChange` (one change's edit undone, task 5), `revisionTexts`, `blockItems`. Shared by the main thread and the worker.
+- `src/model/paragraphEdit.test.ts` - Unit tests: edit span (caret, NBSP, surrogates), PRD-16's example, typo inside an insertion, typing the Original back, deleting a whole insertion, a word partly changed, objects, ids stable on replay, `blockItems`; reverting one change (new word change, typo in an insertion, one of two edits, a new change next to an existing one, an insertion deleted completely, objects, no merging, revert of every item gives the block as compared).
 - `src/ui/blockSegments.ts` - `readBlockSegments`: a rendered block's segments from the decorated HTML (`equal` / `del` / `ins` / inline objects: note references, tabs, breaks; item ids from `data-change-id`, revision ids from `data-author`) (task 2.6); `renderBlockSegments`: segments back into the block's markup (task 3.1); `uneditableReason` + `UNEDITABLE_MESSAGES`: which blocks can be edited, and the message (task 3.2).
 - `src/ui/blockSegments.test.ts` - Reader tests on `test/small-html.ts` shapes (objects, back links/¶/list labels skipped, empty-paragraph and deleted-mark fillers, shared edges); rendering (own segments give the block back, typed word, typo inside an insertion, word changed, typed back, labels/bookmarks/objects/break mark kept, fillers, refused Original); editability.
 - `src/engine/applyEdits.ts` - The export's first step: patches each edited block's `w:p` to its final segments (Original-side characters aligned one to one, inserted ones matched per gap; only touched runs split, then joined again) and returns the updated revision list (new `w:ins`/`w:del`, `w:id`s above every id of the text parts, updated `constituentKeys`, emptied revisions dropped); `EditPatchError`; `unpatchableContent`, the one rule for the paragraphs it refuses (also used by task 3.2 and `test/edits.ts`).
@@ -18,16 +18,16 @@ New:
 - `src/engine/blockKey.ts` - `paragraphUnids`: the engine's Unid of every `w:p` of a part, i.e. the rendered blocks' `data-anchor` (task 0).
 - `src/engine/blockKey.test.ts` - The mapping checked on every fixture and on repeated/empty paragraphs, identical cells, headings and inline objects.
 - `test/block-mapping.ts` - `unmappedBlocks(redline, html)`: paragraph blocks whose `data-anchor` names no `w:p` (used by the blockKey, sample and big-pair tests).
-- `src/ui/useEdits.ts` - `EditSession` (one per comparison): edit records, derived items / item texts / index / headings, the master document's blocks patched; `update`, `revert`, `revertAll`, `restore`, `revisions()`, `patches()`; `BlockUpdate` (with the items a live edit created); `showBlockUpdates` (panels + accept); the `useEdits` hook.
-- `src/ui/useEdits.test.tsx` - Session tests (PRD-16's example, typo inside an insertion, typed back, revert to the compared markup and items, ids never reused, restore and skipped records, heading) and a hook test.
-- `src/ui/DocumentPanel.test.tsx` - `replaceBlock` in the side panels (decisions, current, ignored, new items' elements known, dark colours) and the Resolved column; `showBlockUpdates` over three panels.
+- `src/ui/useEdits.ts` - `EditSession` (one per comparison): edit records, derived items / item texts / index / headings, the master document's blocks patched; `update`, `revert`, `revertChange`, `revertableItems`, `revertableChanges`, `revertAll`, `restore`, `revisions()`, `patches()`; `BlockUpdate` (with the items a live edit created); `showBlockUpdates` (panels + accept); the `useEdits` hook.
+- `src/ui/useEdits.test.tsx` - Session tests (PRD-16's example, typo inside an insertion, typed back, revert to the compared markup and items, one change reverted with the other edits kept, ids never reused, restore and skipped records, heading) and a hook test.
+- `src/ui/DocumentPanel.test.tsx` - `replaceBlock` in the side panels (decisions, current, ignored, new items' elements known, dark colours) and the Resolved column; `showBlockUpdates` over three panels; revert icons (placed after the last piece and the ✓, skipped by the reader, click/Enter ask without selecting, task 5).
 - `test/small-comparison.ts` - A comparison built without the engine for UI tests of inline edits (`smallComparison`).
-- `src/ui/EditableToggle.tsx` - The Edited panel header's toggle (task 4); the Revert all edits button (task 5).
-- `src/ui/EditableToggle.test.tsx` - The toggle's pressed state and tooltips; the toast's timer.
-- `src/ui/editing.ts` - `PanelEditing`, the Edited panel's editing behaviour: contenteditable on editable blocks (objects `false`), `beforeinput` rules (PRD-11–13, `EDIT_MESSAGES`), plain-text paste (`plainText`), `deletedSpan`, composition, debounce and flushes, input elsewhere than the pending span applied through the model (`applyNow`), cursor save/restore as text offsets (`blockSelection`, `selectInBlock`), Escape; own undo stack and revert ↺ placement (task 5).
-- `src/ui/editing.test.ts` - Unit tests (jsdom) for what doesn't need layout or a shadow-root selection: `plainText`, `deletedSpan`, contenteditable on/off and refresh, blocked input types, click messages, debounce, composition, flush on focus loss / Escape / detach, refused update.
+- `src/ui/EditableToggle.tsx` - The Edited panel header's toggle (task 4); `RevertButtons`: ↺ ¶ (Revert paragraph) and ↺ all (Revert all edits) after it (task 5).
+- `src/ui/EditableToggle.test.tsx` - The toggle's pressed state and tooltips; ↺ ¶ / ↺ all enabled and disabled; the toast's timer.
+- `src/ui/editing.ts` - `PanelEditing`, the Edited panel's editing behaviour: contenteditable on editable blocks (objects `false`), `beforeinput` rules (PRD-11–13, `EDIT_MESSAGES`), plain-text paste (`plainText`), `deletedSpan`, composition, debounce and flushes, input elsewhere than the pending span applied through the model (`applyNow`), cursor save/restore as text offsets (`blockSelection`, `selectInBlock`), Escape; Ctrl+Z's no-undo message, the last cursor (`onCursor`, `restoreCursor`) (task 5).
+- `src/ui/editing.test.ts` - Unit tests (jsdom) for what doesn't need layout or a shadow-root selection: `plainText`, `deletedSpan`, contenteditable on/off and refresh, blocked input types, click messages, debounce, composition, flush on focus loss / Escape / detach, refused update, Ctrl+Z's message once.
 - `src/ui/Toast.tsx` - The short status message under the Edited header (PRD-13), `role="status"`, 4 s.
-- `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); undo/revert, range warning, Swap confirmation, reload/resume, export round trip (tasks 5, 6).
+- `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); revert by icon / card / ↺ ¶ / ↺ all with confirm and cancel, Ctrl+Z message, Swap and file picker confirmation, range warning by number and by picking (task 5); reload/resume, export round trip (task 6).
 
 Changed:
 - `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` and its `editable` timing (task 3.2).
@@ -54,15 +54,20 @@ Changed:
 - `src/ui/useEdits.ts` - Task 4: `EditSession.blockElement(unid)`, `visibleText(unid)`.
 - `src/ui/resolvedView.ts` - `replaceResolvedBlock(handle, old, block)`: restore the run of joined paragraphs, swap, rebuild the items' elements/markers/children/note references/item notes, join again, apply the sides; `follows` without the `Node` global.
 - `src/ui/resolvedView.test.ts` - `replaceResolvedBlock` ≡ a panel prepared from the updated HTML (comment icon, joined run, note reference).
-- `src/ui/panel.css` - Editable styles (cursors, focused block; ↺ button in task 5), no style text written at run time.
+- `src/ui/panel.css` - Editable styles (cursors, focused block; `.edit-revert`, the changes' ↺ icons, task 5), no style text written at run time.
+- `src/ui/ChangeCard.tsx` - ↺ Revert (this change) button for changes an edit created or changed, `REVERT_LABEL` (task 5).
+- `src/ui/ChangesList.tsx` / `src/ui/ChangesList.test.tsx` - `revertable` / `onRevert`: the cards' Revert button (task 5).
+- `src/ui/InlineChangeCard.tsx` - Passes `onRevert` to its card (task 5).
+- `src/ui/DocumentPanel.tsx` - Task 5: `revertIcons` prop (`RevertIcons`), `placeRevertIcons` (in `swapRuns`), clicks/Enter/mousedown on `.edit-revert`, `PanelControl.restoreCursor`.
+- `src/model/docIndex.ts` - `NOT_TEXT` includes `.edit-revert` (task 5).
+- `src/model/range.ts` / `src/model/range.test.ts` - `editedBlocksLeftOutside`: the range warning's count (task 5).
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
 - `src/ui/useKeyboardShortcuts.test.tsx` - A key from an editable element inside a shadow root is not a shortcut.
-- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); Swap confirmation, range warning, resume order, autosave of edits.
-- `src/ui/RangeControl.tsx` - Asks before an end point that leaves edited paragraphs outside the range (PRD-24a).
+- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); `Confirmation` + `ConfirmAction` (the three reverts, Swap, toolbar file pickers, range warning via `requestRange`), `cursorBlock`, `revertable` / `editedBlockIds`, `showReverts` (task 5); resume order, autosave of edits (task 6).
 - `src/ui/HelpPopover.tsx` - A line about Editable (shortcuts off while typing, Escape).
 - `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState`.
 - `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
-- `src/index.css` - Toggle, toast and the editing panel's outline (task 4), Revert all (task 5); tokens, light and dark.
+- `src/index.css` - Toggle, toast and the editing panel's outline (task 4), `.revert-button` (↺ ¶, ↺ all, task 5); tokens, light and dark.
 - `test/fixtures/make-fixtures.ts` - Fixture `link-bookmark-tab` (task 2).
 - `test/edits.ts` - `editableBlocks` uses `uneditableReason` (task 3).
 - `src/ui/renderedDocument.test.ts`, `src/model/{changes,docIndex,equivalence,outline}.test.ts`, `src/ui/useComparison.test.tsx` - Block-scoped decoration, `replaceBlockItems`, `replaceIndexBlock`, `collectItemTexts` from a block, edited headings; `uneditableBlocks` in the fake result (task 3).
@@ -71,7 +76,7 @@ Changed:
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
 - `src/ui/DocumentPanel.test.tsx` - Task 4: editing mode (editable blocks, no click-to-select, message, replaced block prepared, flush on turning off but not on a new document).
 - `src/ui/blockSegments.test.ts` - Task 4: the browser's placeholder `<br>`, `visibleOffset` / `visiblePoint`.
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4).
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4; no undo, "Reverts" and "Guards", task 5).
 
 ### Notes
 
@@ -468,12 +473,11 @@ Update the file after completing each sub-task, not just after completing an ent
 - The App's `applyEdit(unid, text, caret)` (`EditingOptions.onEdit`) is the one path from the panel
   to the session: it calls `edits.update`, shows the update in all panels (`showBlockUpdates`,
   created items accepted), and otherwise puts the master block back into the Edited panel
-  (`'unchanged'` / `'refused'`). Undo/redo (5.1) and revert (5.2) must not accept anything: use
+  (`'unchanged'` / `'refused'`). Revert (5.2–5.3) must not accept anything: use
   `restore` / `revert` and `showBlockUpdates` (which accepts only `createdItemIds`, empty there),
   then `PanelEditing` restores the cursor (`selectInBlock`).
-- The browser's `historyUndo`/`historyRedo` are cancelled silently for now; task 5.1 replaces that
-  with the own stack (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on `keydown`: Chromium sends no `historyRedo`
-  when it has nothing to redo, task 0).
+- The browser's `historyUndo`/`historyRedo` are cancelled silently. (Task 5 was simplified on
+  2026-10-19: no own undo stack; it stays cancelled, and Ctrl+Z only shows a message.)
 - `PanelEditing.flush()` returns the outcome; the pending edit's caret is the cursor **after the last
   input**, not the cursor at flush time (it may have moved: passing that one placed the edit wrongly).
   `selectionchange` is asynchronous: an input that arrives outside the pending span before it is
@@ -491,7 +495,7 @@ Update the file after completing each sub-task, not just after completing an ent
   and joins it again (the unjoined Edited panel swaps only the block: fixed after the task 3–4
   review, the cursor in the run's next paragraph was lost); `replaceResolvedBlock` assigns id-less ¶ glyphs / deletion markers as
   `prepareResolvedPanel` does and uses `wrapper.contains` instead of `isConnected`. Wholly deleted
-  paragraphs and moves stay uneditable. Task 5's revert/undo go through the same `replaceBlock`.
+  paragraphs and moves stay uneditable. Task 5's reverts go through the same `replaceBlock`.
 - **Display setting "left-aligned" (FR-20a, user request, 2026-10-18):** the Edited panel's
   alignment changed when Editable unjoined paragraphs (a joined paragraph takes its target's
   alignment). `ViewSettings.leftAligned` (default on, checkbox in Compare settings → Display);
@@ -508,35 +512,89 @@ Update the file after completing each sub-task, not just after completing an ent
 - CLAUDE.md candidates (task 8.5): `composedPath()[0]` for keys from the panels; the pending edit's
   caret; `hasText` locators in e2e match `textContent`, which includes hidden deletions.
 
-### 5.0 Undo, revert and guards
+### 5.0 Revert and guards
 
 **Specs**
 
-- Own undo stack per editing session (PRD-21): snapshots of `{ unid, segments, cursor }` pushed per
-  update; Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on `keydown`, and `beforeinput` `historyUndo`/`historyRedo`
-  cancelled and handled the same. Also undoes input not yet flushed (flush first). Cleared on toggle
-  off and reload.
-- Undoing/redoing applies the snapshot through the same path as an update (decisions of items that
-  come back are still in state).
-- ↺ Revert this paragraph (PRD-22): light-DOM button through a slot (like `InlineChangeCard`,
-  `reveal.ts` placement), shown for an edited block while the cursor or mouse is in it.
-- Revert all edits (PRD-23): header button next to the toggle while editing and edits exist;
-  `ConfirmDialog` with the count.
+(Simplified 2026-10-19, user request: no undo/redo stack; three grades of revert: this change,
+this paragraph, all edits. All three ask for confirmation (`ConfirmDialog`) and work whether or
+not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
+
+- **No undo (PRD-21):** `historyUndo`/`historyRedo` stay cancelled (task 4). Ctrl+Z (`keydown` in
+  the panel, `composedPath()[0]`) shows `EDIT_MESSAGES.noUndo` ("Undo isn't available here: use ↺
+  to revert your edits.") once per editing session; Ctrl+Shift+Z / Ctrl+Y do nothing.
+- **Which changes can be reverted on their own:** the items of an edited block (`BlockEdit` with
+  `current` ≠ `original`) that are edit-created (`isEditIdOf`) or whose segments differ from their
+  segments in `original` (an existing insertion the reviewer typed into). One function in
+  `paragraphEdit.ts`, e.g. `revertableItems(edit): Set<string>`, used by the icons and the card; no
+  second rule.
+- **`revertChange(edit, itemId): Segment[]`** (pure, `paragraphEdit.ts`), touching **only that
+  item's segments**; everything else in the block stays as it is:
+  - edit-created item: its `del` segments become `equal` (an edit's deletion is always of
+    unchanged text: `applyTextEdit` turns only `equal` units into `newDel`, and widening only
+    splits `equal` units), its `ins` segments and owned objects go; adjacent `equal`s merge;
+  - existing item: its `ins` segments in `current` are replaced by its `ins` segments from
+    `original`, at the position of its first remaining piece (its `del` segments never change).
+    Items whose `ins` text the edits removed completely have no piece: not revertable here.
+  - `nextId` is not reset (ids never reused). Holds: `originalText` unchanged; reverting each
+    revertable item of a block with one edit gives `original`.
+  Tests: a new word change; a typo inside an insertion; two edits in one paragraph (only one
+  reverted, the other kept); a new change next to an existing one it touched (only the chosen one
+  reverted); objects; a change that typed back to the Original after the revert isn't merged with
+  neighbours.
+- **Session:** `EditSession.revertChange(unid, itemId): BlockUpdate | null` through `apply` with no
+  created items (like `revert`); `useEdits` exposes it. Edit-created items that vanish keep their
+  state entries unused; a restored item keeps its decision and comment.
+- **↺ icon in the Edited panel (PRD-22):** a `span.edit-revert` (`contenteditable="false"`,
+  `role="button"`, `aria-label`/`title` "Revert my edit of this change", `data-revert-id=<itemId>`)
+  right after the item's last visible piece (after its ✓/✗, which is the piece's `::after`), only
+  in the Edited panel (not in the master document), whether or not Editable is on: added for the
+  block's revertable items in `replaceBlock` (and on restore). `readBlockSegments` and the
+  visible-text reading in `editing.ts` skip it (like markers); a click on it asks for confirmation,
+  then reverts; it never selects the item or moves the cursor. Pre-written CSS in `panel.css` (no style-text change, CLAUDE.md), light and dark.
+- **Card (PRD-22):** `ChangeCard` gets an optional `onRevert` and shows a ↺ **Revert** icon button
+  when set; `App.tsx` passes it for revertable items (side list and `InlineChangeCard`). Same
+  confirmation as the icon. An edit-created item vanishes after its revert: clear the current
+  item.
+- **Header (PRD-22a, 23):** after the Editable toggle (`EditableToggle.tsx` or next to it), two icon
+  buttons, same look, always rendered:
+  - **↺ ¶**: `revert(unid)` of the paragraph with the cursor while Editable is on (`PanelEditing`
+    reports it), otherwise of the current item's block; `disabled` only when there is no such
+    paragraph or it has no edits. `ConfirmDialog`, then revert.
+  - **↺ all**: `disabled` only when there are no edits; `ConfirmDialog` with the paragraph count,
+    then `revertAll`.
 - Swap (PRD-24): `ConfirmDialog` when edits exist; Close review discards with the rest.
 - Range warning (PRD-24a): when a new end point (RangeControl or picking a paragraph) would make
   edited blocks out of range, `ConfirmDialog` ("Move the end point" / "Cancel"); edits kept either
   way.
+- Update `docs/architecture.md` "Inline edits" (no undo; the three reverts, `revertChange`'s rule)
+  with the code.
 
-**Depends on:** tasks 3–4; `src/ui/ConfirmDialog.tsx`, `src/ui/RangeControl.tsx`, `src/App.tsx` (`swap`, `pickParagraph`, `setRangeState`), `src/model/range.ts` (`outOfRangeBlocks`).
+**Depends on:** tasks 3–4; `src/model/paragraphEdit.ts`, `src/ui/useEdits.ts`, `src/ui/editing.ts`, `src/ui/blockSegments.ts`, `src/ui/DocumentPanel.tsx`, `src/ui/ChangeCard.tsx`, `src/ui/EditableToggle.tsx`, `src/ui/ConfirmDialog.tsx`, `src/ui/RangeControl.tsx`, `src/App.tsx` (`swap`, `pickParagraph`, `setRangeState`), `src/model/range.ts` (`outOfRangeBlocks`).
 
-- [ ] 5.0 Undo, revert and guards
-  - [ ] 5.1 Undo/redo stack in `editing.ts`; tests (incl. after an update rewrote the block).
-  - [ ] 5.2 ↺ button and Revert this paragraph; test that items, decisions and comments come back.
-  - [ ] 5.3 Revert all edits button with confirmation.
-  - [ ] 5.4 Confirmation when edits exist before Swap and before replacing a file with the toolbar's pickers (`Toolbar.tsx` `onFile`).
-  - [ ] 5.5 Range warning for RangeControl changes and paragraph picking; tests.
-  - [ ] 5.6 e2e: undo after an update, revert one/all, Swap confirm/cancel, range warning confirm/cancel.
-  - [ ] 5.7 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+- [ ] 5.0 Revert and guards
+  - [x] 5.1 `revertableItems` and `revertChange` in `paragraphEdit.ts`; `EditSession.revertChange` and the hook. Unit tests (cases above; a restored item keeps its decision and comment).
+  - [x] 5.2 ↺ icon after each revertable change in the Edited panel (Editable on or off); skipped by the segment reader; ↺ Revert in the change card; both with confirmation; Ctrl+Z message. Tests.
+  - [x] 5.3 Header ↺ ¶ (cursor's paragraph, else the current change's) and ↺ all after Editable, both with confirmation, disabled only when there is nothing to revert. Tests.
+  - [x] 5.4 Confirmation when edits exist before Swap and before replacing a file with the toolbar's pickers (`Toolbar.tsx` `onFile`).
+  - [x] 5.5 Range warning for RangeControl changes and paragraph picking; tests.
+  - [x] 5.6 e2e: revert one change by its icon and by the card (the rest of the paragraph kept), ↺ ¶ reverts the cursor's paragraph only (and the current change's with Editable off), each revert confirm/cancel, ↺ ¶ / ↺ all disabled with nothing to revert, Swap confirm/cancel, range warning confirm/cancel.
+  - [x] 5.7 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+
+**Notes** (task 5, for later tasks)
+
+- Reverts go through `EditSession.revertChange` / `revert` / `revertAll` and the App's
+  `showReverts` (`showBlockUpdates` with nothing to accept, the current item cleared when it
+  disappears, `PanelControl.restoreCursor`). Task 6's replay (`restore`) needs nothing more: the
+  panel places the ↺ icons whenever it swaps a block in (`swapRuns` → `placeRevertIcons`), from
+  `EditSession.revertableItems`.
+- The range warning lives in the App (`requestRange`, used by `RangeControl.onChange` and
+  `pickParagraph`), not in `RangeControl`. It asks only when an edited paragraph *newly* falls
+  outside (`editedBlocksLeftOutside`); the count in the message is all edited paragraphs outside.
+  Task 6's resume sets the saved range directly (no question).
+- Item ids in `review.decisions`/`comments` aren't touched by a revert: a reverted created item's
+  entries stay unused (ids are never reused); a restored comparison item finds its own again.
+- `docs/architecture.md` "Inline edits" has the reverts and guards; FR numbers for them come in task 8.2.
 
 ### 6.0 Saving and resuming edits
 
