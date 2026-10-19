@@ -91,7 +91,8 @@ have to leave the tool, and the comparison doesn't slow down.
 11. Allowed edits within **one paragraph**:
     - typing, deleting (Backspace/Delete within the paragraph) and replacing selected text;
     - pasting: only **plain text** is inserted, with line breaks and tabs replaced by spaces;
-    - **phase 2** (requirement 33): Ctrl+B / Ctrl+I.
+    - **phase 2** (requirement 33): bold / italic, with Ctrl+B / Ctrl+I or the header's **B** / **I**
+      buttons (requirement 33a).
 12. **Not editable** (the cursor cannot be placed there, or the action is blocked):
     - text after the comparison range's end point (the out-of-range tail, FR-17/FR-18);
     - paragraphs containing any part of a **move** (FR-8 Moved), source or destination;
@@ -210,7 +211,8 @@ Editable is on.)
     typed back) has no piece left to carry the icon: it comes back with Revert paragraph or Revert
     all.
 22a. **Revert paragraph:** the Edited panel's header has a revert icon button labelled **¶**
-    (↺ ¶, tooltip "Revert my edits in this paragraph") right after the Editable toggle. Its
+    (↺ ¶, tooltip "Revert my edits in this paragraph") after the Bold and Italic buttons
+    (requirement 33a; right after the Editable toggle until phase 2). Its
     paragraph: the one with the cursor while Editable is on, otherwise the current change's
     paragraph. After a confirmation ("Revert your edits in this paragraph? This can't be undone.")
     it restores that paragraph as the comparison produced it: the changes the edits created
@@ -268,6 +270,35 @@ Editable is on.)
     Edited's formatting**, so by default the export keeps them. With **Keep the Original's
     formatting** it drops them, as it does the editor's own formatting; no extra warning. Without a
     selection the keys are blocked silently. Implement only after phase 1 is done and tested.
+    - **Toggle rule:** if all of the selection's visible text is already bold (italic), the action
+      removes it; otherwise it makes all of it bold (italic). Deleted text in the selection (hidden in
+      the Edited panel) is left as it is. The result is stored as a value (bold on / off), not as a
+      toggle, so a replay gives the same text whatever the surrounding formatting.
+    - **Which change it belongs to** (decided 2026-10-19; on the sample 378 of 796 revisions are
+      run-formatting changes, so most text already has one): text both versions have and that has no
+      formatting change yet gets a **new formatting change** (one per action and paragraph, accepted
+      like any formatting, "Bold added" / "Italic removed" …); text that already has the editor's
+      formatting change joins **that** change (its description stays the engine's); **inserted**
+      text just changes its look, as part of the insertion. All formatting is decided by the one
+      formatting choice (FR-30), so nothing a decision depends on is lost.
+    - Text typed later inside or right after bolded text takes its formatting, as typed text takes
+      its neighbour's today (requirement 18).
+    - ↺ (one change), ↺ ¶ and ↺ all undo bold/italic like text edits.
+33a. **Bold and Italic buttons** in the Edited panel's header, right after the Editable toggle:
+    **B** (tooltip "Bold (Ctrl+B)") and **I** (tooltip "Italic (Ctrl+I)"), icon buttons, same look
+    as ↺ ¶. Disabled and greyed out while Editable is off. While it is on they are enabled; a click
+    applies requirement 33 to the selection the cursor last had in an editable paragraph (the click
+    doesn't take it away); without a selection there, the toast "Select text within one paragraph
+    first". No pressed state (it would have to follow every selection change).
+33b. **Editing help:** a help icon button (**?**, tooltip "About editing") at the end of the Edited
+    panel's header (always enabled) opens a short popover on editing: what can be edited and what
+    can't (one paragraph at a time; no paragraph breaks or joins; moved text, the out-of-range tail
+    and some content such as fields can't be edited), that new changes start accepted and an edit
+    inside a change keeps its decision, bold/italic as formatting changes (decided by the formatting
+    choice), no undo (use ↺, ↺ ¶, ↺ all), that edits are saved with the review, and that the
+    shortcuts are off while the cursor is in the text (Escape leaves it). Closed by Escape, a click
+    outside or the icon again, like the general Help.
+33c. The general **Help** (FR-34) shows the same editing description (one source for both).
 
 ## 5. Non-goals (out of scope)
 
@@ -287,9 +318,12 @@ Editable is on.)
 
 - **Header:** the Edited panel header already accepts controls (`headerControls` in
   `src/ui/DocumentPanel.tsx`; the Resolved column uses it for its Comments button,
-  `src/App.tsx`). Toggle: icon + "Editable", same look as the Comments button. Then **↺ ¶** (Revert
+  `src/App.tsx`). Toggle: icon + "Editable", same look as the Comments button. Then (phase 2)
+  **B** and **I** (requirement 33a), then **↺ ¶** (Revert
   paragraph) and **↺ all** (Revert all edits), same look, always present and usable whether or not
-  Editable is on; disabled and greyed out only when they have nothing to revert.
+  Editable is on; disabled and greyed out only when they have nothing to revert. Last, the **?** of
+  the editing help (requirement 33b). The title gives way first (it already shrinks with an
+  ellipsis); B, I and ? are square icon buttons so that the header still fits a three-column view.
 - **Editable panel:** a subtle tint or a 2 px outline in the accent colour (light and dark,
   FR-25a, tokens in `index.css`/`panel.css`). Non-editable regions stay as they are, with an arrow
   cursor.
@@ -305,7 +339,9 @@ Editable is on.)
 - **Change card:** a **Revert** icon button (↺) next to the card's other buttons, only on changes
   requirement 22 applies to.
 - **Colours:** no new colours for edited text. It is an ordinary insertion/deletion (blue / red).
-- **Help popover:** add a line about Editable and that shortcuts are off while typing.
+- **Help popover:** add a line about Editable and that shortcuts are off while typing (done in
+  task 4). Phase 2: the general Help and the Edited header's **?** show one shared editing
+  description (requirements 33b, 33c).
 
 ## 7. Technical considerations
 
@@ -516,6 +552,40 @@ checked against the code on 2026-10-18.
 - A formatting revision is a `w:rPrChange` on the run holding the old `w:rPr`. In the display, the
   run's `b`/`i` styling changes and the item goes to the formatting group. Check that `consistentLook`
   (FR-39a) and the formatting choice handle runs that exist only from edits.
+- **A run holds at most one `w:rPrChange`.** That is why text that already has the editor's
+  formatting change joins it (requirement 33): its `w:rPrChange` keeps the Original's properties and
+  only the current `w:rPr` changes. Inserted runs get no `w:rPrChange`. Set `w:bCs`/`w:iCs` with
+  `w:b`/`w:i` (as Word does); removing uses `w:val="0"` (bold may come from the style).
+- **Formatting is not in the segments today:** it lives in the leaves (the DOM's elements, the
+  runs' `w:rPr`), and typed text gets it through `formattingSource` at render/patch time. A bold
+  override has to be in the segments (it is saved and replayed, and the export doesn't see the
+  DOM): an optional `format` on `equal`/`ins` segments (`{ bold?, italic?, itemId?, revisionId? }`),
+  applied on top of the leaf's formatting by `renderBlockSegments` and `applyEdits`. Adjacent
+  segments that differ only in `format` must not be merged; `applyTextEdit` gives typed text the
+  `format` of the segment `formattingSource` would take it from. `isBlockEdit` (saved reviews)
+  accepts the field; records without it stay valid.
+- **The converter writes no bold/italic markup:** each run style is a class (`span.docx-000001`)
+  with its own rule in the converter's `<style>`, which sets `font-weight: normal` /
+  `font-style: normal` explicitly. Overrides need static rules in `panel.css` that win over
+  `span.docx-…` (e.g. `.doc span.edit-bold`), or inline styles; never rules added to a panel's
+  style sheet later (CLAUDE.md: that restyles the whole document). The new formatting change wraps
+  the span in `span.rev-format-change` with its `data-author`/`data-change-id`, as the converter's
+  formatting changes are (no visible mark, `panel.css`).
+- **Header buttons and the selection:** a click on a header button moves the focus out of the
+  shadow root (the panel's `focusout` applies the pending typing). `mousedown` → `preventDefault`
+  keeps the focus and the selection in the paragraph; for keyboard use (Tab to the button) the
+  action uses the selection `PanelEditing` last tracked (`trackCursor`'s `cursor`, which keeps
+  start and end). The action goes through `PanelControl` (as `restoreCursor` does), flushes the
+  pending input first (as `applyNow` does) and puts the selection back afterwards, so B can be
+  pressed again.
+- **Ctrl+B / Ctrl+I:** handled on `keydown` in `PanelEditing` (preventDefault, both Ctrl and ⌘);
+  the `format*` `beforeinput` stays refused as the fallback (Chromium fires `formatBold` on its own
+  Ctrl+B). Whether the selection is all bold is read from the computed style of the selected text's
+  elements (main thread only).
+- **The popover's dismiss logic** (Escape, pointer outside) is in `HelpPopover`; move it into a
+  small hook both popovers use. Escape in the text both leaves the text and closes an open popover:
+  acceptable.
+- No performance cost beyond a text edit: an action is one block update on the existing path.
 
 ## 8. Success metrics
 

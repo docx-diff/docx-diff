@@ -65,7 +65,7 @@ Changed:
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
 - `src/ui/useKeyboardShortcuts.test.tsx` - A key from an editable element inside a shadow root is not a shortcut.
 - `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); `Confirmation` + `ConfirmAction` (the three reverts, Swap, toolbar file pickers, range warning via `requestRange`), `cursorBlock`, `revertable` / `editedBlockIds`, `showReverts` (task 5); resume order (saved edits' item ids known to the decision filter, `pendingEdits` replayed in a layout effect once the panels show the comparison, skipped-edit notice in the resume notice), `savedEdits` in `reviewState` (task 6).
-- `src/ui/HelpPopover.tsx` - A line about Editable (shortcuts off while typing, Escape).
+- `src/ui/HelpPopover.tsx` - A line about Editable (shortcuts off while typing, Escape); task 7: the shared editing description and the popover dismiss hook.
 - `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState` (`isBlockEdit`, `isSegment`: malformed records dropped, none in an older record) (task 6).
 - `src/ui/useReviewStorage.test.tsx` - `edits` in the test state (task 6); `useReviewStorage.ts` itself needed no change (it saves whatever `ReviewState` holds).
 - `src/ui/useEdits.ts` / `src/ui/useEdits.test.tsx` - Task 6: `EditSession.savedEdits` (every touched block, reverted ones included for their `nextId`), `savedItemIds`, `skippedEditsNotice`; tests (a reverted block saved, no id reused after the replay).
@@ -656,24 +656,45 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 
 **Specs**
 
-- Ctrl+B / Ctrl+I with a selection inside one editable block toggle bold/italic (PRD-33); without a
-  selection blocked silently.
-- Model: a formatting segment attribute (`bold`/`italic` overrides on a segment) and a formatting
-  item per toggled span (`kind: 'formatting'`, into the formatting group, decided by the
-  formatting choice).
-- Export: the span's runs get `w:b`/`w:i` in `w:rPr` with a `w:rPrChange` holding the old `w:rPr`.
-  Check `consistentLook` (FR-39a) with runs that exist only from edits.
-- Display: the converter's markup for bold/italic (look at how `format-run` renders) and the
-  formatting item's `data-change-id`.
+- Ctrl+B / Ctrl+I (and ⌘) with a selection inside one editable block set bold/italic (PRD-33);
+  without a selection blocked silently. Toggle rule: all visible selected text bold → remove, else
+  add; stored as a value, not a toggle. Deleted text in the selection is left alone.
+- Header (PRD-33a): **B** and **I** icon buttons right after the Editable toggle, before ↺ ¶;
+  disabled while Editable is off; `mousedown` → `preventDefault` so the selection stays; keyboard
+  use takes `PanelEditing`'s tracked selection; no selection → toast "Select text within one
+  paragraph first". Through a new `PanelControl.format('bold' | 'italic')`.
+- Help (PRD-33b, 33c): **?** at the end of the Edited header opens an editing popover; the general
+  Help shows the same text. One `EditingHelp` component; the dismiss logic (Escape, pointer outside)
+  moves out of `HelpPopover` into a hook both use. Replaces the one-line note added in task 4.
+- Model (`paragraphEdit.ts`): optional `format` on `equal`/`ins` segments
+  (`{ bold?, italic?, itemId?, revisionId? }`). Which change (PRD-33): equal text without a
+  formatting change → a new formatting item (`kind: 'formatting'`, edit id, "Bold added" …, one per
+  action and block); text with the editor's formatting change → that item (only the look changes);
+  inserted text → no item. `applyTextEdit` gives typed text the `format` of its formatting source;
+  segments differing in `format` don't merge; `revertChange`/`revertBlock`/`revertableItems` cover
+  formatting items. `blockItems` emits them; `isBlockEdit` accepts `format` (old records valid).
+- Display (`renderBlockSegments`): the converter writes classes (`span.docx-…` with explicit
+  `font-weight: normal`), no `b`/`i` elements. Static `panel.css` rules that beat them
+  (`.doc span.edit-bold` / `.edit-italic`, or inline styles); never later changes to the panel's
+  style sheet. A new formatting item's span sits in `span.rev-format-change` with `data-author` /
+  `data-change-id` (no visible mark, as the converter's).
+- Export (`applyEdits`): equal runs with a new item get `w:b`/`w:bCs` (`w:i`/`w:iCs`, `w:val="0"` to
+  remove) and a `w:rPrChange` holding the old `w:rPr`; runs that already have a `w:rPrChange` keep
+  it and only their current `w:rPr` changes (one `w:rPrChange` per run); inserted runs just change.
+  The revision list gets the new formatting revisions. Check `consistentLook` (FR-39a) with both
+  formatting choices.
 
-**Depends on:** tasks 1–6; `src/engine/consistentLook.ts`, `test/fixtures/format-run.*`.
+**Depends on:** tasks 1–6; `src/engine/consistentLook.ts`, `test/fixtures/format-run.*`,
+`src/ui/HelpPopover.tsx`, `src/ui/EditableToggle.tsx`, `src/storage/reviewStore.ts` (`isBlockEdit`).
 
 - [ ] 7.0 Phase 2: bold and italic
-  - [ ] 7.1 Segment formatting overrides and formatting items in `paragraphEdit.ts`; tests.
-  - [ ] 7.2 Rendering and the formatting group in the UI; Ctrl+B/I handling in `editing.ts`.
-  - [ ] 7.3 Export: `w:rPrChange` in `applyEdits`; round trip with both formatting choices; `verifyDeliverable`, LibreOffice.
-  - [ ] 7.4 e2e: bold a word, see it in the formatting group, export with each formatting choice.
-  - [ ] 7.5 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+  - [ ] 7.1 Segment `format` and formatting items in `paragraphEdit.ts` (toggle rule, which change, typed text inherits, no merging, reverts); `isBlockEdit`; tests.
+  - [ ] 7.2 Rendering (`renderBlockSegments`, `panel.css` rules) and the formatting group in the UI; Ctrl+B/I on `keydown` in `editing.ts`; `PanelControl.format`; tests.
+  - [ ] 7.3 Header: B and I buttons after Editable (disabled while it is off, selection kept, toast without one); tests.
+  - [ ] 7.4 Editing help: shared `EditingHelp`, the Edited header's ? popover, the general Help; popover dismiss hook; tests.
+  - [ ] 7.5 Export: `w:rPrChange` in `applyEdits` (new, joined, inserted runs); round trip with both formatting choices; `verifyDeliverable`, LibreOffice.
+  - [ ] 7.6 e2e: bold a word with Ctrl+B and italicise one with the I button, see them in the formatting group, ↺ one, reload (replay), export with each formatting choice; the header fits a three-column view.
+  - [ ] 7.7 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
 
 ### 8.0 Documentation, measurements and final checks
 
