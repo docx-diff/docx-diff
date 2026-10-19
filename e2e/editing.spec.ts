@@ -102,8 +102,9 @@ test.describe('two columns', () => {
     await page.keyboard.type('long');
     await expect(cards(page).nth(1)).toContainText('long');
     await expect(cards(page)).toHaveCount(2);
-    await expect(page.getByTestId('panel-right').locator('.edit-revert')).toHaveCount(1);
     expect(await shown(page, 'right', 'Second')).toBe('Second paragraph long.');
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect(page.getByTestId('panel-right').locator('.edit-revert')).toHaveCount(1);
   });
 
   test('fixing a typo inside an insertion keeps the change and its decision', async ({ page }) => {
@@ -377,7 +378,7 @@ test.describe('revert and guards', () => {
   const revertParagraph = (page: Page) => page.getByRole('button', { name: 'Revert my edits in this paragraph' });
   const revertAll = (page: Page) => page.getByRole('button', { name: 'Revert all my edits' });
 
-  test('one change is reverted by its ↺ or its card, after a confirmation; the rest of the paragraph stays', async ({ page }) => {
+  test('one change is reverted by its ↺ (Editable off) or its card, after a confirmation; the rest of the paragraph stays', async ({ page }) => {
     await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph here.']), minimalDocx(['The quick red fox.', 'Second paragraph here.']));
     await startEditing(page);
     await cursorAtEnd(page, 'Second paragraph');
@@ -390,7 +391,10 @@ test.describe('revert and guards', () => {
     await page.keyboard.press('Control+z');
     await expect(toast(page)).toHaveText('Undo isn’t available here: use ↺ to revert your edits.');
 
+    // No ↺ in the text while editing (it would trap the cursor); back with Editable off.
     const right = page.getByTestId('panel-right');
+    await expect(right.locator('.edit-revert')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Editable' }).click();
     await expect(right.locator('.edit-revert')).toHaveCount(2);
     const icon = right.locator('ins:has-text("Really") + .edit-revert');
     await expect(icon).toHaveAttribute('title', 'Revert my edit of this change');
@@ -403,8 +407,7 @@ test.describe('revert and guards', () => {
     await expect(cards(page)).toHaveCount(2);
     await expect.poll(() => shown(page, 'right', 'Second')).toBe('Second line here.');
 
-    // The comparison's own change has no Revert; the edit's card does, also with Editable off.
-    await page.getByRole('button', { name: 'Editable' }).click();
+    // The comparison's own change has no Revert; the edit's card does.
     await expect(cards(page).nth(0).getByRole('button', { name: 'Revert my edit of this change' })).toHaveCount(0);
     await cards(page).nth(1).getByRole('button', { name: 'Revert my edit of this change' }).click();
     await dialog(page, 'Revert your edit of this change?').getByRole('button', { name: 'Revert' }).click();

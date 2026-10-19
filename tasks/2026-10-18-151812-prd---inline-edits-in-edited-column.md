@@ -190,7 +190,13 @@ Editable is on.)
 22. **Revert this:** a change that the reviewer's edits created or changed (a new change, a typo
     fixed inside the editor's insertion) can be reverted on its own:
     - in the Edited panel, a small revert icon button (↺, tooltip "Revert my edit of this
-      change") follows the change's last piece, after its ✓/✗ when it is decided;
+      change") follows the change's last piece, after its ✓/✗ when it is decided,
+      (2026-10-19, user report: deleting the space between two edited words removed them and the
+      cursor jumped) **only while Editable is off**. The icon is an element without text inside the
+      paragraph's text; in an editable paragraph the browser's cursor stops in front of it, and
+      Delete or Backspace next to it removes the icon or the hidden deleted text instead of the
+      character the reviewer sees. While editing, the card's Revert (in the changes list), ↺ ¶
+      and ↺ all revert;
     - the change's card (side list and inline card, FR-28/28a) has a **Revert** icon button with the
       same tooltip.
     A click reverts **only that change**; the rest of the paragraph, other edits included, stays
@@ -291,7 +297,8 @@ Editable is on.)
   message restarts its timer.
 - **Revert ↺ icon of a change:** inline, right after the change's last piece and its ✓/✗, small,
   in the muted text colour (accent on hover), not editable, so it flows and scrolls with the text.
-  Only in the Edited panel, whether or not Editable is on.
+  Only in the Edited panel, and only while Editable is off (requirement 22: in editable text it
+  traps the cursor).
 - **Change card:** a **Revert** icon button (↺) next to the card's other buttons, only on changes
   requirement 22 applies to.
 - **Colours:** no new colours for edited text. It is an ordinary insertion/deletion (blue / red).

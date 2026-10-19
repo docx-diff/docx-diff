@@ -309,6 +309,7 @@ export function App() {
   const editedBlockIds = useMemo(() => editSession?.editedBlocks().map((edit) => edit.unid) ?? [], [editSession, edits.version]);
   const revertIcons = useMemo<RevertIcons>(
     () => ({
+      blocks: () => editSession?.editedBlocks().map((edit) => edit.unid) ?? [],
       of: (unid) => editSession?.revertableItems(unid) ?? NO_IDS,
       onRevert: (unid, itemId) => setConfirmation({ type: 'revertChange', unid, itemId }),
     }),

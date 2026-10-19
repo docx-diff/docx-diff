@@ -522,7 +522,7 @@ change there; in a block that can't be edited it shows why. The current change's
   shortcuts. Escape takes the cursor out of the text (to the panel, whose arrow keys scroll it).
 
 **Reverts** come in three grades, each after a confirmation (`ConfirmDialog`, App's `Confirmation`)
-and whether or not Editable is on; none accepts anything, and a change that disappears stops being
+and whether or not Editable is on (the ↺ icons only show while it is off, below); none accepts anything, and a change that disappears stops being
 the current one. While editing, the cursor goes back to where it last was in an editable block
 (`PanelEditing.restoreCursor`, offsets clamped to the block's end).
 - **One change** (`revertChange` in `paragraphEdit.ts`, `EditSession.revertChange`). The changes
@@ -540,6 +540,20 @@ the current one. While editing, the cursor goes back to where it last was in an 
   `placeRevertIcons` places them whenever the panel swaps a block in (`swapRuns`), as only an update of
   a block changes its revertable items. A click or Enter asks first; a mousedown on it is cancelled, so
   the cursor doesn't move. The change's card (list and inline) has a Revert button for the same items.
+  **The icons are only there while Editable is off** (removed when it is turned on, placed in every
+  edited block again when it is turned off, `iconsHiddenRef` / `placeAllRevertIcons` in
+  `DocumentPanel.tsx`). An icon is an element without text that can't be edited, inside the
+  paragraph's text, next to the hidden deletions (`display: none`). In an editable paragraph
+  Chromium handles neither well: the caret stops in front of an icon (ArrowRight stays there, at an
+  offset of the paragraph element instead of in a text node), and Delete or Backspace there removes
+  the icon or a hidden deletion instead of the character the reviewer sees. The visible text doesn't
+  change, so the update puts the paragraph back and the key seems swallowed; the keys pressed next
+  remove text the reviewer didn't mean (reported as "deleting the space between edited words removed
+  them and the cursor jumped to the start", with a ↺ left after a change whose inserted text was
+  gone). It only happened after an update, as the icons come with it. `e2e/editingFuzz.spec.ts`
+  (random keys and pauses around the update delay, against a plain editable box) found differences
+  in 13 of 30 sequences with the icons in the text and none without them; hidden deletions alone
+  don't trouble the caret. While editing, the list's card, ↺ ¶ and ↺ all revert.
 - **One paragraph** (↺ ¶ in the Edited header, `revert`): the paragraph the cursor was last in while
   editing (`EditingOptions.onCursor`, from `selectionchange`), else the current change's.
 - **All edits** (↺ all, `revertAll`).
@@ -842,7 +856,9 @@ marks storage unavailable without stopping later writes.
   `passedWithPreExistingFindings`, `test/deliverable.ts`) and converts with
   `scripts/check-libreoffice.sh`.
 - **E2E** (Playwright, `e2e/`): engine loading and no third-party requests, compare, review, range,
-  export dialog, resume, offline, the Resolved column (`resolved.spec.ts`); `PERF=1` adds timing checks (`e2e/perf.spec.ts`), `BIG_PAIR=1` the
+  export dialog, resume, offline, the Resolved column (`resolved.spec.ts`), inline edits
+  (`editing.spec.ts`; `editingFuzz.spec.ts`: random keys with pauses around the update delay in an
+  editable paragraph, whose shown text must end as in a plain editable box with the same keys); `PERF=1` adds timing checks (`e2e/perf.spec.ts`), `BIG_PAIR=1` the
   synthetic ~300-page pair (`test/big-pair.ts`).
 
 ## Reference sources

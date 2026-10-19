@@ -27,6 +27,7 @@ New:
 - `src/ui/editing.ts` - `PanelEditing`, the Edited panel's editing behaviour: contenteditable on editable blocks (objects `false`), `beforeinput` rules (PRD-11–13, `EDIT_MESSAGES`), plain-text paste (`plainText`), `deletedSpan`, composition, debounce and flushes, input elsewhere than the pending span applied through the model (`applyNow`), cursor save/restore as text offsets (`blockSelection`, `selectInBlock`), Escape; Ctrl+Z's no-undo message, the last cursor (`onCursor`, `restoreCursor`) (task 5).
 - `src/ui/editing.test.ts` - Unit tests (jsdom) for what doesn't need layout or a shadow-root selection: `plainText`, `deletedSpan`, contenteditable on/off and refresh, blocked input types, click messages, debounce, composition, flush on focus loss / Escape / detach, refused update, Ctrl+Z's message once.
 - `src/ui/Toast.tsx` - The short status message under the Edited header (PRD-13), `role="status"`, 4 s.
+- `e2e/editingFuzz.spec.ts` - Random keys with pauses around the update delay in an editable paragraph; its shown text must end as in a plain editable box with the same keys (found the ↺ icons trapping the cursor, task 5).
 - `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); revert by icon / card / ↺ ¶ / ↺ all with confirm and cancel, Ctrl+Z message, Swap and file picker confirmation, range warning by number and by picking (task 5); reload/resume, export round trip (task 6).
 
 Changed:
@@ -58,7 +59,7 @@ Changed:
 - `src/ui/ChangeCard.tsx` - ↺ Revert (this change) button for changes an edit created or changed, `REVERT_LABEL` (task 5).
 - `src/ui/ChangesList.tsx` / `src/ui/ChangesList.test.tsx` - `revertable` / `onRevert`: the cards' Revert button (task 5).
 - `src/ui/InlineChangeCard.tsx` - Passes `onRevert` to its card (task 5).
-- `src/ui/DocumentPanel.tsx` - Task 5: `revertIcons` prop (`RevertIcons`), `placeRevertIcons` (in `swapRuns`), clicks/Enter/mousedown on `.edit-revert`, `PanelControl.restoreCursor`.
+- `src/ui/DocumentPanel.tsx` - Task 5: `revertIcons` prop (`RevertIcons`), `placeRevertIcons` (in `swapRuns`; none while Editable is on, all placed again when it is turned off), clicks/Enter/mousedown on `.edit-revert`, `PanelControl.restoreCursor`.
 - `src/model/docIndex.ts` - `NOT_TEXT` includes `.edit-revert` (task 5).
 - `src/model/range.ts` / `src/model/range.test.ts` - `editedBlocksLeftOutside`: the range warning's count (task 5).
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
@@ -548,7 +549,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 - **↺ icon in the Edited panel (PRD-22):** a `span.edit-revert` (`contenteditable="false"`,
   `role="button"`, `aria-label`/`title` "Revert my edit of this change", `data-revert-id=<itemId>`)
   right after the item's last visible piece (after its ✓/✗, which is the piece's `::after`), only
-  in the Edited panel (not in the master document), whether or not Editable is on: added for the
+  in the Edited panel (not in the master document), only while Editable is off (changed after review: it trapped the cursor in editable text): added for the
   block's revertable items in `replaceBlock` (and on restore). `readBlockSegments` and the
   visible-text reading in `editing.ts` skip it (like markers); a click on it asks for confirmation,
   then reverts; it never selects the item or moves the cursor. Pre-written CSS in `panel.css` (no style-text change, CLAUDE.md), light and dark.
@@ -574,7 +575,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 
 - [ ] 5.0 Revert and guards
   - [x] 5.1 `revertableItems` and `revertChange` in `paragraphEdit.ts`; `EditSession.revertChange` and the hook. Unit tests (cases above; a restored item keeps its decision and comment).
-  - [x] 5.2 ↺ icon after each revertable change in the Edited panel (Editable on or off); skipped by the segment reader; ↺ Revert in the change card; both with confirmation; Ctrl+Z message. Tests.
+  - [x] 5.2 ↺ icon after each revertable change in the Edited panel (only while Editable is off: in editable text it traps the cursor); skipped by the segment reader; ↺ Revert in the change card; both with confirmation; Ctrl+Z message. Tests.
   - [x] 5.3 Header ↺ ¶ (cursor's paragraph, else the current change's) and ↺ all after Editable, both with confirmation, disabled only when there is nothing to revert. Tests.
   - [x] 5.4 Confirmation when edits exist before Swap and before replacing a file with the toolbar's pickers (`Toolbar.tsx` `onFile`).
   - [x] 5.5 Range warning for RangeControl changes and paragraph picking; tests.
@@ -600,6 +601,14 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
   it (`joinEditedItems` in `paragraphEdit.ts`; its id, revision ids, decision and comment kept, not
   counted as created); the comparison's items are still never joined. PRD-16 and
   `docs/architecture.md` updated; tests in `paragraphEdit.test.ts` and `e2e/editing.spec.ts`.
+- **Changed after that (2026-10-19, user report: deleting the space between edited words removed
+  them and the cursor jumped to the start):** the ↺ icons are only in the Edited panel's text while
+  Editable is off. In an editable paragraph Chromium's caret stopped in front of an icon, and
+  Delete/Backspace there removed the icon or a hidden deletion instead of the visible character
+  (also: Delete before an icon did nothing). Found with `e2e/editingFuzz.spec.ts` (13 of 30 random
+  sequences differed with the icons, none without). `DocumentPanel.tsx` (`iconsHiddenRef`,
+  `placeAllRevertIcons`, `RevertIcons.blocks`), PRD-22 and its design note, `docs/architecture.md`
+  "Reverts" and Testing, `CLAUDE.md` UI facts.
 
 ### 6.0 Saving and resuming edits
 

@@ -40,8 +40,12 @@ export interface PanelControl {
   restoreCursor: () => void;
 }
 
-/** The Edited panel's revert icons: the changes of a block whose edit can be reverted on their own, and what a click on one does. */
+/**
+ * The Edited panel's revert icons: the blocks with changes whose edit can be reverted on their own,
+ * those changes per block, and what a click on one does.
+ */
 export interface RevertIcons {
+  blocks: () => Iterable<string>;
   of: (unid: string) => ReadonlySet<string>;
   onRevert: (unid: string, itemId: string) => void;
 }
@@ -103,7 +107,10 @@ interface Props {
    * select a change (`editing.ts`).
    */
   editing?: EditingOptions;
-  /** The Edited panel: a ↺ after each change whose edit can be reverted on its own (`placeRevertIcons`). */
+  /**
+   * The Edited panel: a ↺ after each change whose edit can be reverted on its own
+   * (`placeRevertIcons`), while Editable is off.
+   */
   revertIcons?: RevertIcons;
 }
 
@@ -213,6 +220,14 @@ const REVERT_ICON = 'edit-revert';
  * The block's ↺ icons, one after the last piece of each of `itemIds` (its last insertion, else its
  * last deletion, which the Edited panel hides), after the ✓ / ✗ that piece's `::after` shows. Not
  * text (`NOT_TEXT`): the segment reader and the cursor offsets skip them.
+ *
+ * Only while Editable is off: an icon is an element without text that can't be edited, inside the
+ * paragraph's text. In an editable paragraph Chromium's caret stops in front of it (ArrowRight
+ * stays there), and Delete or Backspace next to it removes the icon or a hidden deletion (`display:
+ * none`, Original text) instead of the character the reviewer sees, so keys seem swallowed, the
+ * cursor seems to jump, and the keys pressed after that remove other text. A test sending random
+ * keys found it with the icons in the text and nothing without them (`e2e/editingFuzz.spec.ts`;
+ * docs/architecture.md, "Inline edits", "Reverts").
  */
 export function placeRevertIcons(block: HTMLElement, itemIds: ReadonlySet<string>): void {
   for (const icon of within(block, `.${REVERT_ICON}`)) icon.remove();
@@ -295,6 +310,18 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
 
   const revertIconsRef = useRef(props.revertIcons);
   revertIconsRef.current = props.revertIcons;
+  /** Set while Editable is on: no revert icons in the text then (`placeRevertIcons`). */
+  const iconsHiddenRef = useRef(false);
+  /** Puts the revert icons in every block that has some (Editable turned off). */
+  const placeAllRevertIcons = () => {
+    const icons = revertIconsRef.current;
+    if (!icons || iconsHiddenRef.current) return;
+    const shown = new Map(blocksRef.current.map((block) => [block.dataset.anchor!, block]));
+    for (const unid of icons.blocks()) {
+      const block = shown.get(unid);
+      if (block) placeRevertIcons(block, icons.of(unid));
+    }
+  };
 
   /** The Edited panel shows the paragraphs it joins one by one (while editing): each can be edited as itself. */
   const unjoinedRef = useRef(false);
@@ -347,7 +374,7 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
     const current = appliedCurrent.current;
     if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
-    const icons = revertIconsRef.current;
+    const icons = iconsHiddenRef.current ? undefined : revertIconsRef.current;
     if (icons) for (const block of swapped) for (const paragraph of within(block, '[data-anchor]')) placeRevertIcons(paragraph, icons.of(paragraph.dataset.anchor!));
     for (const block of swapped) for (const paragraph of within(block, PARAGRAPH_BLOCK)) editingRef.current?.prepareBlock(paragraph);
     return true;
@@ -526,6 +553,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     const wrapper = root?.querySelector<HTMLElement>('.doc');
     if (!editingOn || !root || !wrapper) return;
     const findBlock = (unid: string) => blocksRef.current.find((block) => block.dataset.anchor === unid);
+    iconsHiddenRef.current = true;
+    for (const icon of wrapper.querySelectorAll(`.${REVERT_ICON}`)) icon.remove();
     setUnjoined(true);
     const editing = new PanelEditing(root, wrapper, () => editingOptions.current!, findBlock);
     editing.attach();
@@ -535,9 +564,14 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
       editingRef.current = null;
       // A new document is a new review: what was typed in the old one is dropped (and the panel is filled anew).
       const same = documentRef.current === attachedTo;
+      iconsHiddenRef.current = false;
       editing.detach(same);
-      if (same) setUnjoined(false);
-      else unjoinedRef.current = false;
+      if (same) {
+        setUnjoined(false);
+        placeAllRevertIcons();
+      } else {
+        unjoinedRef.current = false;
+      }
     };
   }, [editingOn, contentVersion]);
 

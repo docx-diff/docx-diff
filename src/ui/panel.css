@@ -194,7 +194,8 @@
 }
 
 /* The Edited panel's revert icon after a change the reviewer's inline edits created or changed
-   (DocumentPanel.tsx, placeRevertIcons): no text, so the text readers and offsets skip it. */
+   (DocumentPanel.tsx, placeRevertIcons): no text, so the text readers and offsets skip it. Only
+   while Editable is off: in editable text it traps the cursor (see placeRevertIcons). */
 .doc .edit-revert {
   display: inline-block;
   width: 0.8em;
@@ -274,9 +275,6 @@
   cursor: default;
 }
 
-.doc.doc--editing .edit-revert {
-  cursor: pointer;
-}
 
 .doc.doc--editing [contenteditable='true'],
 .doc.doc--editing [contenteditable='true'] :is(ins, del)[data-change-id] {

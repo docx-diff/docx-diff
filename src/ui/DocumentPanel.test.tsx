@@ -184,8 +184,8 @@ describe('DocumentPanel revert icons', () => {
   function revertPanel(session: EditSession, editing?: EditingOptions) {
     const control = createRef<PanelControl>();
     const onChangeClick = vi.fn();
-    const icons: RevertIcons = { of: (unid) => session.revertableItems(unid), onRevert: vi.fn() };
-    const element = (
+    const icons: RevertIcons = { blocks: () => session.editedBlocks().map((edit) => edit.unid), of: (unid) => session.revertableItems(unid), onRevert: vi.fn() };
+    const element = (editing: EditingOptions | undefined) => (
       <DocumentPanel
         side="right"
         theme="light"
@@ -203,8 +203,9 @@ describe('DocumentPanel revert icons', () => {
         revertIcons={icons}
       />
     );
-    const root = render(element).getByTestId('panel-right').shadowRoot!;
-    return { control, root, icons, onChangeClick };
+    const view = render(element(editing));
+    const root = view.getByTestId('panel-right').shadowRoot!;
+    return { control, root, icons, onChangeClick, rerender: (next: EditingOptions | undefined) => view.rerender(element(next)) };
   }
 
   it('puts a ↺ after the last piece of each change an edit created or changed, which the text readers skip', () => {
@@ -228,19 +229,31 @@ describe('DocumentPanel revert icons', () => {
     expect(blockIn(root, 'p').querySelector('.edit-revert')).toBeNull();
   });
 
-  it('asks to revert on a click or Enter on the icon, without selecting the change, also while editing', () => {
+  it('asks to revert on a click or Enter on the icon, without selecting the change', () => {
     const session = new EditSession(smallComparison());
-    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
-    const { control, root, icons, onChangeClick } = revertPanel(session, editing);
+    const { control, root, icons, onChangeClick } = revertPanel(session);
     control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
     const icon = blockIn(root, 'q').querySelector<HTMLElement>('.edit-revert')!;
-    expect(icon.getAttribute('contenteditable')).toBe('false');
     icon.click();
     icon.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
     expect(icons.onRevert).toHaveBeenCalledTimes(2);
     expect(icons.onRevert).toHaveBeenCalledWith('q', 'r3');
     expect(onChangeClick).not.toHaveBeenCalled();
-    expect(editing.onMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows no icons while Editable is on (they would trap the cursor), and puts them back when it is turned off', () => {
+    const session = new EditSession(smallComparison());
+    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
+    const { control, root, rerender } = revertPanel(session);
+    control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
+    expect(root.querySelectorAll('.edit-revert')).toHaveLength(1);
+    rerender(editing);
+    expect(root.querySelector('.edit-revert')).toBeNull();
+    // An update while editing (the App's onEdit path) doesn't bring them back.
+    control.current!.replaceBlock('p', session.update('p', 'the big blue house', 'the big blue'.length)!.block);
+    expect(root.querySelector('.edit-revert')).toBeNull();
+    rerender(undefined);
+    expect([...root.querySelectorAll<HTMLElement>('.edit-revert')].map((icon) => icon.dataset.revertId)).toEqual(['ep.1', 'r3']);
   });
 });
 
