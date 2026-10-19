@@ -706,7 +706,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 - LibreOffice converted the ten bold/italic exports (`EXPORT_DIR`, five fixtures × two formatting
   choices); FR numbers for bold/italic come in task 8.2.
 
-- [ ] 7.0 Phase 2: bold and italic
+- [x] 7.0 Phase 2: bold and italic
   - [x] 7.1 Segment `format` and formatting items in `paragraphEdit.ts` (toggle rule, which change, typed text inherits, no merging, reverts); `isBlockEdit`; tests.
   - [x] 7.2 Rendering (`renderBlockSegments`, `panel.css` rules) and the formatting group in the UI; Ctrl+B/I on `keydown` in `editing.ts`; `PanelControl.format`; tests.
   - [x] 7.3 Header: B and I buttons after Editable (disabled while it is off, selection kept, toast without one); tests.
