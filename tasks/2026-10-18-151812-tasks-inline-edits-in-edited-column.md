@@ -634,7 +634,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 
 **Depends on:** tasks 1, 3; `src/storage/reviewStore.ts`, `src/ui/useReviewStorage.ts`, `src/App.tsx`, `e2e/resume.spec.ts`.
 
-- [ ] 6.0 Saving and resuming edits
+- [x] 6.0 Saving and resuming edits
   - [x] 6.1 `edits` in `ReviewState` and `sanitizeState`; tests (old record without edits, malformed record).
   - [x] 6.2 Include edits in the saved state.
   - [x] 6.3 Add saved edit item ids to the decision filter; replay on resume (no auto-accept); skipped-edit notice; tests (a created item rejected before the reload stays rejected).
