@@ -754,7 +754,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
   `EXPORT_DIR` exports of `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` and
   `src/engine/exportDocx.test.ts`: 287 (162 with edits) all convert with `scripts/check-libreoffice.sh`.
 
-- [ ] 8.0 Documentation, measurements and final checks
+- [x] 8.0 Documentation, measurements and final checks
   - [x] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms. Decided: there, an update is no slower than a decision; the sample keeps 100 ms; no task over 50 ms per keystroke on both.)
   - [x] 8.2 `docs/requirements.md` updates and FR citations in code comments.
   - [x] 8.3 `docs/architecture.md` "Inline edits" section, module map, Saved review.
