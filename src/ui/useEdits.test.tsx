@@ -89,14 +89,14 @@ describe('EditSession', () => {
     const update = session.format('q', { start: 0, end: 16 }, 'bold', true, Array(16).fill(plain))!;
     expect(update).toMatchObject({ addedItemIds: ['eq.1'], createdItemIds: ['eq.1'], removedItemIds: [] });
     expect(session.items.find((item) => item.id === 'eq.1')).toMatchObject({
-      kind: 'formatting', revisionIds: ['eq.1'], text: 'The  stood.', description: 'Bold added', anchors: ['q'],
+      kind: 'formatting', revisionIds: ['eq.1'], text: 'The … stood.', description: 'Bold added', anchors: ['q'],
     });
     expect([...block(session, 'q').querySelectorAll('.edit-bold')].map((span) => [span.textContent, span.getAttribute('data-change-id')])).toEqual([
       ['The ', 'eq.1'],
       ['hosue', null],
       [' stood.', 'eq.1'],
     ]);
-    expect(session.revisions().at(-1)).toMatchObject({ id: 'eq.1', type: 'format', family: 'properties_change', text: 'The  stood.' });
+    expect(session.revisions().at(-1)).toMatchObject({ id: 'eq.1', type: 'format', family: 'properties_change', text: 'The … stood.' });
     expect(savedItemIds(session.savedEdits())).toEqual(new Set(['r3', 'eq.1']));
     expect([...session.revertableItems('q')]).toEqual(['eq.1', 'r3']);
 

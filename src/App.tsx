@@ -545,8 +545,8 @@ export function App() {
   useEffect(() => {
     if (!showCard) return;
     const onKey = (event: KeyboardEvent) => {
-      // Escape in a menu, a dialog or the help popover closes that instead.
-      if (event.key !== 'Escape' || event.defaultPrevented || helpOpen || document.querySelector('[aria-modal="true"]')) return;
+      // Escape in a menu, a dialog or a help popover (the general one, or the Edited header's) closes that instead.
+      if (event.key !== 'Escape' || event.defaultPrevented || helpOpen || document.querySelector('[aria-modal="true"], .help__popover')) return;
       setCardClosed(true);
     };
     window.addEventListener('keydown', onKey);

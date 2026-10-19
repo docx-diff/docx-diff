@@ -5,7 +5,7 @@ import { smallComparison } from '../../test/small-comparison';
 import { DEFAULT_COMPARE_SETTINGS } from '../model/equivalence';
 import type { Decision } from '../model/decisions';
 import { readBlockSegments } from './blockSegments';
-import { DocumentPanel, type PanelControl, type PanelSide, type RevertIcons } from './DocumentPanel';
+import { DocumentPanel, placeRevertIcons, type PanelControl, type PanelSide, type RevertIcons } from './DocumentPanel';
 import type { EditingOptions } from './editing';
 import type { RenderedDocument } from './renderedDocument';
 import { EditSession, showBlockUpdates } from './useEdits';
@@ -276,6 +276,22 @@ describe('DocumentPanel revert icons', () => {
     expect(root.querySelector('.edit-revert')).toBeNull();
     rerender(undefined);
     expect([...root.querySelectorAll<HTMLElement>('.edit-revert')].map((icon) => icon.dataset.revertId)).toEqual(['ep.1', 'r3']);
+  });
+});
+
+describe('placeRevertIcons', () => {
+  it('puts a formatting change’s ↺ after the last text the reviewer gave a look, else after its last span', () => {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<p data-anchor="p"><span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span>One <span class="edit-format edit-bold" data-format-of="f">two</span> three</span></span>' +
+      '<span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span>four</span></span>' +
+      '<span>five <span class="edit-format edit-italic rev-format-change" data-author="rev:ep.1" data-change-id="ep.1">six</span></span></p>';
+    placeRevertIcons(root, new Set(['f', 'ep.1']));
+    const after = (id: string) => root.querySelector(`.edit-revert[data-revert-id="${id}"]`)!.previousElementSibling!.textContent;
+    expect([after('f'), after('ep.1')]).toEqual(['two', 'six']);
+    root.querySelector('[data-format-of]')!.remove();
+    placeRevertIcons(root, new Set(['f']));
+    expect(after('f')).toBe('four');
   });
 });
 

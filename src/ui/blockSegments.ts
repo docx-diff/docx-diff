@@ -312,7 +312,7 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
     if (format?.bold === undefined && format?.italic === undefined) return own;
     // A formatting change the text already has an element of (the comparison's) gets no second one.
     const marked = format.revisionId !== undefined && !own.some((frame) => !isNewChange(frame) && !isNewFormat(frame) && revisionIdFromAuthor((frame as HTMLElement).dataset.author) === format.revisionId);
-    const key = `${format.bold}:${format.italic}:${marked ? format.revisionId : ''}`;
+    const key = `${format.bold}:${format.italic}:${format.revisionId ?? ''}:${marked}`;
     if (!newFormats.has(key)) newFormats.set(key, { format, marked });
     return [...own, newFormats.get(key)!];
   };
@@ -387,6 +387,9 @@ export function renderBlockSegments(block: Element, segments: readonly Segment[]
         element.classList.add('rev-format-change');
         element.setAttribute('data-author', `rev:${format.revisionId}`);
         element.setAttribute('data-change-id', formatItems.get(format.revisionId!) ?? format.revisionId!);
+      } else if (format.itemId !== undefined) {
+        // Text of the comparison's formatting change: the change's ↺ goes after the reviewer's text.
+        element.setAttribute('data-format-of', format.itemId);
       }
       return element;
     }

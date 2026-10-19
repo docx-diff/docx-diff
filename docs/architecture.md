@@ -624,8 +624,11 @@ run classes (`span.docx-…`) that set `font-weight`/`font-style`, so `renderBlo
 `span.edit-format` (`edit-bold`, `edit-not-bold`, `edit-italic`, `edit-not-italic`) directly around
 the text, inside the run's span, with static rules in `panel.css` (not in the Original panel); a new
 formatting change's span is also its element (`rev-format-change`, `data-author`,
-`data-change-id`), so the ↺ icon, the current outline and scrolling find it. A rendering strips the
-previous rendering's spans first.
+`data-change-id`), so the ↺ icon, the current outline and scrolling find it; on text of the
+comparison's formatting change it has `data-format-of` (the change's id), and that change's ↺ goes
+after the last such span rather than after the change's last span (often the end of the
+paragraph). A new change's quoted text joins pieces apart in the paragraph with " … ". A rendering
+strips the previous rendering's spans first.
 
 **Export** (`applyEdits`, `src/engine/applyEdits.ts`, the export's first step): each edited block's
 `w:p` (found by `paragraphUnids`) is patched to its final segments, and the revision list is updated,

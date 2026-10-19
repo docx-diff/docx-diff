@@ -225,7 +225,8 @@ const REVERT_ICON = 'edit-revert';
 
 /**
  * The ↺ icons in `root` (a block, or the whole panel), one after the last piece of each of
- * `itemIds` found in it (its last insertion or formatting span, else its last deletion, which the Edited panel hides),
+ * `itemIds` found in it (its last insertion or formatting span, else its last deletion, which the Edited panel hides;
+ * for a formatting change, the last text the reviewer gave a look, `span.edit-format`, if any),
  * after the ✓ / ✗ that piece's `::after` shows; the root's other icons go. Not text (`NOT_TEXT`):
  * the segment reader and the cursor offsets skip them. A block gets its icons before the panel
  * joins it into the next paragraph: the join moves its content, icons included, into that one.
@@ -248,6 +249,9 @@ export function placeRevertIcons(root: HTMLElement, itemIds: ReadonlySet<string>
     if (!itemIds.has(id)) continue;
     const shown = last.get(id);
     if (!shown || element.localName !== 'del' || shown.localName === 'del') last.set(id, element);
+  }
+  for (const element of within(root, 'span.edit-format[data-format-of]')) {
+    if (itemIds.has(element.dataset.formatOf!)) last.set(element.dataset.formatOf!, element);
   }
   for (const [id, element] of last) {
     const icon = root.ownerDocument.createElement('span');

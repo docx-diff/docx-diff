@@ -274,7 +274,7 @@ describe('renderBlockSegments', () => {
     it('gives text of the comparison’s formatting change, and inserted text, a span without a change of its own', () => {
       const change = { itemId: 'f', revisionId: 'f1' };
       const engine = formatted('<p data-anchor="x"><span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="docx-a">Heading</span></span></p>', 0, 7, 'italic', change);
-      expect(engine.rendered.innerHTML).toBe('<span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="docx-a"><span class="edit-format edit-italic">Heading</span></span></span>');
+      expect(engine.rendered.innerHTML).toBe('<span class="rev-format-change" data-author="rev:f1" data-change-id="f"><span class="docx-a"><span class="edit-format edit-italic" data-format-of="f">Heading</span></span></span>');
       const inserted = formatted('<p data-anchor="x"><span class="docx-a">A </span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1"><span class="docx-a">big</span></ins></p>', 2, 5, 'bold');
       expect(inserted.rendered.innerHTML).toBe(
         '<span class="docx-a">A </span><ins class="rev-ins" data-author="rev:r1" data-change-id="r1"><span class="docx-a"><span class="edit-format edit-bold">big</span></span></ins>',

@@ -770,9 +770,13 @@ test.describe('the Edited header in three columns', () => {
       expect(control.x, name).toBeGreaterThanOrEqual(box.x);
       expect(control.x + control.width, name).toBeLessThanOrEqual(box.x + box.width + 0.5);
     }
+    // Escape closes the popover only, not the current change's card under it.
+    await page.keyboard.press('j');
+    await expect(page.locator('.inline-card')).toBeVisible();
     await header.getByRole('button', { name: 'About editing' }).click();
     await expect(page.getByRole('dialog', { name: 'About editing' })).toContainText('There is no undo.');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'About editing' })).toHaveCount(0);
+    await expect(page.locator('.inline-card')).toBeVisible();
   });
 });

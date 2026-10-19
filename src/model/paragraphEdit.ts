@@ -667,7 +667,7 @@ export function revisionTexts(segments: readonly Segment[]): Map<string, Revisio
 
 export interface FormatRevision {
   itemId: string;
-  /** The text it covers. */
+  /** The text it covers; pieces apart in the paragraph joined by " … ". */
   text: string;
   /** What changed, e.g. "Bold added", as the engine's formatting changes describe it. */
   description: string;
@@ -675,21 +675,25 @@ export interface FormatRevision {
 
 /** Each formatting revision the reviewer's bold/italic gives unchanged text, in order of appearance. */
 export function formatRevisions(segments: readonly Segment[]): Map<string, FormatRevision> {
-  const found = new Map<string, FormatRevision & { phrases: Set<string> }>();
-  for (const segment of segments) {
+  const found = new Map<string, FormatRevision & { phrases: Set<string>; last: number }>();
+  segments.forEach((segment, i) => {
     const format = segment.kind === 'equal' ? segment.format : undefined;
-    if (!format?.revisionId) continue;
+    if (!format?.revisionId) return;
+    const text = (segment as EqualSegment).text;
     let entry = found.get(format.revisionId);
     if (!entry) {
-      entry = { itemId: format.itemId ?? format.revisionId, text: '', description: '', phrases: new Set() };
+      entry = { itemId: format.itemId ?? format.revisionId, text: '', description: '', phrases: new Set(), last: i };
       found.set(format.revisionId, entry);
+      entry.text = text;
+    } else {
+      entry.text = entry.last === i - 1 ? entry.text + text : `${entry.text.trimEnd()} … ${text.trimStart()}`;
     }
-    entry.text += (segment as EqualSegment).text;
+    entry.last = i;
     if (format.bold !== undefined) entry.phrases.add(format.bold ? 'Bold added' : 'Bold removed');
     if (format.italic !== undefined) entry.phrases.add(format.italic ? 'Italic added' : 'Italic removed');
-  }
+  });
   const order = ['Bold added', 'Bold removed', 'Italic added', 'Italic removed'];
-  return new Map([...found].map(([id, { phrases, ...entry }]) => [id, { ...entry, description: order.filter((phrase) => phrases.has(phrase)).join(', ') }]));
+  return new Map([...found].map(([id, { phrases, last: _last, ...entry }]) => [id, { ...entry, description: order.filter((phrase) => phrases.has(phrase)).join(', ') }]));
 }
 
 /**

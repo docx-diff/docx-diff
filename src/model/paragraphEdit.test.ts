@@ -458,6 +458,9 @@ describe('applyFormat', () => {
     expect(looks(again.segments)).toBe('the red{i+:f} {i+:eb.0}house{b+i+:eb.0}');
     expect(again.createdItemIds).toEqual([]);
     expect(blockItems({ ...block, current: again.segments })[0]).toMatchObject({ text: ' house', description: 'Bold added, Italic added' });
+    // Pieces apart in the paragraph are quoted apart.
+    const apart = format([eq('the '), ins('big', 'x'), eq(' red house')], 0, 17, 'bold', true);
+    expect(blockItems({ unid: UNID, original: [eq('the '), ins('big', 'x'), eq(' red house')], current: apart.segments })[0]!.text).toBe('the … red house');
   });
 
   it('changes only the look of inserted text, and leaves hidden deletions and objects alone', () => {
