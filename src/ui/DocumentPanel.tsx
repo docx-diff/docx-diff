@@ -47,7 +47,8 @@ export interface PanelControl {
 export interface RevertIcons {
   blocks: () => Iterable<string>;
   of: (unid: string) => ReadonlySet<string>;
-  onRevert: (unid: string, itemId: string) => void;
+  /** The change's own paragraph is the App's to find: a join may have moved it into another block's element. */
+  onRevert: (itemId: string) => void;
 }
 
 const SIDE_NAMES: Record<PanelSide, string> = { left: 'Original', right: 'Edited', resolved: 'Resolved' };
@@ -652,10 +653,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     /** A revert icon reverts its change (after a confirmation); it doesn't select it or move the cursor. */
     const revert = (event: Event) => {
       const icon = event.target instanceof Element ? event.target.closest<HTMLElement>(`.${REVERT_ICON}`) : null;
-      const block = icon?.closest<HTMLElement>('[data-anchor]');
-      if (!icon || !block) return false;
+      if (!icon) return false;
       event.preventDefault();
-      revertIconsRef.current?.onRevert(block.dataset.anchor!, icon.dataset.revertId!);
+      revertIconsRef.current?.onRevert(icon.dataset.revertId!);
       return true;
     };
     const onKeyDown = (event: KeyboardEvent) => {

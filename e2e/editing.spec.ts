@@ -308,6 +308,11 @@ test.describe('two columns', () => {
     await expect(icon).toBeVisible();
     const text = docxText((await downloadReviewed(page, 'accept')).bytes);
     expect(text[0]).toContain('the path began. Indeed. Every morning');
+    // It reverts the change of its own paragraph, not of the one its text was moved into.
+    await icon.click();
+    await page.getByRole('dialog', { name: 'Revert your edit of this change?' }).getByRole('button', { name: 'Revert' }).click();
+    await expect(cards(page).filter({ hasText: 'Indeed.' })).toHaveCount(0);
+    await expect(right.locator('.edit-revert')).toHaveCount(0);
   });
 
   test('typing in one joined paragraph, then at once in the next one of its run, keeps both', async ({ page }) => {

@@ -237,7 +237,7 @@ describe('DocumentPanel revert icons', () => {
     icon.click();
     icon.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
     expect(icons.onRevert).toHaveBeenCalledTimes(2);
-    expect(icons.onRevert).toHaveBeenCalledWith('q', 'r3');
+    expect(icons.onRevert).toHaveBeenCalledWith('r3');
     expect(onChangeClick).not.toHaveBeenCalled();
   });
 

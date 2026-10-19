@@ -548,7 +548,9 @@ the current one. While editing, the cursor goes back to where it last was in an 
   `placeRevertIcons` places them whenever the panel swaps a block in (`swapRuns`), as only an update of
   a block changes its revertable items, before the panel joins the block into the next paragraph
   (the join moves the block's content, icons included, into that one; placed after it, the icons of
-  a joined paragraph were lost). A click or Enter asks first; a mousedown on it is cancelled, so
+  a joined paragraph were lost). An icon names only its change: the App finds the change's paragraph
+  (`revertableChanges`), since the block element around a joined paragraph's icon is the next
+  paragraph's. A click or Enter asks first; a mousedown on it is cancelled, so
   the cursor doesn't move. The change's card (list and inline) has a Revert button for the same items.
   **The icons are only there while Editable is off** (removed when it is turned on, placed again over
   the whole panel by change id when it is turned off, wherever the joins put the changes;

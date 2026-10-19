@@ -311,7 +311,10 @@ export function App() {
     () => ({
       blocks: () => editSession?.editedBlocks().map((edit) => edit.unid) ?? [],
       of: (unid) => editSession?.revertableItems(unid) ?? NO_IDS,
-      onRevert: (unid, itemId) => setConfirmation({ type: 'revertChange', unid, itemId }),
+      onRevert: (itemId) => {
+        const unid = editSession?.revertableChanges().get(itemId);
+        if (unid !== undefined) setConfirmation({ type: 'revertChange', unid, itemId });
+      },
     }),
     [editSession],
   );
