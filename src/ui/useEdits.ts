@@ -192,11 +192,12 @@ export class EditSession {
     const before = this.blocks.get(unid) ?? this.edit(unid);
     const oldElement = this.element(unid);
     if (!this.pristine.has(unid)) this.pristine.set(unid, oldElement.cloneNode(true) as HTMLElement);
-    // Matching the headings reads the whole document: done once, at the first edit of a block with
-    // a heading's text (until then, the heading blocks are as compared).
+    // Matching the headings reads the whole document: done once, at the first edit of a block that
+    // may be a heading's (its text, or the start of it for a paragraph joined into the next, as
+    // `buildOutline` matches them; until then, the heading blocks are as compared).
     if (!this.headingBlocks && !this.blocks.has(unid)) {
       const text = editedParagraphText(oldElement);
-      if (this.comparison.result.headings.edited.some((heading) => heading.text === text)) {
+      if (this.comparison.result.headings.edited.some((heading) => heading.text === text || (text !== '' && heading.text.startsWith(text)))) {
         this.headingBlocks = editedHeadingBlocks(this.root, this.comparison.result.headings);
       }
     }

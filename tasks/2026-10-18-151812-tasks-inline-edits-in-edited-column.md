@@ -45,7 +45,7 @@ Changed:
 - `src/model/equivalence.ts` - `collectItemTexts` over any root or a map of blocks.
 - `src/model/outline.ts` - `editedHeadingBlocks`, `withEditedHeadings`, `editedParagraphText` (outline from the edited headings).
 - `src/ui/renderedDocument.ts` - `decorateDocument`, `isolateCommonAffixes`, `markItems`, `markCommon` scoped to a root/block (root included, `within`).
-- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `editing` prop: `PanelEditing` attached while it is set (flushed when turned off, not on a new document), replaced blocks prepared, refreshed when `reasonOf` changes, clicks don't select changes, `document-panel--editing`; side panels swap a block's whole join run (`swapRuns`), the Edited panel unjoined while editing (`setUnjoined`, `markUnjoined`) (task 4).
+- `src/ui/DocumentPanel.tsx` - `controlRef` (`PanelControl.replaceBlock(unid, block)`, task 3.7; the scroller ref is unchanged); `editing` prop: `PanelEditing` attached while it is set (flushed when turned off, not on a new document), replaced blocks prepared, refreshed when `reasonOf` changes, clicks don't select changes, `document-panel--editing`; side panels swap a block's whole join run (`swapRuns`), the Edited panel unjoined while editing (`setUnjoined`, `markUnjoined`; an update there swaps the block alone, `keepUnjoined`) (task 4).
 - `src/ui/renderedDocument.ts` - Task 4: `joinInPanel` (a side panel's joins for some blocks) and `joinRun` (the run a side panel joins a block with).
 - `src/ui/resolvedView.ts` / `src/ui/resolvedView.test.ts` - Task 4: `replaceResolvedBlock` assigns id-less ¶ glyphs and deletion markers (`addMarksWithoutIds`, shared with `prepareResolvedPanel`) and keeps what `wrapper.contains`; test for a block whose mark is deleted.
 - `src/ui/renderedDocument.test.ts` - Task 4: `joinRun`.
@@ -441,7 +441,7 @@ Update the file after completing each sub-task, not just after completing an ent
   join blocks or remove an object, cross-block selections, `insertFromDrop`, `formatBold`/`formatItalic`
   (until task 7); `insertFromPaste` → plain text with line breaks/tabs as spaces. Each block shows its
   toast message (`Toast`, `role="status"`, ~4 s, one at a time).
-- Update timing (PRD-15): 400 ms after the last input in a block, on blur, on toggle off; never during
+- Update timing (PRD-15): 300 ms after the last input in a block, on blur, on toggle off; never during
   composition, counting from `compositionend`.
 - Update (PRD-19): read the block's new visible text → `useEdits.update` → `replaceBlock` in every
   panel → restore the cursor/selection by text offsets in the edited block; no scroll in the Edited
@@ -488,7 +488,8 @@ Update the file after completing each sub-task, not just after completing an ent
   Editable is on, the Edited panel swaps each joined run for unjoined copies (`setUnjoined` in
   `DocumentPanel.tsx`, `joinRun` / `joinInPanel` in `renderedDocument.ts`, CSS `unjoined-empty` /
   `unjoined-continues`); a side panel's `replaceBlock` swaps the block's whole run from the master
-  and joins it again; `replaceResolvedBlock` assigns id-less ¶ glyphs / deletion markers as
+  and joins it again (the unjoined Edited panel swaps only the block: fixed after the task 3–4
+  review, the cursor in the run's next paragraph was lost); `replaceResolvedBlock` assigns id-less ¶ glyphs / deletion markers as
   `prepareResolvedPanel` does and uses `wrapper.contains` instead of `isConnected`. Wholly deleted
   paragraphs and moves stay uneditable. Task 5's revert/undo go through the same `replaceBlock`.
 - **Display setting "left-aligned" (FR-20a, user request, 2026-10-18):** the Edited panel's
@@ -595,7 +596,7 @@ Update the file after completing each sub-task, not just after completing an ent
   edits.
 - `CLAUDE.md`: easy-to-get-wrong facts found during the work (e.g. shortcuts and `composedPath`,
   item ids fixed, patch before every export step).
-- `e2e/perf.spec.ts` (`PERF=1`): an update after typing a word within 500 ms of the last keystroke,
+- `e2e/perf.spec.ts` (`PERF=1`): an update after typing a word within 400 ms of the last keystroke,
   no update task over 100 ms, no task over 50 ms per keystroke (success metric 5).
 
 **Depends on:** tasks 0–7.

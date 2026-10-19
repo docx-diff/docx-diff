@@ -10,7 +10,7 @@ fix it there, outside the review. "Editing text in the tool" is listed under the
 This feature lets the reviewer make **simple text edits directly in the Edited panel** (the right
 column). The **Editable** toggle in the Edited panel's header turns it on. While it is on, a click
 in the text places a cursor there, and the reviewer types, deletes or replaces words within a
-paragraph. About 400 ms after they stop typing, the change set updates **for that paragraph only**,
+paragraph. About 300 ms after they stop typing, the change set updates **for that paragraph only**,
 without a full re-compare. An edit inside an existing change's text stays part of that change,
 with its decision. Anything else becomes a new change, which starts as accepted; existing decisions
 are never changed by an edit. The other panels, the Resolved column,
@@ -28,7 +28,7 @@ have to leave the tool, and the comparison doesn't slow down.
 1. The reviewer can edit text within a paragraph of the Edited panel (body, table cells,
    footnotes/endnotes, headings) once **Editable** is on.
 2. After the reviewer stops typing, all views (Original, Resolved, Edited, changes list, outline,
-   overview bars) show the new change set within **400 ms (debounce) + 100 ms** on the ~60-page
+   overview bars) show the new change set within **300 ms (debounce) + 100 ms** on the ~60-page
    sample. This also holds on the ~300-page pair, because an update touches only the edited
    paragraph. The update never runs the engine's compare again.
 3. Typing never freezes the page: no main-thread task over 50 ms while typing, and none over 100 ms
@@ -128,9 +128,9 @@ have to leave the tool, and the comparison doesn't slow down.
     Original panel shows it (empty for a paragraph only the Edited has) against the new Edited
     text, **word by word** (FR-7: a changed word is marked as a whole word). Only the edited part
     is compared again. The rest of the paragraph's changes stay exactly as they were.
-15. The update runs **400 ms after the last keystroke** in a paragraph (debounce), when the cursor
+15. The update runs **300 ms after the last keystroke** in a paragraph (debounce), when the cursor
     leaves the paragraph, or when Editable is turned off, whichever comes first. While a character
-    is being composed (dead keys, e.g. ő, ű; input methods) no update runs; the 400 ms count from
+    is being composed (dead keys, e.g. ő, ű; input methods) no update runs; the 300 ms count from
     the end of the composition. It updates only the
     edited paragraph's data and markup: no engine compare, no full re-render.
 16. **Existing decisions are never changed by an edit.** A decision is a deliberate action, so an
@@ -386,7 +386,7 @@ checked against the code on 2026-10-18.
 
 - Add `edits` to `ExportRequest` (`src/engine/types.ts`): per block key, the final segment sequence
   (with each segment's revision id, and the source run for formatting). The redline is patched only
-  here, so the 400 ms path does no zip/XML work and no engine calls.
+  here, so the 300 ms path does no zip/XML work and no engine calls.
 - **Patch first, then hand updated revisions to every later step.** `rejectRevisions` finds each
   revision's markup by its `constituentKeys` (element name + `w:id`) through `ElementIndex`
   (`src/engine/ooxml.ts`). A duplicate or missing `w:id` is an error (`RevisionMarkupError`). So the
@@ -433,7 +433,7 @@ checked against the code on 2026-10-18.
   cursor offsets.
 - **Input methods:** Hungarian (the sample's language) uses dead keys for ő/ű. Don't run the
   update during composition (`compositionstart`…`compositionend`, `event.isComposing`). Start the
-  400 ms debounce at `compositionend`.
+  300 ms debounce at `compositionend`.
 - The panel hides `<del>` and move-from content with CSS: read the visible Edited text without them,
   and keep the cursor out of hidden elements.
 - Save and restore the cursor/selection as **text offsets within the block** around a markup
@@ -472,7 +472,7 @@ checked against the code on 2026-10-18.
 - The master rendered document (`comparison.document.body`) must stay in sync with the panels:
   switching to three columns mounts the Resolved column from it.
 - `useAutoSave` saves `reviewState`. Add the edits to it (debounced 300 ms; typing produces an update
-  every 400 ms at most).
+  every 300 ms at most).
 
 ### Phase 2 (bold/italic)
 
@@ -491,7 +491,7 @@ checked against the code on 2026-10-18.
 3. **Id rules** (unit tests): existing item keeps id/decision/comment when edited; an edit next to
    decided changes never changes their decisions (requirement 16's example); new items accepted; a reverted paragraph restores its items exactly.
 4. **Replay** (unit + e2e): reload after edits gives identical items, ids, decisions, comments.
-5. **Performance** (e2e `PERF=1`): an update after typing a word is visible within 500 ms of the
+5. **Performance** (e2e `PERF=1`): an update after typing a word is visible within 400 ms of the
    last keystroke, and no update task is over 100 ms, on the sample and on the ~300-page pair. No
    task over 50 ms per keystroke.
 6. **Blocked actions** (e2e): Enter, joining paragraphs, cross-paragraph selection, deleting a

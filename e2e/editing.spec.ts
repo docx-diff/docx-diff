@@ -282,6 +282,23 @@ test.describe('two columns', () => {
     expect(text[0]).toContain('the path began. Indeed. Every morning');
   });
 
+  test('typing in one joined paragraph, then at once in the next one of its run, keeps both', async ({ page }) => {
+    await openAndCompare(page, fixture('paragraph-join', 'original'), fixture('paragraph-join', 'edited'));
+    const right = page.getByTestId('panel-right');
+    await startEditing(page);
+    const editable = right.locator('p[contenteditable="true"]');
+    await editable.filter({ hasText: 'The monastery stood' }).click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('Xx.');
+    // Within the update's delay: the first paragraph's update must not take the cursor away.
+    await editable.filter({ hasText: 'Every morning' }).click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type(' Yy.');
+    await expect(cards(page).filter({ hasText: 'Yy.' })).toHaveCount(1);
+    await expect(cards(page).filter({ hasText: 'Xx.' })).toHaveCount(1);
+    expect(await shown(page, 'right', 'Every morning')).toContain('alms food. Yy.');
+  });
+
   test('a paragraph the Original panel joins (split in the Edited) can be edited; the Original keeps its text', async ({ page }) => {
     await openAndCompare(page, fixture('paragraph-split', 'original'), fixture('paragraph-split', 'edited'));
     const left = await page.getByTestId('panel-left').locator('p', { hasText: 'The monastery stood' }).innerText();

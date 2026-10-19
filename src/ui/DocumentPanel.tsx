@@ -169,6 +169,20 @@ function markUnjoined(run: readonly HTMLElement[]): void {
 }
 
 /**
+ * A block of a run shown one by one, swapped alone (an update of it): it shows as the panel's block
+ * it replaces (`old`) did; the run's other blocks stay as they are, as one of them may hold the
+ * cursor. `run` is the master's run, `panelTarget` the panel's copy of the paragraph it joins into.
+ */
+function keepUnjoined(block: HTMLElement, old: HTMLElement, run: readonly Element[], panelTarget: HTMLElement | undefined): void {
+  for (const name of ['unjoined-empty', 'unjoined-continues']) block.classList.toggle(name, old.classList.contains(name));
+  const target = run.at(-1) as HTMLElement | undefined;
+  const inPlaceOfTarget = block.classList.contains('rev-para-del') && !block.classList.contains('not-in-edited');
+  if (target && target.dataset.anchor !== block.dataset.anchor && inPlaceOfTarget && panelTarget?.classList.contains('unjoined-empty')) {
+    takeParagraphLook(block, target);
+  }
+}
+
+/**
  * The converter's paragraph classes (`docx-…`) and style of `source` in place of the block's own.
  * Not across tags: the converter's rules name them (`p.docx-Normal`), so a heading keeps its look.
  */
@@ -244,9 +258,10 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   /**
    * Puts copies of master blocks in place of the panel's (runs of siblings, `joinRun`), joined as the
    * panel joins them (unless unjoined), with the panel's classes, decisions and current change.
-   * Returns false when the panel has none of them (not shown).
+   * Returns false when the panel has none of them (not shown). With `alone` (a master block of the
+   * one run given, while unjoined), only that block is swapped (`keepUnjoined`).
    */
-  const swapRuns = (runs: readonly (readonly Element[])[]): boolean => {
+  const swapRuns = (runs: readonly (readonly Element[])[], alone?: Element): boolean => {
     const wrapper = scrollerRef.current?.shadowRoot?.querySelector<HTMLElement>('.doc');
     if (!wrapper || side === 'resolved') return false;
     const shown = new Map(blocksRef.current.map((block) => [block.dataset.anchor!, block]));
@@ -255,16 +270,20 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     for (const run of runs) {
       const blocks: HTMLElement[] = [];
       for (const source of run) {
+        if (alone && source !== alone) continue;
         const old = shown.get((source as HTMLElement).dataset.anchor!);
         if (!old) continue;
         const block = owner.importNode(source, true) as HTMLElement;
         block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
         styledRef.current = styledRef.current.filter(([element]) => !old.contains(element));
         old.replaceWith(block);
+        if (alone) keepUnjoined(block, old, run, shown.get((run.at(-1) as HTMLElement).dataset.anchor!));
         blocks.push(block);
       }
-      if (unjoinedRef.current) markUnjoined(blocks);
-      else joinInPanel(blocks, side);
+      if (!alone) {
+        if (unjoinedRef.current) markUnjoined(blocks);
+        else joinInPanel(blocks, side);
+      }
       swapped.push(...blocks);
     }
     if (swapped.length === 0) return false;
@@ -329,7 +348,8 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
         const wrapper = scroller?.shadowRoot?.querySelector<HTMLElement>('.doc');
         if (!scroller || !wrapper) return;
         if (side !== 'resolved') {
-          keepingTop(() => swapRuns([joinRun(source, side)]));
+          // Paragraphs shown one by one (editing) don't depend on each other: the others keep their elements (and the cursor).
+          keepingTop(() => swapRuns([joinRun(source, side)], unjoinedRef.current ? source : undefined));
           return;
         }
         const at = blocksRef.current.findIndex((block) => block.dataset.anchor === unid);

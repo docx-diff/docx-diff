@@ -140,7 +140,7 @@ describe('PanelEditing', () => {
     expect(options.onMessage).toHaveBeenCalledWith('This paragraph can’t be edited here: it contains a moved passage.');
   });
 
-  it('updates the block 400 ms after the last input, with its visible text', () => {
+  it('updates the block 300 ms after the last input, with its visible text', () => {
     type('a', 'X');
     vi.advanceTimersByTime(UPDATE_DELAY_MS - 1);
     type('a', 'Y');
@@ -150,7 +150,7 @@ describe('PanelEditing', () => {
     expect(options.onEdit).toHaveBeenCalledExactlyOnceWith('a', `Kept XYnew text${OBJECT_CHAR}`, undefined);
   });
 
-  it('waits for a composition to end, then 400 ms', () => {
+  it('waits for a composition to end, then 300 ms', () => {
     fire(block('c'), new CompositionEvent('compositionstart', { bubbles: true, composed: true }));
     type('c', '˝', { inputType: 'insertCompositionText', isComposing: true });
     vi.advanceTimersByTime(2 * UPDATE_DELAY_MS);

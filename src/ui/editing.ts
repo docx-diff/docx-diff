@@ -33,7 +33,7 @@ export const EDIT_MESSAGES = {
 } as const;
 
 /** The update runs this long after the last input in a block. */
-export const UPDATE_DELAY_MS = 400;
+export const UPDATE_DELAY_MS = 300;
 
 /** Inline objects of an editable block: the cursor goes around them, never into them. */
 const OBJECTS = `a.footnote-ref, a.endnote-ref, [data-docx-tab], ${NOT_TEXT}`;

@@ -77,6 +77,16 @@ describe('EditSession', () => {
     expect(buildOutline(session.comparison.document.body, session.headings).map((entry) => [entry.unid, entry.text])).toEqual([['h', 'The old forest monastery']]);
     expect(buildOutline(session.comparison.document.body, session.comparison.result.headings)).toEqual([]);
   });
+
+  it('keeps an edited heading joined into the next paragraph in the outline (matched by the start of its text)', () => {
+    const joined = comparison();
+    joined.document.body.querySelector('h1')!.classList.add('rev-para-del');
+    joined.result.headings.edited = [{ level: 1, text: 'The old monastery the big red house' }];
+    expect(buildOutline(joined.document.body, joined.result.headings).map((entry) => entry.unid)).toEqual(['h']);
+    const session = new EditSession(joined);
+    session.update('h', 'The old forest monastery', 'The old forest'.length);
+    expect(buildOutline(session.comparison.document.body, session.headings).map((entry) => [entry.unid, entry.text])).toEqual([['h', 'The old forest monastery']]);
+  });
 });
 
 describe('useEdits', () => {

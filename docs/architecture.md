@@ -445,7 +445,8 @@ comparison's: the items, their texts, the `DocIndex`, the headings. An update (`
   relabelling; the index's revisions in the HTML and adjacencies (`replaceIndexBlock`; blocks, their
   versions and note references don't change); an Edited heading's text (`withEditedHeadings`, so
   that the outline still finds it; the headings are matched to their blocks once, at the first edit
-  of a block with a heading's text).
+  of a block whose text is a heading's or, for a paragraph joined into the next, its start, as
+  `buildOutline` matches them).
 A block whose segments are back to the comparison's gets its element, items and texts as compared.
 `nextId` is never reset, so a later edit's item never takes an earlier one's id (and its decision).
 The update returns the new master element and the items removed, added and created; only items a
@@ -460,7 +461,10 @@ and keeps the text at the top of the panel in place. In a side panel it swaps th
 of joined paragraphs (`joinRun`: the paragraphs whose mark that version lacks before it, the
 paragraph they join into, and the blocks the panel doesn't show between them), copied from the
 master document and joined again (`joinInPanel`), since the block's content may sit in another
-block of the run. In the Resolved column,
+block of the run. While the Edited panel shows its joined paragraphs one by one (editing), it swaps
+the block alone (`keepUnjoined`: it shows as the one it replaces did); the run's other paragraphs
+keep their elements, as one of them may hold the cursor (swapping the run lost what was typed in
+the next paragraph of a run right after an edit in the one before). In the Resolved column,
 `replaceResolvedBlock` (`src/ui/resolvedView.ts`) first restores the block's run of joined
 paragraphs, swaps it, rebuilds the maps of the items in the old or new block (elements in document
 order, markers, saved children, note references, item notes; the ¶ glyphs and deletion markers
@@ -494,8 +498,8 @@ change there; in a block that can't be edited it shows why. The current change's
   the block back as it was when nothing changed or the model refuses it. The cursor goes back by
   its offsets in the visible text (`visibleOffset`/`visiblePoint`, `src/ui/blockSegments.ts`: after
   the visible character before it, never inside a hidden deletion).
-- An update runs 400 ms after the last input in a block, never during a composition (dead keys,
-  input methods: 400 ms after `compositionend`), and at once when the block loses focus, on Escape,
+- An update runs 300 ms after the last input in a block, never during a composition (dead keys,
+  input methods: 300 ms after `compositionend`), and at once when the block loses focus, on Escape,
   when Editable is turned off (not when a new comparison replaces the document), and when the cursor
   leaves the span typed since the last update: an edit is one contiguous span.
 - `beforeinput` enforces the rules: paragraph and line breaks, deletes at a paragraph's start or end
