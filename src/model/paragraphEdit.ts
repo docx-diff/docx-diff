@@ -257,7 +257,52 @@ export function applyTextEdit(
 
   const widened = widenToWords(joinEditedItems(placed, ids.unid));
   const cancelled = cancelTypedBack(widened);
-  return toSegments(cancelled, ids.unid, ids.nextId);
+  return toSegments(trimSharedWords(cancelled, ids.unid), ids.unid, ids.nextId);
+}
+
+/**
+ * A touched run of changes that edits made (this edit's new pieces, or one item an earlier edit
+ * created) gives up the words and spaces its deleted and inserted text share at its start and at
+ * its end: they are unchanged text. A word typed against an unchanged one widens to both
+ * (`gyűjtőszilke` replaces `szilke`); the space typed between them later leaves only the new word
+ * (`gyűjtő ` inserted). The comparison's items keep their text.
+ */
+function trimSharedWords(units: Unit[], unid: string): Unit[] {
+  const group = (unit: Unit) => isNew(unit) ? '' : (unit.kind === 'del' || unit.kind === 'ins') && isEditIdOf(unid, unit.itemId!) ? unit.itemId! : undefined;
+  const found: [number, number][] = [];
+  for (let i = 0; i < units.length; i++) {
+    const key = group(units[i]!);
+    if (key === undefined) continue;
+    let end = i;
+    while (end < units.length && group(units[end]!) === key) end++;
+    found.push([i, end]);
+    i = end - 1;
+  }
+  const tokenize = (text: string) => text.match(/\s+|[^\s]+/gu) ?? [];
+  const same = (x: string, y: string) => x.length === y.length && x.split('').every((ch, k) => sameChar(ch, y[k]));
+  for (const [start, end] of found.reverse()) {
+    const run = units.slice(start, end);
+    if (!run.some((unit) => unit.touched)) continue;
+    const deleted = run.filter((unit) => unit.kind === 'del' || unit.kind === 'newDel');
+    const inserted = run.filter((unit) => unit.kind === 'ins' || unit.kind === 'newIns');
+    const a = tokenize(deleted.map((unit) => unit.ch).join(''));
+    const b = tokenize(inserted.map((unit) => unit.ch).join(''));
+    let prefix = 0;
+    while (prefix < a.length && prefix < b.length && same(a[prefix]!, b[prefix]!)) prefix++;
+    let suffix = 0;
+    while (suffix < a.length - prefix && suffix < b.length - prefix && same(a[a.length - 1 - suffix]!, b[b.length - 1 - suffix]!)) suffix++;
+    if (prefix === 0 && suffix === 0) continue;
+    const length = (tokens: string[]) => tokens.join('').length;
+    const head = length(a.slice(0, prefix));
+    const tail = length(a.slice(a.length - suffix));
+    const equal = (from: Unit[]) => from.map((unit): Unit => ({ kind: 'equal', ch: unit.ch }));
+    units.splice(start, end - start,
+      ...equal(deleted.slice(0, head)),
+      ...deleted.slice(head, deleted.length - tail),
+      ...inserted.slice(length(b.slice(0, prefix)), inserted.length - length(b.slice(b.length - suffix))),
+      ...equal(deleted.slice(deleted.length - tail)));
+  }
+  return units;
 }
 
 /**

@@ -138,6 +138,25 @@ describe('applyTextEdit', () => {
     expect(replaced.createdItemIds).toEqual([]);
   });
 
+  it('leaves the unchanged word out of a change once a space separates the typed word from it', () => {
+    // A word typed against the next one widens to both; the space typed later leaves only the new word.
+    const glued = edit([eq('az alamizsnás szilke')], 'az alamizsnás gyűjtőszilke', 0, 20);
+    expect(show(glued.segments)).toBe('az alamizsnás [-szilke:eb.0-][+gyűjtőszilke:eb.0/eb.1+]');
+    const spaced = edit(glued.segments, 'az alamizsnás gyűjtő szilke', glued.nextId, 21);
+    expect(show(spaced.segments)).toBe('az alamizsnás [+gyűjtő :eb.0/eb.1+]szilke');
+    expect(spaced.createdItemIds).toEqual([]);
+    // The same before the word, and after it.
+    const before = edit([eq('alamizsnás')], 'azalamizsnás', 0, 2);
+    expect(show(edit(before.segments, 'az alamizsnás', before.nextId, 3).segments)).toBe('[+az :eb.0/eb.1+]alamizsnás');
+    const after = edit([eq('a house')], 'a housenow', 0, 10);
+    expect(show(edit(after.segments, 'a house now', after.nextId, 8).segments)).toBe('a house[+ now:eb.0/eb.1+]');
+  });
+
+  it('keeps the shared words of the comparison’s items', () => {
+    const segments = [eq('a '), del('red', 'x'), ins('red blue', 'x', 'y'), eq(' b')];
+    expect(show(edit(segments, 'a red bluer b', 0, 10).segments)).toBe('a [-red:x-][+red bluer:x/y+] b');
+  });
+
   it('keeps text typed after a space ending one of the comparison’s insertions a new change', () => {
     expect(show(edit([eq('a '), ins('big ', 'x'), eq('house')], 'a big red house', 0, 10).segments)).toBe('a [+big :x+][+red :eb.0+]house');
   });
@@ -274,9 +293,9 @@ describe('revertableItems and revertChange', () => {
   it('reverts only the chosen one of a new change and the existing change it touched', () => {
     const original = [eq('a '), ins('big', 'x'), eq(' red house')];
     const block = edited(original, ['a bigger blue house', 13]);
-    expect(show(block.current)).toBe('a [+bigger:x+][- red:eb.0-][+ blue:eb.0/eb.1+] house');
+    expect(show(block.current)).toBe('a [+bigger:x+] [-red:eb.0-][+blue:eb.0/eb.1+] house');
     expect([...revertableItems(block)]).toEqual(['x', 'eb.0']);
-    expect(show(revertChange(block, 'x'))).toBe('a [+big:x+][- red:eb.0-][+ blue:eb.0/eb.1+] house');
+    expect(show(revertChange(block, 'x'))).toBe('a [+big:x+] [-red:eb.0-][+blue:eb.0/eb.1+] house');
     expect(show(revertChange(block, 'eb.0'))).toBe('a [+bigger:x+] red house');
   });
 

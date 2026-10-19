@@ -387,7 +387,11 @@ segments leaves everything outside it as it was:
   and becomes one new item (Replaced when it has both). A run of changes the edit touched whose
   deleted and inserted text are the same (the Original typed back) becomes unchanged text: its
   items lose those segments, and an item left without any disappears (its decision and comment stay
-  in the review state, for a revert).
+  in the review state, for a revert). Last, a touched run that edits made (new pieces, or one item
+  an earlier edit created; never the comparison's) gives up the words and spaces its deleted and
+  inserted text share at its start and end (`trimSharedWords`, the tokens of `commonAffixes`, exact
+  text only): `gyűjtő` typed against `szilke` widens to Replaced `szilke` → `gyűjtőszilke`, and the
+  space typed between them leaves Inserted `gyűjtő `, as the display's greyed common edges showed.
 - **Ids** of new items are `editId(unid, n)` = `e<unid>.<n>`, `n` counting up in the block's
   `nextId` (never reused): the deletion's id, then the insertion's; the item's id is the first. They
   can't collide with the engine's ids (`rev…` strings) and are the same when the edits are replayed. An
