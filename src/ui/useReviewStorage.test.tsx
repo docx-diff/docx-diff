@@ -19,6 +19,7 @@ const STATE: ReviewState = {
   formattingChoice: 'edited',
   compareSettings: DEFAULT_COMPARE_SETTINGS,
   formattingGroupExpanded: false,
+  edits: [],
 };
 
 function comparison(original = 'original', edited = 'edited'): Comparison {

@@ -561,6 +561,111 @@ test.describe('revert and guards', () => {
   });
 });
 
+/** The saved review record in the page's IndexedDB, after merging `patch` into it. */
+function savedReview(page: Page, patch?: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  return page.evaluate(
+    (patch) =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('docx-diff');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const store = db.transaction('reviews', 'readwrite').objectStore('reviews');
+          const get = store.get('current-review');
+          get.onsuccess = () => {
+            const record = get.result ?? null;
+            if (record && patch) store.put(Object.assign(record, patch), 'current-review');
+            store.transaction.oncomplete = () => {
+              db.close();
+              resolve(record);
+            };
+          };
+        };
+      }),
+    patch,
+  );
+}
+
+test.describe('saving and resuming', () => {
+  test.beforeEach(({ page }) => pinView(page, TWO_COLUMNS));
+
+  const resumePrompt = (page: Page) => page.getByRole('dialog', { name: 'Resume review of original.docx → edited.docx?' });
+  const cardSummary = (page: Page) =>
+    cards(page).evaluateAll((all) => all.map((card) => [card.getAttribute('data-item-id'), card.querySelector('.change-card__state')?.textContent]));
+
+  test('edits come back after a reload with the same changes, ids, decisions and comments', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph.']), minimalDocx(['The quick red fox.', 'Second paragraph.']));
+    await startEditing(page);
+    await cursorAtEnd(page, 'Second paragraph.');
+    await page.keyboard.type(' Really');
+    await expect(cards(page)).toHaveCount(2);
+    await cursorAtEnd(page, 'The quick');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(' indeed');
+    await expect(cards(page).filter({ hasText: 'indeed' })).toHaveCount(1);
+    await expect(cards(page)).toHaveCount(3);
+    await page.getByRole('button', { name: 'Editable' }).click();
+    // The change the edit created is rejected, the comparison's own is accepted with a comment.
+    await cards(page).filter({ hasText: 'Really' }).getByRole('button', { name: 'Reject', exact: true }).click();
+    const compared = cards(page).filter({ hasText: 'brown' });
+    await compared.getByRole('button', { name: 'Accept', exact: true }).click();
+    await compared.getByRole('button', { name: 'More Accept options' }).click();
+    await page.getByRole('menuitem', { name: 'Accept this with comment' }).click();
+    await compared.getByRole('textbox').fill('Fine.');
+    await expect(totals(page)).toContainText('2 accepted, 1 rejected, 0 undecided');
+    const before = await cardSummary(page);
+    const right = await shown(page, 'right', 'Second paragraph');
+    const left = await shown(page, 'left', 'Second paragraph');
+    // Wait for the debounced save.
+    await expect
+      .poll(async () => {
+        const saved = await savedReview(page);
+        return [(saved?.edits as unknown[] | undefined)?.length, saved?.comments && Object.values(saved.comments)];
+      })
+      .toEqual([2, ['Fine.']]);
+
+    await page.reload();
+    await resumePrompt(page).getByRole('button', { name: 'Resume' }).click();
+    await expect(cards(page)).toHaveCount(3, { timeout: 60_000 });
+    expect(await cardSummary(page)).toEqual(before);
+    await expect(totals(page)).toContainText('2 accepted, 1 rejected, 0 undecided');
+    await expect(cards(page).filter({ hasText: 'brown' }).getByRole('textbox')).toHaveValue('Fine.');
+    expect(await shown(page, 'right', 'Second paragraph')).toBe(right);
+    expect(await shown(page, 'left', 'Second paragraph')).toBe(left);
+    await expect(page.getByTestId('panel-right').locator('.edit-revert')).toHaveCount(2);
+    await expect(page.getByText(/could not be restored/)).toHaveCount(0);
+    // The export has the edits: the accepted one in, the rejected one out.
+    expect(docxText((await downloadReviewed(page, 'accept')).bytes)).toEqual(['The quick red fox indeed.', 'Second paragraph.']);
+
+    // Typing on after the resume gives new ids, not those of the edits before it.
+    const ids = before.map(([id]) => id);
+    await startEditing(page);
+    await paragraph(page, 'right', 'Second paragraph').click();
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.type('Very ');
+    await expect(cards(page)).toHaveCount(4);
+    const added = (await cardSummary(page)).map(([id]) => id).filter((id) => !ids.includes(id));
+    expect(added).toHaveLength(1);
+  });
+
+  test('an edit whose paragraph is not as it was compared is skipped, and the app says so', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph.']), minimalDocx(['The quick red fox.', 'Second paragraph.']));
+    await startEditing(page);
+    await cursorAtEnd(page, 'Second paragraph.');
+    await page.keyboard.type(' Really');
+    await expect(cards(page)).toHaveCount(2);
+    await expect.poll(async () => ((await savedReview(page))?.edits as unknown[] | undefined)?.length).toBe(1);
+    const [edit] = (await savedReview(page))!.edits as Record<string, unknown>[];
+    await savedReview(page, { edits: [{ ...edit, original: [{ kind: 'equal', text: 'Another paragraph.' }] }] });
+
+    await page.reload();
+    await resumePrompt(page).getByRole('button', { name: 'Resume' }).click();
+    await expect(page.getByText('1 edit could not be restored.')).toBeVisible({ timeout: 60_000 });
+    await expect(cards(page)).toHaveCount(1);
+    expect(await shown(page, 'right', 'Second paragraph')).toBe('Second paragraph.');
+  });
+});
+
 test.describe('three columns', () => {
   test.beforeEach(({ page }) => pinView(page, { ...TWO_COLUMNS, threeColumns: true }));
 

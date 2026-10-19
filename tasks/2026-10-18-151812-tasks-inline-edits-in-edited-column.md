@@ -28,7 +28,7 @@ New:
 - `src/ui/editing.test.ts` - Unit tests (jsdom) for what doesn't need layout or a shadow-root selection: `plainText`, `deletedSpan`, contenteditable on/off and refresh, blocked input types, click messages, debounce, composition, flush on focus loss / Escape / detach, refused update, Ctrl+Z's message once.
 - `src/ui/Toast.tsx` - The short status message under the Edited header (PRD-13), `role="status"`, 4 s.
 - `e2e/editingFuzz.spec.ts` - Random keys with pauses around the update delay in an editable paragraph; its shown text must end as in a plain editable box with the same keys (found the ↺ icons trapping the cursor, task 5).
-- `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); revert by icon / card / ↺ ¶ / ↺ all with confirm and cancel, Ctrl+Z message, Swap and file picker confirmation, range warning by number and by picking (task 5); reload/resume, export round trip (task 6).
+- `e2e/editing.spec.ts` - e2e: toggle and defaults, typing a word (new accepted item, cursor kept), typo inside an insertion, PRD-16's example, blocked actions and messages, footnote reference and moved paragraph, typed shortcut keys, dead key (CDP composition), paste, flush on toggle off / blur / typing elsewhere, heading in the outline, Resolved column (task 4); revert by icon / card / ↺ ¶ / ↺ all with confirm and cancel, Ctrl+Z message, Swap and file picker confirmation, range warning by number and by picking (task 5); reload/resume with the same changes, ids, decisions, comments and export, new ids after it, a skipped edit and its notice (task 6).
 
 Changed:
 - `src/engine/types.ts` - `ExportRequest.edits` (`BlockEditPatch`); `CompareResult.uneditableBlocks` and its `editable` timing (task 3.2).
@@ -64,10 +64,11 @@ Changed:
 - `src/model/range.ts` / `src/model/range.test.ts` - `editedBlocksLeftOutside`: the range warning's count (task 5).
 - `src/ui/useKeyboardShortcuts.ts` - Typing targets found through `composedPath()`.
 - `src/ui/useKeyboardShortcuts.test.tsx` - A key from an editable element inside a shadow root is not a shortcut.
-- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); `Confirmation` + `ConfirmAction` (the three reverts, Swap, toolbar file pickers, range warning via `requestRange`), `cursorBlock`, `revertable` / `editedBlockIds`, `showReverts` (task 5); resume order, autosave of edits (task 6).
+- `src/App.tsx` - `useEdits`, derived values instead of `comparison.analysis.items`/`itemTexts`/headings, panel `controlRef`s, export with `revisions()`/`patches()`, `useSameSet` for `ignored`/out-of-range (task 3); Editable state (off per review), `reasonOf` / `textOf` / `applyEdit` (`EditingOptions`), toast, card hidden while editing (task 4); `Confirmation` + `ConfirmAction` (the three reverts, Swap, toolbar file pickers, range warning via `requestRange`), `cursorBlock`, `revertable` / `editedBlockIds`, `showReverts` (task 5); resume order (saved edits' item ids known to the decision filter, `pendingEdits` replayed in a layout effect once the panels show the comparison, skipped-edit notice in the resume notice), `savedEdits` in `reviewState` (task 6).
 - `src/ui/HelpPopover.tsx` - A line about Editable (shortcuts off while typing, Escape).
-- `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState`.
-- `src/ui/useReviewStorage.ts` - Saves the edits with the rest of the state.
+- `src/storage/reviewStore.ts` / `src/storage/reviewStore.test.ts` - `edits` in `ReviewState` and `sanitizeState` (`isBlockEdit`, `isSegment`: malformed records dropped, none in an older record) (task 6).
+- `src/ui/useReviewStorage.test.tsx` - `edits` in the test state (task 6); `useReviewStorage.ts` itself needed no change (it saves whatever `ReviewState` holds).
+- `src/ui/useEdits.ts` / `src/ui/useEdits.test.tsx` - Task 6: `EditSession.savedEdits` (every touched block, reverted ones included for their `nextId`), `savedItemIds`, `skippedEditsNotice`; tests (a reverted block saved, no id reused after the replay).
 - `src/index.css` - Toggle, toast and the editing panel's outline (task 4), `.revert-button` (↺ ¶, ↺ all, task 5); tokens, light and dark.
 - `test/fixtures/make-fixtures.ts` - Fixture `link-bookmark-tab` (task 2).
 - `test/edits.ts` - `editableBlocks` uses `uneditableReason` (task 3).
@@ -77,7 +78,7 @@ Changed:
 - `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
 - `src/ui/DocumentPanel.test.tsx` - Task 4: editing mode (editable blocks, no click-to-select, message, replaced block prepared, flush on turning off but not on a new document).
 - `src/ui/blockSegments.test.ts` - Task 4: the browser's placeholder `<br>`, `visibleOffset` / `visiblePoint`.
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4; no undo, "Reverts" and "Guards", task 5).
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4; no undo, "Reverts" and "Guards", task 5; "Saved review": the edits, task 6).
 
 ### Notes
 
@@ -573,7 +574,7 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 
 **Depends on:** tasks 3–4; `src/model/paragraphEdit.ts`, `src/ui/useEdits.ts`, `src/ui/editing.ts`, `src/ui/blockSegments.ts`, `src/ui/DocumentPanel.tsx`, `src/ui/ChangeCard.tsx`, `src/ui/EditableToggle.tsx`, `src/ui/ConfirmDialog.tsx`, `src/ui/RangeControl.tsx`, `src/App.tsx` (`swap`, `pickParagraph`, `setRangeState`), `src/model/range.ts` (`outOfRangeBlocks`).
 
-- [ ] 5.0 Revert and guards
+- [x] 5.0 Revert and guards
   - [x] 5.1 `revertableItems` and `revertChange` in `paragraphEdit.ts`; `EditSession.revertChange` and the hook. Unit tests (cases above; a restored item keeps its decision and comment).
   - [x] 5.2 ↺ icon after each revertable change in the Edited panel (only while Editable is off: in editable text it traps the cursor); skipped by the segment reader; ↺ Revert in the change card; both with confirmation; Ctrl+Z message. Tests.
   - [x] 5.3 Header ↺ ¶ (cursor's paragraph, else the current change's) and ↺ all after Editable, both with confirmation, disabled only when there is nothing to revert. Tests.
@@ -634,11 +635,22 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 **Depends on:** tasks 1, 3; `src/storage/reviewStore.ts`, `src/ui/useReviewStorage.ts`, `src/App.tsx`, `e2e/resume.spec.ts`.
 
 - [ ] 6.0 Saving and resuming edits
-  - [ ] 6.1 `edits` in `ReviewState` and `sanitizeState`; tests (old record without edits, malformed record).
-  - [ ] 6.2 Include edits in the saved state.
-  - [ ] 6.3 Add saved edit item ids to the decision filter; replay on resume (no auto-accept); skipped-edit notice; tests (a created item rejected before the reload stays rejected).
-  - [ ] 6.4 e2e: edit, decide, reload, resume → same text, items, ids, decisions, comments (success metric 4).
-  - [ ] 6.5 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+  - [x] 6.1 `edits` in `ReviewState` and `sanitizeState`; tests (old record without edits, malformed record).
+  - [x] 6.2 Include edits in the saved state.
+  - [x] 6.3 Add saved edit item ids to the decision filter; replay on resume (no auto-accept); skipped-edit notice; tests (a created item rejected before the reload stays rejected).
+  - [x] 6.4 e2e: edit, decide, reload, resume → same text, items, ids, decisions, comments (success metric 4).
+  - [x] 6.5 `npm run typecheck`, `npm test`, `npm run test:e2e`; commit.
+
+**Notes** (task 6, for later tasks)
+
+- The saved edits are `EditSession.savedEdits()`: every touched block, reverted ones too (only their
+  `nextId` matters then), so ids are never reused across a resume. `useReviewStorage.ts` needed no
+  change.
+- The replay runs in a `useLayoutEffect` in `App.tsx` (after the panels' own layout effects have
+  filled them), not while rendering: `StrictMode` would run a render-time replay twice against the
+  one master document. `EditSession.restore` is idempotent on one session anyway.
+- The skipped-edit message goes in the resume notice banner (`skippedEditsNotice`), not the toast.
+- FR numbers for saving edits come in task 8.2.
 
 ### 7.0 Phase 2: bold and italic
 

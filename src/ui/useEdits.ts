@@ -43,6 +43,23 @@ export interface BlockUpdate {
 /** A saved edit to restore (`original` must be the block as compared now). */
 export type SavedBlockEdit = BlockEdit;
 
+/** The item ids the saved edits' blocks name (their decisions and comments are kept on resume). */
+export function savedItemIds(saved: readonly SavedBlockEdit[]): Set<string> {
+  const ids = new Set<string>();
+  for (const record of saved) {
+    for (const segment of record.current) {
+      if (segment.kind === 'del' || segment.kind === 'ins') ids.add(segment.itemId);
+      else if (segment.kind === 'object' && segment.owner) ids.add(segment.owner.itemId);
+    }
+  }
+  return ids;
+}
+
+/** The notice for saved edits the replay skipped (`EditSession.restore`). */
+export function skippedEditsNotice(skipped: number): string {
+  return `${skipped} ${skipped === 1 ? 'edit' : 'edits'} could not be restored.`;
+}
+
 const sameSegments = (a: readonly Segment[], b: readonly Segment[]) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -119,6 +136,14 @@ export class EditSession {
   isEdited(unid: string): boolean {
     const edit = this.blocks.get(unid);
     return !!edit && !sameSegments(edit.original, edit.current);
+  }
+
+  /**
+   * What the saved review keeps: every block an edit touched, also one reverted since (its
+   * `nextId` keeps item ids from being reused after a resume).
+   */
+  savedEdits(): BlockEdit[] {
+    return [...this.blocks.values()];
   }
 
   /** The blocks that differ from the comparison's. */

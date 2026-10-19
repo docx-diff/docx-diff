@@ -828,9 +828,19 @@ planning phase (reject-all on the sample gave exactly the Original text and pass
 `current-review` (rewritten while reviewing, debounced 300 ms, at once on `pagehide`), the files with
 their SHA-256 under `current-review-files` (written once per comparison). Schema 1: engine version,
 files, range, decisions, comments (added later; a record without them loads with none), formatting
-choice, compare settings, formatting group expanded. A loaded record's state is sanitized (unknown
-fields replaced by defaults). Resume compares the stored files again and applies the state only if
-both hashes and the engine version match. A probe write at start-up detects unavailable storage; a write that throws (e.g. no `crypto.subtle` outside a secure context)
+choice, compare settings, formatting group expanded, inline edits (also added later). A loaded
+record's state is sanitized (unknown fields replaced by defaults, malformed edit records dropped).
+Resume compares the stored files again and applies the state only if both hashes and the engine
+version match.
+
+**Inline edits** are saved as `EditSession.savedEdits()`: the `BlockEdit` of every block an edit
+touched (`original`, `current`, `nextId`), also one reverted since, so that its `nextId` keeps ids
+from being reused after a resume. Decisions are restored while rendering, the moment the comparison
+arrives, and keep only known item ids: the ids the saved segments name (`savedItemIds`) count as
+known, so the decisions and comments of edit-created items survive. The replay (`EditSession.restore`)
+runs in a layout effect once the panels show the comparison, and shows its updates like a revert
+(nothing accepted). A record whose `original` isn't the block as compared now, or whose block is
+gone, is skipped; the resume notice says "N edits could not be restored." (`skippedEditsNotice`). A probe write at start-up detects unavailable storage; a write that throws (e.g. no `crypto.subtle` outside a secure context)
 marks storage unavailable without stopping later writes.
 
 ## Service worker and deployment

@@ -4,7 +4,9 @@
 import { createStore, del, delMany, getMany, set, setMany, update, type UseStore } from 'idb-keyval';
 import type { FormattingChoice } from '../engine/types';
 import type { Decision } from '../model/decisions';
+import type { BlockScope } from '../model/docIndex';
 import { DEFAULT_COMPARE_SETTINGS, type CompareSettings } from '../model/equivalence';
+import type { BlockEdit, Segment } from '../model/paragraphEdit';
 import type { RangeState } from '../model/range';
 
 export interface SavedFile {
@@ -23,6 +25,11 @@ export interface ReviewState {
   /** Which changes are ignored. */
   compareSettings: CompareSettings;
   formattingGroupExpanded: boolean;
+  /**
+   * The inline edits: every block an edit touched, also one reverted since (its `nextId` keeps
+   * item ids from being reused). Replayed on resume (docs/architecture.md, "Inline edits").
+   */
+  edits: BlockEdit[];
 }
 
 export interface SavedReview extends ReviewState {
@@ -72,11 +79,48 @@ function isStoredReview(value: unknown): value is StoredReview {
   return isObject(value) && value.schemaVersion === 1 && typeof value.engineVersion === 'string' && isFile(value.original) && isFile(value.edited);
 }
 
+const isString = (value: unknown): value is string => typeof value === 'string';
+const SCOPES: readonly unknown[] = ['body', 'fn', 'en'] satisfies BlockScope[];
+
+function isSegment(value: unknown): value is Segment {
+  if (!isObject(value)) return false;
+  switch (value.kind) {
+    case 'equal':
+      return isString(value.text);
+    case 'del':
+    case 'ins':
+      return isString(value.text) && isString(value.itemId) && isString(value.revisionId);
+    case 'object': {
+      const owner = value.owner;
+      return (
+        isString(value.key) &&
+        (owner === undefined || (isObject(owner) && (owner.change === 'del' || owner.change === 'ins') && isString(owner.itemId) && isString(owner.revisionId)))
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+function isBlockEdit(value: unknown): value is BlockEdit {
+  const isSegments = (segments: unknown) => Array.isArray(segments) && segments.every(isSegment);
+  return (
+    isObject(value) &&
+    isString(value.unid) &&
+    SCOPES.includes(value.scope) &&
+    isSegments(value.original) &&
+    isSegments(value.current) &&
+    Number.isSafeInteger(value.nextId) &&
+    (value.nextId as number) >= 1
+  );
+}
+
 /**
  * The reviewing state of a stored record, with anything malformed replaced by its default (a
  * record written by another version of the app, or edited by hand): only `accepted`/`rejected`
  * decisions, text comments, known compare settings over the defaults, a range of a known shape
- * (whether it fits the document is checked after the compare, `restoredRange`).
+ * (whether it fits the document is checked after the compare, `restoredRange`), well-formed edit
+ * records (whether they fit the document is checked by the replay, `EditSession.restore`).
  */
 function sanitizeState(stored: StoredReview): ReviewState {
   const decisions: Record<string, Decision> = {};
@@ -107,6 +151,7 @@ function sanitizeState(stored: StoredReview): ReviewState {
     range: validRange ? (range as RangeState) : { mode: 'off', endPoint: null },
     formattingChoice: stored.formattingChoice === 'original' ? 'original' : 'edited',
     formattingGroupExpanded: stored.formattingGroupExpanded === true,
+    edits: Array.isArray(stored.edits) ? stored.edits.filter(isBlockEdit) : [],
   };
 }
 

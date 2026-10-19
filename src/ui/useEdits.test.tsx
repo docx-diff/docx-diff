@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { smallComparison as comparison } from '../../test/small-comparison';
 import { buildOutline } from '../model/outline';
 import { readBlockSegments } from './blockSegments';
-import { EditSession, useEdits } from './useEdits';
+import { EditSession, savedItemIds, skippedEditsNotice, useEdits } from './useEdits';
 
 const block = (session: EditSession, unid: string) => session.comparison.document.body.querySelector(`[data-anchor="${unid}"]`)!;
 const summary = (session: EditSession) => session.items.map((item) => `${item.order} ${item.id} ${item.kind} -${item.removedText} +${item.addedText}`);
@@ -91,6 +91,29 @@ describe('EditSession', () => {
     expect(updates.flatMap((update) => update.createdItemIds)).toEqual([]);
     expect(replay.items).toEqual(live.items);
     expect(replay.blocks.get('p')!.nextId).toBe(3);
+  });
+
+  it('saves reverted blocks too, so that ids aren’t reused after a resume', () => {
+    const live = new EditSession(comparison());
+    live.update('p', 'the big blue house', 'the big blue'.length);
+    live.revert('p');
+    expect(live.editedBlocks()).toEqual([]);
+    const saved = live.savedEdits();
+    expect(saved.map((edit) => [edit.unid, edit.nextId])).toEqual([['p', 3]]);
+    const replay = new EditSession(comparison());
+    expect(replay.restore(saved)).toEqual({ updates: [], skipped: 0 });
+    replay.update('p', 'the big green house', 'the big green'.length);
+    expect(replay.items.map((item) => item.id)).toContain('ep.3');
+    expect(replay.items.map((item) => item.id)).not.toContain('ep.1');
+  });
+
+  it('names the saved edits’ items, and says how many edits were skipped', () => {
+    const live = new EditSession(comparison());
+    live.update('p', 'the big blue house', 'the big blue'.length);
+    live.update('q', 'The house stood.');
+    expect([...savedItemIds(live.savedEdits())].sort()).toEqual(['ep.1', 'r1', 'r2', 'r3']);
+    expect(skippedEditsNotice(1)).toBe('1 edit could not be restored.');
+    expect(skippedEditsNotice(3)).toBe('3 edits could not be restored.');
   });
 
   it('gives an edited heading its new text, so that the outline keeps it', () => {

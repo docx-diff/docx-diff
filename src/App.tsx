@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ChangeItem } from './model/changes';
 import {
   INITIAL_DECISIONS,
@@ -52,7 +52,7 @@ import { ThemeToggle } from './ui/ThemeToggle';
 import { Toolbar } from './ui/Toolbar';
 import { DOCX_TYPE, reviewedFileName, saveDocx } from './ui/download';
 import { useComparison, type Comparison } from './ui/useComparison';
-import { showBlockUpdates, useEdits, type BlockUpdate } from './ui/useEdits';
+import { savedItemIds, showBlockUpdates, skippedEditsNotice, useEdits, type BlockUpdate, type SavedBlockEdit } from './ui/useEdits';
 import { useCompareSettings } from './ui/useCompareSettings';
 import { useExportSettings } from './ui/useExportSettings';
 import { useTheme } from './ui/theme';
@@ -151,6 +151,8 @@ export function App() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   /** The comment bubbles the reviewer closed in the Resolved column; not saved (FR-27c). */
   const [closedBubbles, setClosedBubbles] = useState<ReadonlySet<string>>(new Set());
+  /** A resumed review's inline edits, replayed once its comparison is shown. */
+  const [pendingEdits, setPendingEdits] = useState<{ comparison: Comparison; edits: SavedBlockEdit[] } | null>(null);
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
@@ -165,13 +167,16 @@ export function App() {
     const suggested = comparison?.analysis.suggestedEndPoint ?? null;
     if (comparison && saved) {
       // Item ids are stable for the same files and engine version; drop any that are not there anyway.
-      const known = new Set(comparison.analysis.items.map((item) => item.id));
+      // The items the edits created are known too: their decisions come back with the replay.
+      const known = new Set([...comparison.analysis.items.map((item) => item.id), ...savedItemIds(saved.edits)]);
       const decisions = Object.fromEntries(Object.entries(saved.decisions).filter(([id]) => known.has(id)));
       const comments = Object.fromEntries(Object.entries(saved.comments).filter(([id]) => known.has(id)));
       dispatch({ type: 'restore', state: { decisions, formattingChoice: saved.formattingChoice, comments } });
       setFormattingExpanded(saved.formattingGroupExpanded);
       setRangeState(restoredRange(saved.range, comparison.analysis.index.bodyParagraphs.length, suggested));
+      setPendingEdits(saved.edits.length > 0 ? { comparison, edits: saved.edits } : null);
     } else {
+      setPendingEdits(null);
       dispatch({ type: 'clear' });
       setFormattingExpanded(false);
       setRangeState(initialRange(suggested));
@@ -184,6 +189,8 @@ export function App() {
     setClosedBubbles(new Set());
   }
 
+  // Keyed on `edits.version`: the session changes in place.
+  const savedEdits = useMemo(() => edits.session?.savedEdits() ?? [], [edits.session, edits.version]);
   const reviewState = useMemo<ReviewState>(
     () => ({
       range: rangeState,
@@ -192,8 +199,9 @@ export function App() {
       formattingChoice: review.formattingChoice,
       compareSettings: settings,
       formattingGroupExpanded: formattingExpanded,
+      edits: savedEdits,
     }),
-    [rangeState, review, settings, formattingExpanded],
+    [rangeState, review, settings, formattingExpanded, savedEdits],
   );
   const discardSavedReview = useAutoSave(store, comparison, engineVersion, reviewState, markUnavailable);
 
@@ -330,6 +338,17 @@ export function App() {
     if (currentItemId !== null && !editSession?.items.some((item) => item.id === currentItemId)) setCurrentItemId(null);
     rightControl.current?.restoreCursor();
   };
+
+  // The replay of a resumed review's edits, once the panels show its comparison. Nothing is
+  // accepted: the edits' items got their saved decisions with the rest of the review.
+  const restoreEdits = edits.restore;
+  useLayoutEffect(() => {
+    if (!pendingEdits || editSession?.comparison !== pendingEdits.comparison) return;
+    setPendingEdits(null);
+    const { updates, skipped } = restoreEdits(pendingEdits.edits);
+    showBlockUpdates(updates, [leftControl.current, middleControl.current, rightControl.current], () => {});
+    if (skipped > 0) setResumeNotice(skippedEditsNotice(skipped));
+  }, [pendingEdits, editSession, restoreEdits]);
 
   /** A new comparison range; it asks first when it leaves edited paragraphs outside. */
   const requestRange = useCallback(

@@ -22,6 +22,20 @@ const STATE: ReviewState = {
   formattingChoice: 'edited',
   compareSettings: DEFAULT_COMPARE_SETTINGS,
   formattingGroupExpanded: false,
+  edits: [
+    {
+      unid: 'u1',
+      scope: 'body',
+      original: [{ kind: 'equal', text: 'the red house' }],
+      current: [
+        { kind: 'equal', text: 'the ' },
+        { kind: 'ins', text: 'big ', itemId: 'eu1.1', revisionId: 'eu1.1' },
+        { kind: 'equal', text: 'red house' },
+        { kind: 'object', key: 'fn:1', owner: { change: 'ins', itemId: 'eu1.1', revisionId: 'eu1.1' } },
+      ],
+      nextId: 2,
+    },
+  ],
 };
 
 async function review(): Promise<SavedReview> {
@@ -102,6 +116,15 @@ describe('ReviewStore', () => {
         range: { mode: 'manual', endPoint: 'ten' },
         formattingChoice: 'both',
         formattingGroupExpanded: 1,
+        edits: [
+          STATE.edits[0],
+          { ...STATE.edits[0], unid: 7 },
+          { ...STATE.edits[0], scope: 'header' },
+          { ...STATE.edits[0], nextId: 0 },
+          { ...STATE.edits[0], current: [{ kind: 'ins', text: 'x' }] },
+          { ...STATE.edits[0], original: [{ kind: 'object', key: 'k', owner: { change: 'move' } }] },
+          'u2',
+        ],
       },
       useStore,
     );
@@ -112,12 +135,19 @@ describe('ReviewStore', () => {
       range: { mode: 'off', endPoint: null },
       formattingChoice: 'edited',
       formattingGroupExpanded: false,
+      edits: STATE.edits,
     });
+    expect((await store.load())!.edits).toHaveLength(1);
     expect(Object.keys((await store.load())!.decisions)).toEqual(['a']);
     expect(Object.keys((await store.load())!.comments)).toEqual(['a']);
     // A record saved before comments existed has none.
     await set('current-review', { ...record, comments: undefined }, useStore);
     expect((await store.load())!.comments).toEqual({});
+    // One saved before inline edits existed, or with something else in their place, has none.
+    await set('current-review', { ...record, edits: undefined }, useStore);
+    expect((await store.load())!.edits).toEqual([]);
+    await set('current-review', { ...record, edits: { u1: STATE.edits[0] } }, useStore);
+    expect((await store.load())!.edits).toEqual([]);
   });
 
   it('has no review when the files are missing', async () => {
