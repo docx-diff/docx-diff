@@ -217,9 +217,11 @@ function takeParagraphLook(block: HTMLElement, source: HTMLElement): void {
 const REVERT_ICON = 'edit-revert';
 
 /**
- * The block's ↺ icons, one after the last piece of each of `itemIds` (its last insertion, else its
- * last deletion, which the Edited panel hides), after the ✓ / ✗ that piece's `::after` shows. Not
- * text (`NOT_TEXT`): the segment reader and the cursor offsets skip them.
+ * The ↺ icons in `root` (a block, or the whole panel), one after the last piece of each of
+ * `itemIds` found in it (its last insertion, else its last deletion, which the Edited panel hides),
+ * after the ✓ / ✗ that piece's `::after` shows; the root's other icons go. Not text (`NOT_TEXT`):
+ * the segment reader and the cursor offsets skip them. A block gets its icons before the panel
+ * joins it into the next paragraph: the join moves its content, icons included, into that one.
  *
  * Only while Editable is off: an icon is an element without text that can't be edited, inside the
  * paragraph's text. In an editable paragraph Chromium's caret stops in front of it (ArrowRight
@@ -229,18 +231,18 @@ const REVERT_ICON = 'edit-revert';
  * keys found it with the icons in the text and nothing without them (`e2e/editingFuzz.spec.ts`;
  * docs/architecture.md, "Inline edits", "Reverts").
  */
-export function placeRevertIcons(block: HTMLElement, itemIds: ReadonlySet<string>): void {
-  for (const icon of within(block, `.${REVERT_ICON}`)) icon.remove();
+export function placeRevertIcons(root: HTMLElement, itemIds: ReadonlySet<string>): void {
+  for (const icon of within(root, `.${REVERT_ICON}`)) icon.remove();
   if (itemIds.size === 0) return;
   const last = new Map<string, HTMLElement>();
-  for (const element of within(block, 'ins[data-change-id], del[data-change-id]')) {
+  for (const element of within(root, 'ins[data-change-id], del[data-change-id]')) {
     const id = element.dataset.changeId!;
     if (!itemIds.has(id)) continue;
     const shown = last.get(id);
     if (!shown || element.localName === 'ins' || shown.localName === 'del') last.set(id, element);
   }
   for (const [id, element] of last) {
-    const icon = block.ownerDocument.createElement('span');
+    const icon = root.ownerDocument.createElement('span');
     icon.className = REVERT_ICON;
     icon.dataset.revertId = id;
     icon.setAttribute('role', 'button');
@@ -312,15 +314,12 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
   revertIconsRef.current = props.revertIcons;
   /** Set while Editable is on: no revert icons in the text then (`placeRevertIcons`). */
   const iconsHiddenRef = useRef(false);
-  /** Puts the revert icons in every block that has some (Editable turned off). */
+  /** Puts the revert icons in the whole panel (Editable turned off), wherever joins put the changes. */
   const placeAllRevertIcons = () => {
     const icons = revertIconsRef.current;
-    if (!icons || iconsHiddenRef.current) return;
-    const shown = new Map(blocksRef.current.map((block) => [block.dataset.anchor!, block]));
-    for (const unid of icons.blocks()) {
-      const block = shown.get(unid);
-      if (block) placeRevertIcons(block, icons.of(unid));
-    }
+    const wrapper = scrollerRef.current?.shadowRoot?.querySelector<HTMLElement>('.doc');
+    if (!icons || !wrapper || iconsHiddenRef.current) return;
+    placeRevertIcons(wrapper, new Set([...icons.blocks()].flatMap((unid) => [...icons.of(unid)])));
   };
 
   /** The Edited panel shows the paragraphs it joins one by one (while editing): each can be edited as itself. */
@@ -346,6 +345,9 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
         if (!old) continue;
         const block = owner.importNode(source, true) as HTMLElement;
         block.classList.toggle('out-of-range', old.classList.contains('out-of-range'));
+        // Before the join, which may move the block's content (and so its icons) into the next paragraph.
+        const icons = iconsHiddenRef.current ? undefined : revertIconsRef.current;
+        if (icons) for (const paragraph of within(block, '[data-anchor]')) placeRevertIcons(paragraph, icons.of(paragraph.dataset.anchor!));
         styledRef.current = styledRef.current.filter(([element]) => !old.contains(element));
         old.replaceWith(block);
         if (alone) keepUnjoined(block, old, run, shown.get((run.at(-1) as HTMLElement).dataset.anchor!));
@@ -374,8 +376,6 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     for (const id of ids) applyDecision(elementsRef.current.get(id) ?? [], appliedDecisions.current[id], side);
     const current = appliedCurrent.current;
     if (current !== null && ids.has(current)) for (const element of elementsRef.current.get(current) ?? []) element.classList.add('change-current');
-    const icons = iconsHiddenRef.current ? undefined : revertIconsRef.current;
-    if (icons) for (const block of swapped) for (const paragraph of within(block, '[data-anchor]')) placeRevertIcons(paragraph, icons.of(paragraph.dataset.anchor!));
     for (const block of swapped) for (const paragraph of within(block, PARAGRAPH_BLOCK)) editingRef.current?.prepareBlock(paragraph);
     return true;
   };

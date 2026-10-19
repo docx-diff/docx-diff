@@ -538,11 +538,13 @@ the current one. While editing, the cursor goes back to where it last was in an 
   text, `contenteditable=false`, `NOT_TEXT`: the segment reader and cursor offsets skip it) follows
   each such item's last insertion (else its last deletion), after the ✓/✗ of that piece's `::after`;
   `placeRevertIcons` places them whenever the panel swaps a block in (`swapRuns`), as only an update of
-  a block changes its revertable items. A click or Enter asks first; a mousedown on it is cancelled, so
+  a block changes its revertable items, before the panel joins the block into the next paragraph
+  (the join moves the block's content, icons included, into that one; placed after it, the icons of
+  a joined paragraph were lost). A click or Enter asks first; a mousedown on it is cancelled, so
   the cursor doesn't move. The change's card (list and inline) has a Revert button for the same items.
-  **The icons are only there while Editable is off** (removed when it is turned on, placed in every
-  edited block again when it is turned off, `iconsHiddenRef` / `placeAllRevertIcons` in
-  `DocumentPanel.tsx`). An icon is an element without text that can't be edited, inside the
+  **The icons are only there while Editable is off** (removed when it is turned on, placed again over
+  the whole panel by change id when it is turned off, wherever the joins put the changes;
+  `iconsHiddenRef` / `placeAllRevertIcons` in `DocumentPanel.tsx`). An icon is an element without text that can't be edited, inside the
   paragraph's text, next to the hidden deletions (`display: none`). In an editable paragraph
   Chromium handles neither well: the caret stops in front of an icon (ArrowRight stays there, at an
   offset of the paragraph element instead of in a text node), and Delete or Backspace there removes

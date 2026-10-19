@@ -241,6 +241,27 @@ describe('DocumentPanel revert icons', () => {
     expect(onChangeClick).not.toHaveBeenCalled();
   });
 
+  it('keeps the icons of a paragraph joined into the next one, also after Editable is turned off', () => {
+    const joined = smallComparison();
+    // The Edited lacks p's mark: the Edited panel shows p's text at the start of q.
+    joined.document.body.querySelector('[data-anchor="p"]')!.classList.add('rev-para-del');
+    const session = new EditSession(joined);
+    const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };
+    const { control, root, rerender } = revertPanel(session);
+    const ids = () => [...root.querySelectorAll<HTMLElement>('.edit-revert')].map((icon) => [icon.dataset.revertId, icon.closest<HTMLElement>('[data-anchor]')!.dataset.anchor]);
+    control.current!.replaceBlock('p', session.update('p', 'the big blue house', 'the big blue'.length)!.block);
+    control.current!.replaceBlock('q', session.update('q', 'The house stood.')!.block);
+    expect(blockIn(root, 'p').classList.contains('merged-into-next')).toBe(true);
+    expect(ids()).toEqual([['ep.1', 'q'], ['r3', 'q']]);
+    rerender(editing);
+    expect(ids()).toEqual([]);
+    rerender(undefined);
+    expect(blockIn(root, 'p').classList.contains('merged-into-next')).toBe(true);
+    expect(ids()).toEqual([['ep.1', 'q'], ['r3', 'q']]);
+    const icon = root.querySelector<HTMLElement>('.edit-revert[data-revert-id="ep.1"]')!;
+    expect(icon.previousElementSibling).toBe(root.querySelector('ins[data-change-id="ep.1"]'));
+  });
+
   it('shows no icons while Editable is on (they would trap the cursor), and puts them back when it is turned off', () => {
     const session = new EditSession(smallComparison());
     const editing: EditingOptions = { reasonOf: () => undefined, textOf: (unid) => session.visibleText(unid), onEdit: vi.fn(() => 'unchanged' as const), onMessage: vi.fn() };

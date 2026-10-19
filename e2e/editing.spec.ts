@@ -296,6 +296,9 @@ test.describe('two columns', () => {
     expect((await right.locator('p', { hasText: 'The monastery stood' }).innerText()).replace(/\s+/g, ' ')).toBe(
       joined.replace(/\s+/g, ' ').replace('began. ', 'began. Indeed. '),
     );
+    // The edit's ↺ is back with Editable off, moved with its paragraph's text into the one it joins.
+    const icon = right.locator('p:not(.merged-into-next) ins:has-text("Indeed.") + .edit-revert');
+    await expect(icon).toBeVisible();
     const text = docxText((await downloadReviewed(page, 'accept')).bytes);
     expect(text[0]).toContain('the path began. Indeed. Every morning');
   });

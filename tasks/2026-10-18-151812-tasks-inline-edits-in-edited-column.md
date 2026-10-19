@@ -609,6 +609,11 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
   sequences differed with the icons, none without). `DocumentPanel.tsx` (`iconsHiddenRef`,
   `placeAllRevertIcons`, `RevertIcons.blocks`), PRD-22 and its design note, `docs/architecture.md`
   "Reverts" and Testing, `CLAUDE.md` UI facts.
+- **Fixed after that (2026-10-19, user report: no icons after turning Editable off):** in a
+  paragraph the Edited panel joins into the next one, the icons were placed after the join, which
+  had moved the paragraph's changes into the next one. They are now placed before the join
+  (`swapRuns`), and over the whole panel by change id when Editable is turned off. Tests: a joined
+  paragraph in `DocumentPanel.test.tsx`, the icon in the `paragraph-join` e2e test.
 
 ### 6.0 Saving and resuming edits
 
