@@ -48,7 +48,7 @@ import { uneditableReason } from './ui/blockSegments';
 import { EDIT_MESSAGES, type EditOutcome, type EditingOptions } from './ui/editing';
 import type { FormatProperty } from './model/paragraphEdit';
 import { Toast, type ToastMessage } from './ui/Toast';
-import { RangeControl } from './ui/RangeControl';
+import { RangeDialog, RangePickingBar, hasRange, rangeMessage } from './ui/RangeControl';
 import { ResumePrompt } from './ui/ResumePrompt';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { Toolbar } from './ui/Toolbar';
@@ -146,6 +146,7 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [rangeState, setRangeState] = useState<RangeState>(initialRange(null));
   const [picking, setPicking] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
   /** The Edited panel's text can be edited (its Editable toggle); off for every review shown. */
   const [editing, setEditing] = useState(false);
   /** The editable paragraph the cursor was last in while editing (↺ ¶ reverts it). */
@@ -158,11 +159,8 @@ export function App() {
   // A new comparison starts a new review. Reset while rendering, so that the panels never show the
   // previous review's decisions on the new document.
   const [reviewedComparison, setReviewedComparison] = useState(comparison);
-  /** Changes with each comparison: resets the local state of the controls that belong to one review. */
-  const [reviewKey, setReviewKey] = useState(0);
   if (comparison !== reviewedComparison) {
     setReviewedComparison(comparison);
-    setReviewKey((key) => key + 1);
     const resumed = comparison && resuming?.original === comparison.original && resuming.edited === comparison.edited;
     if (resumed) setResuming(null);
     const saved = resumed ? resuming.review : null;
@@ -185,6 +183,7 @@ export function App() {
     }
     setCurrentItemId(null);
     setPicking(false);
+    setRangeOpen(false);
     setEditing(false);
     setCursorBlock(null);
     setConfirmation(null);
@@ -257,6 +256,8 @@ export function App() {
     () => (items && edits.index ? spanningItems(items, edits.index, rangeState.endPoint, range, positions) : []),
     [items, edits.index, rangeState, range, positions],
   );
+  const paragraphCount = comparison?.analysis.index.bodyParagraphs.length ?? 0;
+  const closeRange = useCallback(() => setRangeOpen(false), []);
   const outOfRange = useSameSet(
     useMemo(() => new Set((items ?? []).filter((item) => range.get(item.id) === 'outOfRange').map((item) => item.id)), [items, range]),
   );
@@ -660,6 +661,15 @@ export function App() {
             onSwap={requestSwap}
             scrollLock={scrollLock}
             onScrollLockChange={setScrollLock}
+            range={
+              hasRange(paragraphCount)
+                ? { message: rangeMessage(rangeState, paragraphCount), spanning: rangeState.endPoint !== null && spanning.length > 0 }
+                : null
+            }
+            onRange={() => {
+              setPicking(false);
+              setRangeOpen(true);
+            }}
             onDownload={openExport}
             downloading={exportState.status === 'running'}
             onClose={() => setCloseOpen(true)}
@@ -696,18 +706,7 @@ export function App() {
         onDismissResume={() => setResumeNotice(null)}
       />
 
-      {comparison && (
-        <RangeControl
-          key={reviewKey}
-          range={rangeState}
-          paragraphCount={comparison.analysis.index.bodyParagraphs.length}
-          suggestedEndPoint={comparison.analysis.suggestedEndPoint}
-          onChange={requestRange}
-          spanning={spanning}
-          picking={picking}
-          onPickingChange={setPicking}
-        />
-      )}
+      {comparison && picking && <RangePickingBar onCancel={() => setPicking(false)} />}
 
       {comparison ? (
         <div className={`workspace${view.changesList ? '' : ' workspace--list-hidden'}`}>
@@ -870,6 +869,20 @@ export function App() {
         </ConfirmDialog>
       )}
       {confirmation && <ConfirmAction confirmation={confirmation} onConfirm={confirmAction} onCancel={() => setConfirmation(null)} />}
+      {comparison && rangeOpen && (
+        <RangeDialog
+          range={rangeState}
+          paragraphCount={paragraphCount}
+          suggestedEndPoint={comparison.analysis.suggestedEndPoint}
+          onChange={requestRange}
+          spanning={spanning}
+          onPick={() => {
+            setRangeOpen(false);
+            setPicking(true);
+          }}
+          onClose={closeRange}
+        />
+      )}
       {settingsOpen && (
         <CompareSettingsDialog
           settings={settings}

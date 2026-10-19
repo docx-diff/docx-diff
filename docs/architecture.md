@@ -57,7 +57,7 @@ UI (`src/ui/`, entry `src/App.tsx`)
 - `blockSegments.ts` — a rendered block read as segments of the edit model, segments rendered back into its markup, cursor offsets in its visible text, and which blocks can be edited; `useEdits.ts` — the live review state with inline edits (`EditSession`); `editing.ts` — editing in the Edited panel; `EditableToggle.tsx` (the toggle, B and I, ↺ ¶ and ↺ all), `EditingHelp.tsx` (the editing help, in the Edited header's ? and the general Help), `usePopoverDismiss.ts` (Escape / a press outside closes a popover), `Toast.tsx` ([Inline edits](#inline-edits)).
 - `renderedDocument.ts` — prepares the HTML once for all panels (`joinParagraphs`, `mergeJoinedParagraphs`); `DocumentPanel.tsx` + `panel.css` — one panel in a shadow root; `scrollSync.ts` (any number of panels), `reveal.ts`, `OverviewBar.tsx`.
 - `resolvedView.ts` — the Resolved column's DOM logic ([Resolved column](#resolved-column)); `CommentBubbles.tsx` — its comment bubbles; `ColumnsToggle.tsx` + `useNarrowWindow.ts` — two or three columns (FR-25c); `useViewSettings.ts` — view settings kept in the browser (columns, sidebars, inline card).
-- `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx`, `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
+- `Outline.tsx`, `ChangesList.tsx`, `ChangeCard.tsx`, `InlineChangeCard.tsx`, `Legend.tsx`, `RangeControl.tsx` (the comparison range dialog, opened with the toolbar's ⇥ Range button, and the bar shown while picking the end point), `ExportDialog.tsx`, `CompareSettingsDialog.tsx`, `ResumePrompt.tsx`, `Toolbar.tsx`, `ThemeToggle.tsx` + `theme.ts` + `darkColors.ts` (dark mode), `FileDropZones.tsx`, `LoadingModal.tsx` (same markup as the static modal in `index.html`).
 
 Storage: `src/storage/reviewStore.ts`. Service worker registration: `src/serviceWorker.ts`.
 
@@ -291,8 +291,8 @@ documents are compared once and the items classified. All positions come from th
   any other insertion ([`closing-note-out-of-range.md`](closing-note-out-of-range.md)). Pass the
   detected end point: the run of Original paragraphs the Edited lacks starts earlier on the sample.
 - **Classification** (`classify`): items anchored after the end point are out of range; an item
-  spanning it is out of range as a whole (and the notice says so, `spanningItems`). Note items follow
-  the body paragraph of the note's first reference. A **move counts by its source** alone: on the
+  spanning it is out of range as a whole (the range dialog says so, and the toolbar's Range button
+  shows ⚠, `spanningItems`). Note items follow the body paragraph of the note's first reference. A **move counts by its source** alone: on the
   sample both moves go from just before the end point to after the deleted tail, and are in range. (A
   genuine move into the out-of-range part ends up just before that part on export; that part is meant
   to be unedited, so this is accepted.)

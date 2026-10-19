@@ -5,6 +5,7 @@ import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
 import { downloadReviewed } from './download';
 import { TWO_COLUMNS, pinView } from './viewSettings';
+import { compareFull } from './rangeDialog';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -237,7 +238,7 @@ test('on the sample pair, rejecting the first text change and accepting the rest
   const { original, edited } = readSamples();
   await openAndCompare(page, original, edited);
   // Compared in full, so that the export is the Edited text but for the rejected change.
-  await page.getByRole('button', { name: 'Compare the full documents' }).click();
+  await compareFull(page);
 
   const first = page.getByTestId('change-card').first();
   const cardText = async (selector: string) => {

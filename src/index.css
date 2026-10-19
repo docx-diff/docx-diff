@@ -298,6 +298,10 @@ body {
   gap: 0.5rem;
 }
 
+.toolbar__warning {
+  color: var(--warning-fg);
+}
+
 .toolbar__separator {
   width: 1px;
   height: 1.5rem;
@@ -575,7 +579,7 @@ body {
 
 /* Comparison range */
 
-.range-control {
+.range-picking {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -586,14 +590,17 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.range-control__message {
+.range-picking__message {
   flex: 1 1 24rem;
   margin: 0;
 }
 
+.range-control__message {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+}
+
 .range-control__spanning {
-  flex-basis: 100%;
-  order: 1;
   color: var(--warning-fg);
 }
 
@@ -603,6 +610,8 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
 }
 
 .range-control__form input {
@@ -615,6 +624,7 @@ body {
 }
 
 .range-control__error {
+  flex-basis: 100%;
   color: var(--danger);
 }
 

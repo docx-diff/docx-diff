@@ -6,6 +6,7 @@ import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
 import { downloadReviewed } from './download';
 import { TWO_COLUMNS, pinView } from './viewSettings';
+import { compareFull, expectRange, openRange } from './rangeDialog';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const SIMPLE = 'Only simple edits within a paragraph are supported, to keep the comparison fast.';
@@ -529,12 +530,12 @@ test.describe('revert and guards', () => {
       minimalDocx(['One two three.', 'Four five six.', 'Seven eight nine.', 'Ten eleven twelve.']),
       minimalDocx(['One 2 three.', 'Four five six.', 'Seven eight nine.', 'Ten eleven twelve.']),
     );
-    const control = page.getByTestId('range-control');
     await startEditing(page);
     await cursorAtEnd(page, 'Seven');
     await page.keyboard.type(' ten');
     await expect(cards(page)).toHaveCount(2);
 
+    let control = await openRange(page);
     await control.getByRole('button', { name: /Set an end point/ }).click();
     await control.getByLabel(/Compare the Original up to paragraph/).fill('2');
     await control.getByRole('button', { name: 'Apply' }).click();
@@ -543,21 +544,22 @@ test.describe('revert and guards', () => {
       'Your edits in 1 paragraph will be outside the comparison range. Their changes won’t be offered for decision, and the export keeps the Original’s text there.',
     );
     await rangeDialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(control).toContainText('Comparing the full documents.');
+    await expectRange(page, 'Comparing the full documents.');
     await expect(cards(page)).toHaveCount(2);
 
     // Picking the paragraph in the left panel asks too.
+    control = await openRange(page);
     await control.getByRole('button', { name: /Set an end point/ }).click();
     await control.getByRole('button', { name: 'Pick in left panel' }).click();
     await page.getByTestId('panel-left').getByText('Four').click();
     await rangeDialog.getByRole('button', { name: 'Move the end point' }).click();
-    await expect(control).toContainText('Comparing the Original up to paragraph 2.');
+    await expectRange(page, 'Comparing the Original up to paragraph 2.');
     await expect(cards(page)).toHaveCount(1);
     expect(await shown(page, 'right', 'Seven')).toBe('Seven eight nine. ten');
 
     // Back to the full documents (no edited paragraph left outside: no question): the change is offered again.
-    await control.getByRole('button', { name: 'Compare the full documents' }).click();
-    await expect(control).toContainText('Comparing the full documents.');
+    await compareFull(page);
+    await expectRange(page, 'Comparing the full documents.');
     await expect(cards(page)).toHaveCount(2);
   });
 });

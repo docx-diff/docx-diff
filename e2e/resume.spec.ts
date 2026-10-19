@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { minimalDocx } from '../test/minimal-docx';
 import { TWO_COLUMNS, pinView } from './viewSettings';
+import { expectRange, openRange } from './rangeDialog';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -42,7 +43,7 @@ function savedReview(page: Page, patch?: Record<string, unknown>): Promise<Recor
 }
 
 async function reviewSomeChanges(page: Page) {
-  const control = page.getByTestId('range-control');
+  const control = await openRange(page);
   await expect(control).toContainText('appears to end at paragraph 3');
   await control.getByRole('button', { name: /Change the end point/ }).click();
   await control.getByLabel(/Compare the Original up to paragraph/).fill('2');
@@ -80,7 +81,7 @@ test('a review is saved and resumed after a reload with the same decisions and r
   await expect(cards.nth(0)).toContainText('Rejected');
   await expect(cards.nth(1)).toContainText('Accepted');
   await expect(cards.nth(1).getByRole('textbox')).toHaveValue('Fine.');
-  await expect(page.getByTestId('range-control')).toContainText('Comparing the Original up to paragraph 2.');
+  await expectRange(page, 'Comparing the Original up to paragraph 2.');
   await expect(page.getByTestId('changes-totals')).toContainText('2 text changes: 1 accepted, 1 rejected, 0 undecided');
   await expect(page.getByTestId('panel-left').locator('del.change-rejected')).toHaveCount(1);
 
@@ -121,7 +122,7 @@ test('decisions saved with another engine version are not restored', async ({ pa
   await prompt(page).getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByText(/made with version 12\.0\.0 of the comparison engine/)).toBeVisible({ timeout: 60_000 });
   // Compared again from the saved files, with the detected range and no decisions.
-  await expect(page.getByTestId('range-control')).toContainText('appears to end at paragraph 3');
+  await expectRange(page, 'appears to end at paragraph 3');
   await expect(page.getByTestId('changes-totals')).toContainText('3 text changes: 0 accepted, 0 rejected, 3 undecided');
 });
 

@@ -4,6 +4,7 @@ import { readSamples, samplesAvailable } from '../test/samples';
 import { docxText } from '../test/text';
 import { downloadReviewed } from './download';
 import { TWO_COLUMNS, pinView } from './viewSettings';
+import { compareFull } from './rangeDialog';
 
 const DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -99,7 +100,7 @@ test('compares the sample pair, keeps the panels in sync and, without the range,
 
   // With the detected range (the default), the download is the Edited text followed by the
   // Original's unedited tail (e2e/range.spec.ts); without it, the Edited text.
-  await page.getByRole('button', { name: 'Compare the full documents' }).click();
+  await compareFull(page);
   const file = await download(page);
   expect(file.name).toBe('edited.reviewed.docx');
   expect(docxText(file.bytes)).toEqual(docxText(edited));

@@ -8,6 +8,10 @@ interface Props {
   onSwap: () => void;
   scrollLock: boolean;
   onScrollLockChange: (locked: boolean) => void;
+  /** The Range button's tooltip (where the comparison ends) and whether a deletion spans the end point; null: no Range button. */
+  range: { message: string; spanning: boolean } | null;
+  /** Opens the comparison range dialog. */
+  onRange: () => void;
   onDownload: () => void;
   downloading: boolean;
   /** Ends the review: back to choosing files, and the saved review is deleted. */
@@ -42,6 +46,17 @@ export function Toolbar(props: Props) {
       >
         {scrollLock ? '🔒' : '🔓'} Scroll lock
       </button>
+      {props.range && (
+        <button
+          type="button"
+          className="button"
+          aria-haspopup="dialog"
+          onClick={props.onRange}
+          title={`Comparison range: ${props.range.message}${props.range.spanning ? ' A deletion spans the end point.' : ''}`}
+        >
+          ⇥ Range{props.range.spanning && <span className="toolbar__warning"> ⚠</span>}
+        </button>
+      )}
       <button type="button" className="button" onClick={props.onPrevious} disabled={props.navigationDisabled} title="Previous change (k or ↑)">
         ↑ Previous
       </button>

@@ -2,41 +2,43 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChangeItem } from '../model/changes';
 import type { RangeState } from '../model/range';
-import { RangeControl } from './RangeControl';
+import { RangeDialog, RangePickingBar } from './RangeControl';
 
 const AUTO: RangeState = { mode: 'auto', endPoint: 168 };
 
-function setup(range: RangeState, extra: { spanning?: ChangeItem[]; picking?: boolean } = {}) {
+function setup(range: RangeState, extra: { spanning?: ChangeItem[] } = {}) {
   const onChange = vi.fn();
-  const onPickingChange = vi.fn();
+  const onPick = vi.fn();
+  const onClose = vi.fn();
   render(
-    <RangeControl
+    <RangeDialog
       range={range}
       paragraphCount={747}
       suggestedEndPoint={168}
       onChange={onChange}
       spanning={extra.spanning ?? []}
-      picking={extra.picking ?? false}
-      onPickingChange={onPickingChange}
+      onPick={onPick}
+      onClose={onClose}
     />,
   );
-  return { onChange, onPickingChange };
+  return { onChange, onPick, onClose };
 }
 
-describe('RangeControl', () => {
+describe('RangeDialog', () => {
   afterEach(cleanup);
 
   it('tells where the edited document appears to end and lets the reviewer compare the full documents', () => {
-    const { onChange } = setup(AUTO);
-    expect(screen.getByTestId('range-control').textContent).toContain(
+    const { onChange, onClose } = setup(AUTO);
+    expect(screen.getByRole('dialog', { name: 'Comparison range' }).textContent).toContain(
       'The edited document appears to end at paragraph 168 of the Original. The remaining 579 paragraphs are treated as unedited',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Compare the full documents' }));
     expect(onChange).toHaveBeenCalledWith({ mode: 'off', endPoint: null });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('sets the end point by number, checking the number', () => {
-    const { onChange } = setup(AUTO);
+    const { onChange, onClose } = setup(AUTO);
     fireEvent.click(screen.getByRole('button', { name: /Change the end point/ }));
     const input = screen.getByLabelText(/Compare the Original up to paragraph/) as HTMLInputElement;
     expect(input.value).toBe('168');
@@ -46,18 +48,28 @@ describe('RangeControl', () => {
     fireEvent.change(input, { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(onChange).toHaveBeenCalledWith({ mode: 'manual', endPoint: 100 });
+    expect(onClose).toHaveBeenCalled();
   });
 
-  it('starts picking in the left panel, and cancels it', () => {
-    const { onPickingChange } = setup(AUTO);
+  it('starts picking in the left panel; the picking bar cancels it', () => {
+    const { onPick } = setup(AUTO);
     fireEvent.click(screen.getByRole('button', { name: /Change the end point/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Pick in left panel' }));
-    expect(onPickingChange).toHaveBeenCalledWith(true);
+    expect(onPick).toHaveBeenCalled();
     cleanup();
-    const picking = setup(AUTO, { picking: true });
-    expect(screen.getByTestId('range-control').textContent).toContain('Click the last paragraph to compare');
+    const onCancel = vi.fn();
+    render(<RangePickingBar onCancel={onCancel} />);
+    expect(screen.getByTestId('range-picking').textContent).toContain('Click the last paragraph to compare');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(picking.onPickingChange).toHaveBeenCalledWith(false);
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('closes with Close, Escape or a click outside', () => {
+    const { onClose } = setup(AUTO);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('dialog').parentElement!);
+    expect(onClose).toHaveBeenCalledTimes(3);
   });
 
   it('offers the detected end point again after the range was turned off or changed', () => {

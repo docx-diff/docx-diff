@@ -101,7 +101,10 @@ to ~300 pages; no backend.
     last paragraph is an ordinary change. Small changes after it (e.g. a paragraph break inserted at
     the very end) do not prevent the detection.
 15. The user is told ("The edited document appears to end at paragraph 76 of the original. The
-    remaining N paragraphs are treated as unedited.").
+    remaining N paragraphs are treated as unedited.") in the **Comparison range** dialog, a modal
+    opened with the **⇥ Range** button next to Scroll lock in the toolbar; the button's tooltip
+    says the same, and it shows ⚠ while a deletion spans the end point. The panels show the range
+    all the time (FR-18); the message is not kept on screen.
 16. The user can set the end point by paragraph number or by clicking a paragraph in the left panel,
     and can turn the range off (compare the full documents).
 17. Every change after the end point — in the body and in notes referenced only from there — is
@@ -341,9 +344,10 @@ to ~300 pages; no backend.
 
 ## Design
 
-- **Toolbar:** file names / pickers, Swap, Scroll lock, Previous / Next, Download…, Close review, Help
-  (icon; the legend is in its popover). Compare settings, the columns toggle and the light/dark toggle are
-  icon buttons with tooltips at the end of the header. The comparison range has its own bar below the header.
+- **Toolbar:** file names / pickers, Swap, Scroll lock, Range (the comparison range's dialog), Previous / Next,
+  Download…, Close review, Help (icon; the legend is in its popover). Compare settings, the columns toggle and
+  the light/dark toggle are icon buttons with tooltips at the end of the header. A bar below the header
+  appears only while picking the range's end point in the left panel.
 - **Main area:** Original panel | Resolved column | Edited panel (three columns sharing the width),
   or Original | Edited; the side panels each with its overview bar. **Left sidebar:** the outline.
   **Right sidebar:** the changes list, Accept all / Reject all at the top, the formatting group,
