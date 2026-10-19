@@ -487,7 +487,11 @@ panel's header, off for every review shown). While it is on, the Edited panel's 
 at run time) and each block `uneditableReason` allows gets `contenteditable` (and `spellcheck=false`),
 its note references, tabs and `NOT_TEXT` elements `contenteditable=false`; a block an update puts in
 is prepared again (`replaceBlock`), and all of them when the range changes. A click doesn't select a
-change there; in a block that can't be edited it shows why. The current change's card is hidden.
+change there; in a block that can't be edited it shows why. The current change's card is hidden, and
+so are the ✓ / ✗ after decided changes (`content: none` on their `::after` under `doc--editing`)
+and the ↺ icons (below): marks between the characters get in the way of reading and moving the
+cursor through the text being edited. The decided changes stay dimmed, and the list shows the
+decisions.
 - **Joined paragraphs are shown one by one while editing**: turning Editable on swaps every run the
   Edited panel joins for unjoined copies, so each paragraph is edited as itself (its text is one
   block's, its edit one `w:p`'s). A paragraph that continues into the next shows its deleted ¶

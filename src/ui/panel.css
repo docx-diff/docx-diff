@@ -275,7 +275,6 @@
   cursor: default;
 }
 
-
 .doc.doc--editing [contenteditable='true'],
 .doc.doc--editing [contenteditable='true'] :is(ins, del)[data-change-id] {
   cursor: text;
@@ -284,6 +283,14 @@
 .doc.doc--editing [contenteditable='true']:focus {
   outline: 1px dashed var(--accent-border);
   outline-offset: 2px;
+}
+
+/* No ✓ / ✗ after decided changes while editing, as no ↺ icons (DocumentPanel.tsx,
+   placeRevertIcons): marks between the characters get in the way of reading and moving the cursor
+   through the text being edited. The changes keep their dimmed look, and the list shows the
+   decisions. More specific than the ✓ / ✗ rules above (0,4,1 against 0,4,0). */
+.doc.doc--editing :is(ins, del).change-decided-end:is(.change-accepted, .change-rejected)::after {
+  content: none;
 }
 
 /* While editing, the Edited panel shows the paragraphs it joins one by one (DocumentPanel.tsx):

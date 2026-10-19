@@ -107,7 +107,7 @@ test.describe('two columns', () => {
     await expect(page.getByTestId('panel-right').locator('.edit-revert')).toHaveCount(1);
   });
 
-  test('fixing a typo inside an insertion keeps the change and its decision', async ({ page }) => {
+  test('fixing a typo inside an insertion keeps the change and its decision; no ✓/✗ while editing', async ({ page }) => {
     await openAndCompare(page, minimalDocx(['We saw it.']), minimalDocx(['We saw it clearlly.']));
     await expect(cards(page)).toHaveCount(1);
     await cards(page).nth(0).getByRole('button', { name: 'Reject', exact: true }).click();
@@ -120,6 +120,13 @@ test.describe('two columns', () => {
     await expect(cards(page).nth(0)).not.toContainText('clearlly');
     await expect(cards(page)).toHaveCount(1);
     await expect(totals(page)).toContainText('0 accepted, 1 rejected, 0 undecided');
+
+    // No ✗ after the change while editing (it would sit in the text being edited); back with Editable off.
+    const mark = () =>
+      page.getByTestId('panel-right').locator('ins.change-decided-end').evaluate((element) => getComputedStyle(element, '::after').content);
+    expect(await mark()).toBe('none');
+    await page.getByRole('button', { name: 'Editable' }).click();
+    await expect.poll(mark).toBe('"✗"');
   });
 
   test('a word changed between two decided insertions is a new change; their decisions stay', async ({ page }) => {

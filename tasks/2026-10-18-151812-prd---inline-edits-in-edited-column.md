@@ -295,6 +295,9 @@ Editable is on.)
   cursor.
 - **Toast:** small, near the Edited header, `role="status"`, auto-hides. One at a time. A repeated
   message restarts its timer.
+- **✓ / ✗ after decided changes** (FR-25) are not shown in the Edited panel while Editable is on
+  (2026-10-19, user request), like the ↺ icons: they get in the way of reading and moving the
+  cursor through the text being edited. Decided changes stay dimmed; the list shows the decisions.
 - **Revert ↺ icon of a change:** inline, right after the change's last piece and its ✓/✗, small,
   in the muted text colour (accent on hover), not editable, so it flows and scrolls with the text.
   Only in the Edited panel, and only while Editable is off (requirement 22: in editable text it

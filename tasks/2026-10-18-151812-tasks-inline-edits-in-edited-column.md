@@ -55,7 +55,7 @@ Changed:
 - `src/ui/useEdits.ts` - Task 4: `EditSession.blockElement(unid)`, `visibleText(unid)`.
 - `src/ui/resolvedView.ts` - `replaceResolvedBlock(handle, old, block)`: restore the run of joined paragraphs, swap, rebuild the items' elements/markers/children/note references/item notes, join again, apply the sides; `follows` without the `Node` global.
 - `src/ui/resolvedView.test.ts` - `replaceResolvedBlock` ≡ a panel prepared from the updated HTML (comment icon, joined run, note reference).
-- `src/ui/panel.css` - Editable styles (cursors, focused block; `.edit-revert`, the changes' ↺ icons, task 5), no style text written at run time.
+- `src/ui/panel.css` - Editable styles (cursors, focused block; `.edit-revert`, the changes' ↺ icons, and no ✓ / ✗ while editing, task 5), no style text written at run time.
 - `src/ui/ChangeCard.tsx` - ↺ Revert (this change) button for changes an edit created or changed, `REVERT_LABEL` (task 5).
 - `src/ui/ChangesList.tsx` / `src/ui/ChangesList.test.tsx` - `revertable` / `onRevert`: the cards' Revert button (task 5).
 - `src/ui/InlineChangeCard.tsx` - Passes `onRevert` to its card (task 5).
@@ -614,6 +614,10 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
   had moved the paragraph's changes into the next one. They are now placed before the join
   (`swapRuns`), and over the whole panel by change id when Editable is turned off. Tests: a joined
   paragraph in `DocumentPanel.test.tsx`, the icon in the `paragraph-join` e2e test.
+- **Changed after that (2026-10-19, user request):** no ✓ / ✗ after decided changes in the Edited
+  panel while Editable is on, for the same reason as the ↺ icons (CSS only, `panel.css`:
+  `content: none` under `doc--editing`). PRD design note, `docs/architecture.md` "Editing in the
+  panel"; checked in the e2e test of a typo fixed inside a rejected insertion.
 
 ### 6.0 Saving and resuming edits
 
