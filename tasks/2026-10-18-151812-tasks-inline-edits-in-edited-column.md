@@ -78,10 +78,12 @@ Changed:
 - `src/ui/renderedDocument.test.ts`, `src/model/{changes,docIndex,equivalence,outline}.test.ts`, `src/ui/useComparison.test.tsx` - Block-scoped decoration, `replaceBlockItems`, `replaceIndexBlock`, `collectItemTexts` from a block, edited headings; `uneditableBlocks` in the fake result (task 3).
 - `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` - Inline edits: `uneditableBlocks` ≡ the paragraphs the patch refuses, rendering a block with its own / edited segments (task 3), the sample's update through `EditSession` with timings (task 3.10); segments ≡ redline paragraph text on every fixture, self-patch is a no-op, scripted edits (accept/reject/alternating ≡ `expectedText` with overrides, `verifyDeliverable`, each engine revision of the patched redline ≡ `DocxSession`), a heading edit (small generated pair), on the sample body + footnote edits and an undecided edited item tracked (FR-38b); the sample's block mapping (task 0).
 - `test/big-pair.test.ts` - The ~300-page pair's block mapping and its time (task 0).
-- `e2e/perf.spec.ts` - Update timing after typing (`PERF=1`).
+- `e2e/perf.spec.ts` - Task 8: a word typed in the Edited panel, three columns, sample and ~300-page pair (shown after the last keystroke, update after the delay, longest task while typing and of the update, a decision for comparison); long tasks recorded with their start; Playwright's trace off for the file.
 - `src/ui/DocumentPanel.test.tsx` - Task 4: editing mode (editable blocks, no click-to-select, message, replaced block prepared, flush on turning off but not on a new document).
 - `src/ui/blockSegments.test.ts` - Task 4: the browser's placeholder `<br>`, `visibleOffset` / `visiblePoint`.
-- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8 (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4; no undo, "Reverts" and "Guards", task 5; "Saved review": the edits, task 6).
+- `src/ui/DocumentPanel.tsx` / `src/ui/DocumentPanel.test.tsx` - Task 8: `keepingTop` records the swap's mutations and measures the top block again only when `changedAbove` (exported, tested) says something before or around it changed (three forced layouts saved per update).
+- `src/ui/editing.ts`, `src/ui/useEdits.ts`, `src/model/paragraphEdit.ts`, `src/engine/applyEdits.ts`, `src/ui/blockSegments.ts`, `src/ui/EditableToggle.tsx`, `src/ui/EditingHelp.tsx`, `src/ui/Toast.tsx` - Task 8.2: FR citations (`PRD-<n>` replaced).
+- `docs/requirements.md`, `docs/architecture.md`, `docs/measurements.md`, `CLAUDE.md` - Task 8: FR-25d … FR-25r, FR-47a, FR-27b/38b/45/46, non-goals, design, success metrics note; architecture: FR refs, `keepingTop`/`changedAbove`, cost of an update, Saved review, Testing; measurements: the browser timings of an update and the plan's success-metric outcomes; CLAUDE.md: export patch first, `composedPath`, fixed item ids / `nextId`, no bold/italic markup, no forced layout per panel. Earlier (`docs/architecture.md`: "Block mapping" and the module map entry added in task 0; the "Inline edits" section's segment model and the `paragraphEdit.ts` module map entry added in task 1; rendering a block, editability, live review state and panels, `useEdits.ts` in the module map, added in task 3; `docs/measurements.md`: `uneditableBlocks` time and the jsdom update timings, task 3; "Editing in the panel" and the module map entries for `editing.ts`, `EditableToggle.tsx`, `Toast.tsx`, task 4; no undo, "Reverts" and "Guards", task 5; "Saved review": the edits, task 6).
 - Task 7 (bold and italic): `src/model/paragraphEdit.ts` (`SegmentFormat` on `equal`/`ins` segments, `applyFormat`, `CharacterLook`, `formatRevisions`, `blockItemIds`; typed text takes the look of what it replaces or follows, formats never merge, deleted characters keep their look for typing back; formatting items in `blockItems`, `editRevisions`, `revertableItems`, `revertChange`; `AlignUnit.format`) and its tests; `src/storage/reviewStore.ts` / test (`isFormat`: saved formats, malformed ones dropped); `src/ui/blockSegments.ts` (`span.edit-format` rendering, `EDIT_FORMAT`, `visibleLooks`) and its tests; `src/ui/panel.css` (`edit-bold` … rules, not in the Original panel); `src/ui/useEdits.ts` (`EditSession.format`, `blockItemIds` for the block's items, `savedItemIds` with formatting items, the hook's `format`) and its test; `src/model/changes.ts` (`replaceBlockItems` keeps a formatting part's text and description); `src/ui/editing.ts` (`EditingOptions.onFormat`, `PanelEditing.format`, Ctrl+B/I on `keydown`, `EDIT_MESSAGES.noSelection`) and its test; `src/ui/DocumentPanel.tsx` (`PanelControl.format`; ↺ icons after formatting spans too) and its test options; `src/ui/EditableToggle.tsx` / test (`FormatButtons`; the toggle's label in a span, `aria-label`); `src/index.css` (B/I buttons, the editing help, the compact Edited header in a narrow panel, a container query on `.document-panel`); `src/ui/HelpPopover.tsx` (`EditingHelp`, `usePopoverDismiss`); `src/App.tsx` (`applyFormat`, `formatSelection`, `FormatButtons`, `EditingHelpButton`); `src/engine/applyEdits.ts` (`setLook`: `w:b`/`w:i` in schema order, a new `w:rPrChange` for a new formatting change) and its tests; `test/edits.ts` (`scriptFormats`), `test/fixture-pairs.test.ts` (bold/italic exports with both formatting choices on five fixtures, `verifyDeliverable`); `e2e/editing.spec.ts` (bold and italic; the Edited header in three columns); `docs/architecture.md` ("Bold and italic", export, Saved review, module map).
 
 ### Notes
@@ -734,10 +736,28 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 
 **Depends on:** tasks 0–7.
 
+**Notes** (task 8)
+
+- Perf (8.1, `PERF=1`, three columns, trace off): sample, update shown 339–347 ms after the last
+  keystroke (39–47 ms after the delay), no long task while typing or updating. ~300-page pair: shown
+  481–543 ms after the last keystroke (181–243 ms after the delay), a decision 114–125 ms, no task
+  over 50 ms while typing, the update's longest task 56–84 ms. **The decided target there ("no slower
+  than a decision") is not met**: the update is ~1.6–2× a decision; the check allows 300 ms after the
+  delay. Profile: update task ~50 ms, React render ~50 ms (`ignoredItems`, changes list and overview
+  bar re-measures), browser paint ~60 ms per frame. Fixed on the way: `keepingTop` forced a layout
+  of the whole document per panel (`changedAbove`), ~45 ms; the sample's update went from 71–87 to
+  39–47 ms after the delay. Tried and dropped: `flushSync` for the timer's update (one frame fewer,
+  same total). Possible follow-ups: overview bars measured on their debounced resize only,
+  incremental `ignoredItems` / `elementMap`.
+- Final run (8.6): typecheck; `npm test` 1103 passed, 3 skipped; `npm run test:e2e` 65 passed,
+  6 skipped (perf); `PERF=1` perf spec 6 passed; `BIG_PAIR=1 test/big-pair.test.ts` 3 passed;
+  `EXPORT_DIR` exports of `test/fixture-pairs.test.ts`, `test/sample-pair.test.ts` and
+  `src/engine/exportDocx.test.ts`: 287 (162 with edits) all convert with `scripts/check-libreoffice.sh`.
+
 - [ ] 8.0 Documentation, measurements and final checks
-  - [ ] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms. Decided: there, an update is no slower than a decision; the sample keeps 100 ms; no task over 50 ms per keystroke on both.)
-  - [ ] 8.2 `docs/requirements.md` updates and FR citations in code comments.
-  - [ ] 8.3 `docs/architecture.md` "Inline edits" section, module map, Saved review.
-  - [ ] 8.4 `docs/measurements.md` numbers.
-  - [ ] 8.5 `CLAUDE.md` facts.
-  - [ ] 8.6 Final run: `npm run typecheck`, `npm test`, `npm run test:e2e`, `PERF=1 npm run test:e2e`, `BIG_PAIR=1` engine tests, LibreOffice on exports with edits; commit.
+  - [x] 8.1 Perf checks in `e2e/perf.spec.ts`; run with `PERF=1` on the sample and the ~300-page pair; record numbers. (Task 0, item 4: on the ~300-page pair a decision already takes ~150 ms and the browser's paint/layout of an update frame 65–80 ms. Decided: there, an update is no slower than a decision; the sample keeps 100 ms; no task over 50 ms per keystroke on both.)
+  - [x] 8.2 `docs/requirements.md` updates and FR citations in code comments.
+  - [x] 8.3 `docs/architecture.md` "Inline edits" section, module map, Saved review.
+  - [x] 8.4 `docs/measurements.md` numbers.
+  - [x] 8.5 `CLAUDE.md` facts.
+  - [x] 8.6 Final run: `npm run typecheck`, `npm test`, `npm run test:e2e`, `PERF=1 npm run test:e2e`, `BIG_PAIR=1` engine tests, LibreOffice on exports with edits; commit.

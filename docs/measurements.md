@@ -86,7 +86,7 @@ inline edits can't change (`uneditableBlocks`: 8 on the sample) adds 0.27 s unde
 session (segments, items, master block, texts, index) 3–15 ms, 67 ms for the first update of a
 session (building its block map); the App's item memos (`classify`, `ignoredItems`,
 `resolvedItemDecisions`, `reviewableItems`) 5 ms; the Resolved column's `replaceResolvedBlock` plus
-the new items' resolution 22–47 ms. Not yet measured in a browser.
+the new items' resolution 22–47 ms. In the browser: [Inline edits](#inline-edits) below.
 
 **Synthetic ~300-page pair** (`test/big-pair.ts`: 89,723 words, 3,000 paragraphs, 2,411 revisions,
 1.7 MB HTML; plain text, so faster than the planning pair): check 0.4 s, compare 4.1 s, list 4.8 s, tag
@@ -102,7 +102,7 @@ undecided changes as tracked changes (FR-38b; parking + restoring): sample with 
 tracked 1.8 s, with every third tracked, the detected range, the look and comments on all 2.4 s. With
 inline edits (8 edited paragraphs in the body and the footnotes, `test/sample-pair.test.ts`): all
 accepted 1.0–1.3 s, all rejected 1.7–2.1 s, alternating 1.4–2.0 s; the patch (`applyEdits`) 0.4 s of
-it, mostly parsing and writing `document.xml` once more. The 87 exports with edits (fixtures and
+it, mostly parsing and writing `document.xml` once more. The 162 exports with edits (fixtures and
 sample, `EXPORT_DIR`) convert with `scripts/check-libreoffice.sh`. Snapshotting xmldom's live element lists took the look planning
 from 3.6–35 s to 0.2 s on the sample.
 
@@ -132,6 +132,28 @@ Under jsdom (`test/sample-pair.test.ts`, which logs them; slower than the browse
 `applyResolution` 370–390 ms; a bulk change with the detected range 73–88 ms, without a range
 190–390 ms (the 579-paragraph tail's item flips and its run of paragraphs is restored and joined
 again); one decision < 1 ms.
+
+**Inline edits** (2026-10-19, `e2e/perf.spec.ts` with `PERF=1`, three columns with the changes
+list, trace off): ` xyzzy` typed at the end of an editable paragraph, 80 ms between keys, timed in
+the page from the last keystroke to the frame after the update (the 300 ms delay included); a
+decision timed the same way (key press to the frame after it).
+
+| | Sample pair | ~300-page pair |
+|---|---|---|
+| Last keystroke → update shown | 339–347 ms | 481–543 ms |
+| After the delay (update + frames) | 39–47 ms | 181–243 ms |
+| Longest task while typing | none over 50 ms | none over 50 ms (once 57–58 ms, with Playwright's trace on) |
+| Longest task of the update | none over 50 ms | 56–84 ms |
+| One decision (`a`) | 23–33 ms | 114–125 ms |
+
+On the ~300-page pair the update is: its own task (session update, the block swapped into three
+panels, cursor restored) ~50 ms; React's render (the App's item memos, `ignoredItems` ~10 ms, the
+changes list's re-measure ~8 ms, the overview bars' re-measure ~11 ms) ~50 ms; and the browser's
+paint of the long panels, ~60 ms per frame, as for any frame there whose layout changes (each
+keystroke's frame is 35–55 ms). Before `changedAbove` (each panel measuring the top of its text after
+the swap, three forced layouts of ~15 ms) the update's own task was ~95 ms, and the sample's update
+71–87 ms after the delay. Possible further gains, not done: measuring the overview bars on their
+debounced resize only, an incremental `ignoredItems` and `elementMap`.
 
 **Style sheet order** (fixed 2026-10-18): since dark mode, each panel's document style sheet was
 filled in by a separate effect after the content was in its shadow root. Chromium then restyles the
@@ -200,3 +222,28 @@ Offline reload: "Engine ready" after 0.8 s, everything from the service worker. 
   (`e2e/perf.spec.ts`, `PERF=1`).
 - **Met.** A fresh profile shows three columns with both sidebars collapsed; at 1024 px two columns
   with the toggle disabled (`e2e/resolved.spec.ts`).
+
+**Inline edits** (FR-25d … FR-25r, 2026-10-19; the success metrics of their plan):
+1. **Met.** Text round trip with scripted edits (a word inserted and deleted, an edit inside an
+   insertion and between two changes, in a table cell, a footnote and a heading, the Original typed
+   back) on every fixture and the sample: accept all ≡ the Edited text with the edits, reject all ≡
+   the Original, alternating ≡ `test/expectedText.ts` with the edited paragraphs; on the fixtures
+   each revision of the patched redline decided against the rest ≡ `DocxSession`
+   (`test/fixture-pairs.test.ts`, `test/sample-pair.test.ts`).
+2. **Met.** Exports with edits (and with bold/italic, both formatting choices) pass
+   `verifyDeliverable` and convert with `scripts/check-libreoffice.sh`.
+3. **Met.** Id rules: an edited item keeps its id, decision and comment; edits next to decided
+   changes don't change them; new items start accepted; reverting one change or a paragraph restores
+   exactly what it should (`src/model/paragraphEdit.test.ts`, `src/ui/useEdits.test.tsx`).
+4. **Met.** A reload or resume gives the same text, items, ids, decisions and comments
+   (`src/ui/useEdits.test.tsx`, `e2e/editing.spec.ts`).
+5. **Met on the sample** (update shown 339–347 ms after the last keystroke, no task over 50 ms while
+   typing or updating). **Not on the ~300-page pair**: shown 481–543 ms after the last keystroke,
+   the update ~1.6–2 times a decision there (target decided 2026-10-18: no slower than a decision),
+   no task over 50 ms while typing; the check there allows 300 ms after the delay. See the table above.
+6. **Met.** Enter, joining paragraphs, a selection over two paragraphs, deleting a footnote
+   reference and a click in a moved paragraph each show their message and leave the text as it was
+   (`e2e/editing.spec.ts`).
+7. **Met.** Typing `a`, `r`, `j`, `u` and `?` inserts the letters and decides or moves nothing; a
+   dead-key `ő` gives one update after the composition (`e2e/editing.spec.ts`).
+8. **Met.** The existing tests pass, unchanged where Editable is never turned on.

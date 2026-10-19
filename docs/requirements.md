@@ -25,8 +25,8 @@ font and colours were removed throughout).
 Goals: word-level differences in two synchronized panels; insertions, deletions, replacements,
 formatting changes and moves, in the body, footnotes/endnotes and tables; decisions per change, for
 all formatting at once, or for all changes; a clean export with a choice for undecided changes;
-correct handling of a partially edited document; the review remembered in the browser; documents up
-to ~300 pages; no backend.
+correct handling of a partially edited document; simple text edits in the Edited panel during the
+review; the review remembered in the browser; documents up to ~300 pages; no backend.
 
 ## Functional requirements
 
@@ -192,6 +192,113 @@ to ~300 pages; no backend.
     window **1024 CSS px wide or narrower** two columns are shown whatever the choice, and the
     button is disabled ("The window is too narrow for three columns"); the stored choice is kept.
 
+### Inline edits in the Edited panel
+
+Added 2026-10-19: the reviewer fixes small mistakes in the Edited's text during the review (a typo
+in the editor's new wording, a word the editor forgot to change) without leaving the tool and
+without a new comparison. Edited text counts as if the Edited document had contained it from the
+start, in every panel, the changes list, the export and the saved review.
+
+25d. **Editable** toggle in the Edited panel's header (pencil icon and label; `aria-pressed` while
+    on; tooltip "Edit the Edited text (simple edits within a paragraph)" / "Stop editing"). Only the
+    Edited panel has one; the Original panel and the Resolved column are never editable. It is
+    **off** whenever a review is shown (after a comparison, a reload, on resuming) and is not
+    remembered. While it is on, the panel has an accent outline, editable text an I-beam cursor
+    (an arrow elsewhere), and the current change's card (FR-28a) and the ✓/✗ of decided changes
+    (FR-25) are not shown in it. Works the same in two and three columns.
+
+25e. While Editable is on, a click in the Edited panel's text places the cursor and does not select
+    a change (FR-29 is suspended in that panel only). While the cursor is in the text the
+    single-key shortcuts (FR-34) are off and the keys type; Escape leaves the text and they work
+    again. Turning Editable off applies any edit still waiting (FR-25h) and restores
+    click-to-select.
+
+25f. **What can be edited:** the Edited panel's paragraphs in the body, table cells, footnotes and
+    endnotes, and headings, before the comparison range's end point: typing, deleting and
+    replacing selected text within **one** paragraph, and pasting **plain text** (line breaks and
+    tabs become spaces). Not editable: the out-of-range tail (FR-17), paragraphs with any part of a
+    move, paragraphs the Edited lacks, and paragraphs with content the export can't patch (fields,
+    content controls, symbols, drawings, …). Inline objects (note references, list numbers, tabs,
+    line breaks, images) stay where they are: the reviewer types around them. Paragraphs with an
+    inserted or deleted paragraph mark are editable: while Editable is on, the Edited panel shows
+    the paragraphs it joins one by one, and joins them again when it is turned off; the marks
+    themselves can't be changed.
+
+25g. **Blocked actions** leave the text unchanged and show a short message under the Edited
+    header (`role="status"`, ~4 s): Enter / Shift+Enter ("Only simple edits within a paragraph are
+    supported, to keep the comparison fast. Paragraph breaks can't be added here."), Backspace at
+    the start or Delete at the end of a paragraph ("… Paragraphs can't be joined here."), a
+    selection over more than one paragraph ("… Edits must stay within one paragraph."), deleting an
+    inline object ("Footnote references and other objects can't be deleted here."), a click in a
+    paragraph that can't be edited (the reason: outside the comparison range, a moved passage, a
+    field or object). Dragging text is blocked silently.
+
+25h. **Update:** 300 ms after the last keystroke in a paragraph (or when the cursor leaves it, or
+    Editable is turned off; never during a composition such as a dead key) that paragraph's changes
+    are updated, in every view, without a new comparison. Only the edited part is compared again,
+    word by word (FR-7), against the paragraph's Original text; the rest of the paragraph's changes
+    stay exactly as they were. Typed text is normalized to NFC (FR-13a). The cursor and selection
+    stay where they were in the text, and no panel moves the text being read.
+
+25i. **Which change an edit belongs to.** An edit never changes a decision, merges changes or moves
+    text between them; where the text came from decides:
+    - text of an existing change's text, and text typed inside it or continuing one of its words,
+      stays in **that** change, which keeps its id, decision and comment (a typo fixed inside the
+      editor's insertion; an edit inside a rejected change keeps it rejected);
+    - everything else the edit adds or removes is a **new** change, **accepted**; a new deletion and
+      a new insertion that touch are one new Replaced change. A new change grows with what is typed
+      or deleted touching it later, keeping its id, decision and comment; it is never joined with a
+      change of the comparison's, even when they touch;
+    - a change whose text the edit removes completely, or that no longer differs from the Original
+      (the Original's text typed back), disappears; its decision and comment stay in the review
+      state for a revert (FR-25m, 25n).
+    New and changed changes behave like any other (decisions, comments, navigation, the Resolved
+    column, the overview bars, totals, FR-13b–13d, the range) and are not marked as the reviewer's.
+
+25j. Typed text takes the formatting of the character before it, else after it. When an edit
+    changes part of a word (a deletion and insertion of the whole word, FR-7), each character of
+    the new word takes the formatting of the replaced word's at the same place.
+
+25k. An edited heading stays in the outline (FR-24a) with its new text.
+
+25l. **No undo:** the browser's undo and redo do nothing in the Edited panel; the first Ctrl+Z of an
+    editing session says "Undo isn't available here: use ↺ to revert your edits."
+
+25m. **Revert this change:** a change the reviewer's edits created or changed has a ↺ button in its
+    card (list and inline card; tooltip "Revert my edit of this change") and, while Editable is off,
+    a ↺ icon after its last piece in the Edited panel (in editable text it would trap the cursor).
+    After a confirmation it reverts only that change: a new change disappears with its decision and
+    comment; a change of the comparison's gets its text as compared back, keeping its id, decision
+    and comment. Other edits in the paragraph stay.
+
+25n. **Revert paragraph** (↺ ¶, "Revert my edits in this paragraph": the cursor's paragraph while
+    Editable is on, else the current change's) and **Revert all** (↺ all, "Revert all my edits") in
+    the Edited header restore the paragraph(s) as compared, the comparison's changes with their
+    decisions and comments. Both ask for confirmation, work whether or not Editable is on, and are
+    disabled only when there is nothing to revert.
+
+25o. Swap (FR-3), a new comparison and Close review (FR-48) discard the edits. With edits, Swap and
+    replacing a file with the toolbar's pickers ask first ("Swapping discards your edits in N
+    paragraphs." / "Opening another file discards …").
+
+25p. **Range warning:** edits don't re-detect the range. Moving the end point (FR-16) so that edited
+    paragraphs newly fall outside it asks first ("Your edits in N paragraphs will be outside the
+    comparison range. Their changes won't be offered for decision, and the export keeps the
+    Original's text there."). The edits are kept either way.
+
+25q. **Bold and italic:** Ctrl+B / Ctrl+I (⌘ too), or the header's **B** / **I** buttons (after
+    Editable; disabled while it is off; without a selection: "Select text within one paragraph
+    first."), on a selection within one paragraph: if all its visible text is bold (italic) it is
+    made plain, otherwise all of it bold (italic); deleted text in it is left alone. Text both
+    versions have and no formatting change yet gets a new **Formatting** change ("Bold added", …,
+    one per action and paragraph), text with the editor's formatting change joins that change, and
+    inserted text just changes its look. Formatting is decided by the formatting choice (FR-30), so
+    with **Keep the Original's formatting** the export drops these too. Text typed later in or
+    after it takes its look (FR-25j); the reverts (FR-25m, 25n) undo it.
+
+25r. **Editing help:** a **?** at the end of the Edited header ("About editing") opens a popover on
+    what can be edited and how edits become changes; the general Help (FR-34) shows the same text.
+
 ### Changes list
 
 26. All changes in document order. Each item: number, type, removed and/or added text (truncated),
@@ -225,7 +332,7 @@ to ~300 pages; no backend.
         <the comment>
 
     A change in a footnote or endnote is commented on the note's reference; a move on the side the
-    export keeps.
+    export keeps. A change with inline edits (FR-25i) quotes the edited wording.
 
     27c. In three-column view each such comment (non-blank, in range, not on a formatting item) is
     shown in a read-only **bubble** under its change in the Resolved column (under its marker when
@@ -281,7 +388,7 @@ to ~300 pages; no backend.
     reviewer to decide in Word; everything else is resolved as usual (decided changes, formatting
     by the formatting choice, ignored changes accepted, out-of-range changes rejected). Accepting all
     in Word gives the export with the undecided changes accepted, rejecting all the one with them
-    rejected.
+    rejected. An undecided change with inline edits is tracked with the edited wording.
 
     38c. **Author** of the export's comments (FR-27b) and tracked changes (FR-38b), a text field in
     the dialog; their date is the export's time. It is pre-filled with the Edited's author: the
@@ -307,13 +414,20 @@ to ~300 pages; no backend.
 44. Export of a ~300-page document in under 10 s.
 45. Correctness: accept all ≡ Edited text (within the range, plus the unchanged tail); reject all ≡
     Original text; mixed decisions give each accepted change's Edited version and each rejected
-    change's Original version.
+    change's Original version. The Edited text is the one with the inline edits (FR-25d …): an
+    accepted change gives the reviewer's wording.
 
 ### Saving the review
 
 46. The review is saved automatically in IndexedDB: both input files, the range, every decision and
-    comment, the formatting choice and the compare settings, after each change.
+    comment, the formatting choice, the compare settings and the inline edits (FR-25d …), after each
+    change.
 47. On reopening, the app offers to resume ("Resume review of A → B?") or to start a new one.
+
+    47a. Resuming compares the stored files again and replays the inline edits: the same changes,
+    ids, decisions and comments as before. An edit whose paragraph no longer matches (it should not
+    happen with the same files and engine version, FR-49) is skipped, and the resume notice says
+    "N edits could not be restored."
 48. The user can discard the saved review (also **Close review** in the toolbar).
 49. Saved decisions are tied to the exact files (SHA-256) and the engine version; otherwise they are
     not applied.
@@ -334,7 +448,12 @@ to ~300 pages; no backend.
 - Paginated (print-layout) rendering; character-level diff; search; filtering the list by type (the
   formatting group is the only grouping); an option to ignore formatting changes entirely.
 - Exporting a `.docx` that still contains tracked changes, other than the undecided ones (FR-38b).
-- Editing text in the tool; exporting/importing a review as a file; sharing or collaboration.
+- Editing the Original; adding or removing paragraphs, paragraph breaks, line breaks or tabs; editing
+  moved text or the out-of-range tail; paragraph formatting, fonts, colours, sizes, underline (only
+  bold and italic, FR-25q); inserting or deleting notes, images, fields, hyperlinks or comments; rich
+  paste; marking the reviewer's edits as their own layer or author; a re-comparison or a re-detected
+  range after edits (FR-25d …).
+- Exporting/importing a review as a file; sharing or collaboration.
 - More than two documents, or formats other than `.docx`.
 - Editing text or comments in the Resolved column; the current change's card there; an overview
   bar for it; a layout for phones or touch input (at 1024 px or narrower: two columns).
@@ -349,7 +468,9 @@ to ~300 pages; no backend.
   the light/dark toggle are icon buttons with tooltips at the end of the header. A bar below the header
   appears only while picking the range's end point in the left panel.
 - **Main area:** Original panel | Resolved column | Edited panel (three columns sharing the width),
-  or Original | Edited; the side panels each with its overview bar. **Left sidebar:** the outline.
+  or Original | Edited; the side panels each with its overview bar. The Edited panel's header:
+  its file name (shrinking first), then Editable, **B**, **I**, ↺ ¶, ↺ all and **?** (FR-25d …), the
+  toggle showing only its pencil in a narrow panel. **Left sidebar:** the outline.
   **Right sidebar:** the changes list, Accept all / Reject all at the top, the formatting group,
   totals at the bottom. Both sidebars start collapsed, so the documents get the width.
 - **Colours:** deletions red, insertions blue, moves purple; light yellow means a decided change in
@@ -374,6 +495,11 @@ to ~300 pages; no backend.
 
 All six were met at the end of the initial build (2026-10-17); details in
 [`measurements.md`](measurements.md#success-metrics-outcomes).
+
+Inline edits (FR-25d …, 2026-10-19): edits round-trip in the export like the editor's text, keep
+ids and decisions, and come back after a reload; on the ~60-page sample an update shows within
+400 ms of the last keystroke, with no task over 50 ms while typing. On the ~300-page pair it takes
+~500 ms, over that target (outcomes in [`measurements.md`](measurements.md#success-metrics-outcomes)).
 
 ## Open questions
 

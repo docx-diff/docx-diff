@@ -1,5 +1,5 @@
 // The paragraph edit model behind inline edits in the Edited panel: a block as a sequence of
-// segments, and how one text edit of its visible (Edited) text changes them. Rules:
+// segments, and how one text edit of its visible (Edited) text changes them. Rules (FR-25i, 25j):
 // docs/architecture.md, "Inline edits". Pure (no DOM): shared by the main thread and the worker.
 import type { RevisionListEntry } from '../engine/types';
 import type { BlockScope } from './docIndex';
@@ -266,7 +266,7 @@ export function applyTextEdit(
     trailing = typed.slice(typed.length - trail);
   }
   // Typed text takes the reviewer's bold/italic of the text it replaces, else of the character
-  // before it, else of the one after it (as it takes their formatting, PRD-18).
+  // before it, else of the one after it (as it takes their formatting, FR-25j).
   const isChar = (unit: Unit | undefined) => !!unit && unit.kind !== 'object';
   const look = lookOnly((
     visible.slice(span.start, span.end).find(isChar) ??
@@ -313,7 +313,7 @@ export interface CharacterLook {
  * Sets bold or italic (`value`, not a toggle) on the visible characters `start`…`end` of the
  * block; `looks[i]` is the look of character `start + i` (objects and hidden deletions are left
  * alone). Where the value is the character's own look, the reviewer's setting goes. Which change
- * the setting belongs to (PRD-33): unchanged text keeps the formatting change it has (the
+ * the setting belongs to (FR-25q): unchanged text keeps the formatting change it has (the
  * comparison's, or one an earlier action created), else gets one new formatting change for this
  * action; inserted text just changes its look, as part of its insertion. A formatting change left
  * without text disappears.
@@ -829,7 +829,7 @@ export interface AlignUnit {
 export type AlignStep<L> = { leaf: L; unit: AlignUnit } | { leaf: L; unit?: undefined } | { leaf?: undefined; unit: AlignUnit };
 
 /**
- * Whose formatting the typed unit `steps[i]` takes (PRD-18; the display and the export's patch
+ * Whose formatting the typed unit `steps[i]` takes (FR-25j; the display and the export's patch
  * both use this). Typed text right after deleted text replaces it (a word changed in part becomes
  * a deletion and an insertion of the whole word, which may include unformatted punctuation, e.g.
  * an italic word in plain parentheses): each typed character takes the formatting of the deleted

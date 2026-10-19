@@ -1,8 +1,9 @@
-// The live review state with inline edits (docs/architecture.md, "Inline edits"). A comparison
-// stays as it was compared; the edits live here, one `BlockEdit` per edited block, and so do the
-// values derived from the comparison and the edits: the items, their texts, the document index
-// and the headings. An update touches one block: its segments, its items (existing ids kept), and
-// its markup in the master document (`comparison.document.body`), from which the panels copy it.
+// The live review state with inline edits (FR-25h, 25i; docs/architecture.md, "Inline edits"). A
+// comparison stays as it was compared; the edits live here, one `BlockEdit` per edited block, and
+// so do the values derived from the comparison and the edits: the items, their texts, the document
+// index and the headings. An update touches one block: its segments, its items (existing ids kept),
+// and its markup in the master document (`comparison.document.body`), from which the panels copy
+// it.
 import { useCallback, useMemo, useState } from 'react';
 import type { BlockEditPatch, DocumentHeading, RevisionListEntry } from '../engine/types';
 import { replaceBlockItems, type ChangeItem } from '../model/changes';

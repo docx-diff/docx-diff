@@ -1,6 +1,7 @@
-// The export's first step with inline edits (docs/architecture.md, "Inline edits"): each edited
-// block's redline paragraph is patched to its final segments, and the revision list is updated to
-// the patched markup, so that every later step finds each revision's elements by its keys as usual.
+// The export's first step with inline edits (FR-45; docs/architecture.md, "Inline edits"): each
+// edited block's redline paragraph is patched to its final segments, and the revision list is
+// updated to the patched markup, so that every later step finds each revision's elements by its
+// keys as usual.
 //
 // An edit never changes the Original text (`originalText` of the segments), so the paragraph's
 // Original-side characters (unchanged and deleted) and the segments' line up one to one: each one

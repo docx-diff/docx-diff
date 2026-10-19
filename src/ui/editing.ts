@@ -1,7 +1,7 @@
-// Inline edits in the Edited panel (docs/architecture.md, "Inline edits"): which blocks take the
-// cursor, what typing may do there, and when the typed text becomes an update of the block. The
-// browser edits the panel's copy of the block; an update reads its visible text, and the App
-// replaces the block (in every panel) with the markup rendered from the edit model. Where the
+// Inline edits in the Edited panel (FR-25d …; docs/architecture.md, "Inline edits"): which blocks
+// take the cursor, what typing may do there, and when the typed text becomes an update of the
+// block. The browser edits the panel's copy of the block; an update reads its visible text, and the
+// App replaces the block (in every panel) with the markup rendered from the edit model. Where the
 // browser put the typed characters doesn't matter: only the text does.
 import { NOT_TEXT } from '../model/docIndex';
 import { OBJECT_CHAR, editSpan, visibleText, type CharacterLook, type FormatProperty } from '../model/paragraphEdit';
@@ -283,7 +283,7 @@ export class PanelEditing {
   /**
    * Bold or italic for the selected text of an editable block (the current selection, else the
    * one the cursor last had there): removed when all of its visible text has it, else set
-   * (PRD-33). `false` when no text is selected.
+   * (FR-25q). `false` when no text is selected.
    */
   format(property: FormatProperty): boolean {
     this.flush();

@@ -367,8 +367,10 @@ it relies on (which element carries which id) are listed at the top of `src/ui/r
 
 ## Inline edits
 
-The reviewer can edit the text of paragraphs in the Edited panel. An edit changes the Edited
-version only, and only that paragraph's changes; it never runs the engine again.
+The reviewer can edit the text of paragraphs in the Edited panel (FR-25d … FR-25r; saved and
+replayed, FR-46, FR-47a; exported, FR-45). An edit changes the Edited version only, and only that
+paragraph's changes; it never runs the engine again. The block's key in edits, patches and saved
+reviews is its `data-anchor` unid with its scope ([Block mapping](#rendering-and-linking-html-to-revisions)).
 
 **Segment model** (`src/model/paragraphEdit.ts`, pure, also used by the worker). A block is a
 sequence of segments: `equal` text, `del`/`ins` text of one revision of one item, and inline
@@ -487,7 +489,11 @@ block) and `patches()`.
 **Panels** don't import the document again: `DocumentPanel`'s `controlRef` (`PanelControl`) has
 `replaceBlock(unid, block)`, which swaps in a copy of the master block with the panel's classes
 (ignored, common edges, out of range, decisions and current change as last applied, dark colours)
-and keeps the text at the top of the panel in place. In a side panel it swaps the block's whole run
+and keeps the text at the top of the panel in place (`keepingTop`). Measuring that text after the
+swap forces a layout of the whole document, ~15 ms per panel on the ~300-page pair, so a mutation
+observer records what the swap changed (`takeRecords`), and the panel measures again only when
+something before or around the top block changed (`changedAbove`); the edited paragraph is usually
+below it in every panel. In a side panel it swaps the block's whole run
 of joined paragraphs (`joinRun`: the paragraphs whose mark that version lacks before it, the
 paragraph they join into, and the blocks the panel doesn't show between them), copied from the
 master document and joined again (`joinInPanel`), since the block's content may sit in another
@@ -504,6 +510,12 @@ items for the sides last applied; a panel built from the updated HTML is the sam
 sample after its scripted edits, which include paragraphs with deleted marks and in notes). The App keeps the
 `ignored` and out-of-range sets by content (`useSameSet`), so an update doesn't make every panel
 re-mark the whole document or the Resolved column redo its range order.
+
+**Cost of an update** (`e2e/perf.spec.ts`, [measurements](measurements.md#browser)): on the sample,
+the frame after an update comes ~45 ms after the 300 ms delay. On the ~300-page pair it is ~180–245
+ms: the update's own task (session, three panels) ~50 ms, React's render of the App's item memos,
+changes list and overview bars ~50 ms, and the browser's paint of the long panels ~60 ms per frame,
+the same as any frame there whose layout changes. A decision there takes ~120 ms.
 
 **Editing in the panel** (`PanelEditing`, `src/ui/editing.ts`; the **Editable** toggle in the Edited
 panel's header, off for every review shown). While it is on, the Edited panel's `.doc` has
@@ -612,7 +624,7 @@ value equal to the text's own look is dropped):
   and description stay the engine's; only the reviewer's changes are a block's items;
 - inserted text just changes its look, as part of its insertion;
 - deleted text is left alone; typed text takes the `format` (look only) of the text it replaces,
-  else the character before it, else after it, as it takes its formatting (PRD-18); segments that
+  else the character before it, else after it, as it takes its formatting (FR-25j); segments that
   differ in `format` never merge; a deleted character keeps its unchanged text's `format`, so that
   typing it back gives it back.
 
@@ -871,7 +883,7 @@ record's state is sanitized (unknown fields replaced by defaults, malformed edit
 Resume compares the stored files again and applies the state only if both hashes and the engine
 version match.
 
-**Inline edits** are saved as `EditSession.savedEdits()`: the `BlockEdit` of every block an edit
+**Inline edits** (FR-47a) are saved as `EditSession.savedEdits()`: the `BlockEdit` of every block an edit
 touched (`original`, `current`, `nextId`), also one reverted since, so that its `nextId` keeps ids
 from being reused after a resume. Segments may carry the reviewer's bold/italic (`format`); records
 saved before it existed have none and stay valid (`isSegment` in `src/storage/reviewStore.ts`). Decisions are restored while rendering, the moment the comparison
@@ -939,8 +951,9 @@ marks storage unavailable without stopping later writes.
 - **E2E** (Playwright, `e2e/`): engine loading and no third-party requests, compare, review, range,
   export dialog, resume, offline, the Resolved column (`resolved.spec.ts`), inline edits
   (`editing.spec.ts`; `editingFuzz.spec.ts`: random keys with pauses around the update delay in an
-  editable paragraph, whose shown text must end as in a plain editable box with the same keys); `PERF=1` adds timing checks (`e2e/perf.spec.ts`), `BIG_PAIR=1` the
-  synthetic ~300-page pair (`test/big-pair.ts`).
+  editable paragraph, whose shown text must end as in a plain editable box with the same keys); `PERF=1` adds timing checks (`e2e/perf.spec.ts`: compare,
+  export, decisions, and a word typed into the Edited panel, on the sample and the synthetic
+  ~300-page pair, `test/big-pair.ts`); `BIG_PAIR=1` adds the ~300-page pair's engine tests.
 
 ## Reference sources
 

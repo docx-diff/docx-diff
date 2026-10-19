@@ -277,6 +277,37 @@ function topBlock(scroller: HTMLElement, wrapper: Element): { block: Element; of
   return null;
 }
 
+/** `Node.DOCUMENT_POSITION_*` (`Node` is not a global with jsdom in Node). */
+const DISCONNECTED = 1;
+const PRECEDING = 2;
+const FOLLOWING = 4;
+const CONTAINS = 8;
+
+/**
+ * Whether mutations (all of one change, `anchor` still in the document) may have moved `anchor`'s
+ * top: something before it or around it changed. Changes inside it or after it, and in nodes no
+ * longer in the document, leave it where it was.
+ */
+export function changedAbove(records: readonly MutationRecord[], anchor: Element): boolean {
+  const before = (node: Node) => {
+    const position = anchor.compareDocumentPosition(node);
+    return (position & DISCONNECTED) === 0 && (position & PRECEDING) !== 0;
+  };
+  return records.some((record) => {
+    const target = record.target;
+    // An attribute or text changed: on the anchor itself (its margin, its display) or before it.
+    if (record.type !== 'childList') return target === anchor || before(target);
+    // Children of the anchor or of a node after it.
+    if (target === anchor || !before(target)) return false;
+    // Children added or removed in a node before the anchor or holding it: below it only when they
+    // come after a sibling that is the anchor, holds it or follows it.
+    const previous = record.previousSibling;
+    if (!previous || !previous.isConnected) return true;
+    const position = anchor.compareDocumentPosition(previous);
+    return !(previous === anchor || position & CONTAINS || position & FOLLOWING);
+  });
+}
+
 /**
  * One document panel. The rendered HTML goes into a shadow root, so the converter's stylesheet
  * (which styles `p`, `span`, `table`, … globally) stays inside the panel. The forwarded ref is the
@@ -402,8 +433,16 @@ export const DocumentPanel = forwardRef<HTMLDivElement, Props>(function Document
     if (!scroller || !wrapper) return;
     const anchor = scroller.scrollTop > 0 ? topBlock(scroller, wrapper) : null;
     const anchorUnid = (anchor?.block as HTMLElement | undefined)?.dataset.anchor;
-    if (!change()) return;
-    const kept = anchor && (anchor.block.isConnected ? anchor.block : blocksRef.current.find((block) => block.dataset.anchor === anchorUnid));
+    // Measuring after the change forces a layout of the whole document (~15 ms per panel on the
+    // ~300-page pair): skipped when the change is all below the top of the text shown.
+    const observer = anchor ? new MutationObserver(() => {}) : null;
+    observer?.observe(wrapper, { subtree: true, childList: true, attributes: true, characterData: true });
+    const changed = change();
+    const records = observer?.takeRecords() ?? [];
+    observer?.disconnect();
+    if (!changed) return;
+    const moved = anchor !== null && (!anchor.block.isConnected || changedAbove(records, anchor.block));
+    const kept = moved && (anchor.block.isConnected ? anchor.block : blocksRef.current.find((block) => block.dataset.anchor === anchorUnid));
     if (anchor && kept && kept.getClientRects().length > 0) {
       const offset = kept.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
       const top = scroller.scrollTop + offset - anchor.offset;

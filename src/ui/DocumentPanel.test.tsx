@@ -5,7 +5,7 @@ import { smallComparison } from '../../test/small-comparison';
 import { DEFAULT_COMPARE_SETTINGS } from '../model/equivalence';
 import type { Decision } from '../model/decisions';
 import { readBlockSegments } from './blockSegments';
-import { DocumentPanel, placeRevertIcons, type PanelControl, type PanelSide, type RevertIcons } from './DocumentPanel';
+import { DocumentPanel, changedAbove, placeRevertIcons, type PanelControl, type PanelSide, type RevertIcons } from './DocumentPanel';
 import type { EditingOptions } from './editing';
 import type { RenderedDocument } from './renderedDocument';
 import { EditSession, showBlockUpdates } from './useEdits';
@@ -276,6 +276,42 @@ describe('DocumentPanel revert icons', () => {
     expect(root.querySelector('.edit-revert')).toBeNull();
     rerender(undefined);
     expect([...root.querySelectorAll<HTMLElement>('.edit-revert')].map((icon) => icon.dataset.revertId)).toEqual(['ep.1', 'r3']);
+  });
+});
+
+describe('changedAbove', () => {
+  /** Three blocks, the middle one the anchor; `change` runs under a mutation observer. */
+  function above(change: (blocks: HTMLElement[]) => void): boolean {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<p>one <span>a</span></p><p>two <span>b</span></p><p>three <span>c</span></p>';
+    document.body.append(wrapper);
+    const blocks = [...wrapper.children] as HTMLElement[];
+    const observer = new MutationObserver(() => {});
+    observer.observe(wrapper, { subtree: true, childList: true, attributes: true, characterData: true });
+    change(blocks);
+    const records = observer.takeRecords();
+    observer.disconnect();
+    const result = changedAbove(records, blocks[1]!);
+    wrapper.remove();
+    return result;
+  }
+
+  it('is false for changes inside the anchor or after it', () => {
+    expect(above((blocks) => blocks[1]!.append(' more'))).toBe(false);
+    expect(above((blocks) => blocks[1]!.querySelector('span')!.classList.add('x'))).toBe(false);
+    expect(above((blocks) => blocks[2]!.replaceWith(document.createElement('p')))).toBe(false);
+    expect(above((blocks) => blocks[2]!.firstChild!.textContent = 'tres ')).toBe(false);
+    expect(above((blocks) => blocks[1]!.after(document.createElement('p')))).toBe(false);
+  });
+
+  it('is true for changes before the anchor, around it or on it', () => {
+    expect(above((blocks) => blocks[0]!.append(' more'))).toBe(true);
+    expect(above((blocks) => blocks[0]!.replaceWith(document.createElement('p')))).toBe(true);
+    expect(above((blocks) => blocks[0]!.remove())).toBe(true);
+    expect(above((blocks) => blocks[1]!.before(document.createElement('p')))).toBe(true);
+    expect(above((blocks) => blocks[0]!.querySelector('span')!.classList.add('x'))).toBe(true);
+    expect(above((blocks) => blocks[1]!.parentElement!.classList.add('x'))).toBe(true);
+    expect(above((blocks) => blocks[1]!.classList.add('x'))).toBe(true);
   });
 });
 

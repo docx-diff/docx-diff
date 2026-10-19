@@ -1,6 +1,9 @@
 import type { FormatProperty } from '../model/paragraphEdit';
 
-/** The Edited panel header's toggle for inline edits; pressed while the panel's text can be edited. */
+/**
+ * The Edited panel header's toggle for inline edits (FR-25d); pressed while the panel's text can be
+ * edited.
+ */
 export function EditableToggle({ editing, onToggle }: { editing: boolean; onToggle: () => void }) {
   return (
     <button
@@ -20,9 +23,9 @@ export function EditableToggle({ editing, onToggle }: { editing: boolean; onTogg
 }
 
 /**
- * Bold and Italic for the selected text, right after the toggle; disabled while Editable is off. A
- * press keeps the focus, and so the selection, in the text: the panel applies it to the selection
- * the cursor last had in an editable paragraph (`PanelControl.format`).
+ * Bold and Italic for the selected text (FR-25q), right after the toggle; disabled while Editable
+ * is off. A press keeps the focus, and so the selection, in the text: the panel applies it to the
+ * selection the cursor last had in an editable paragraph (`PanelControl.format`).
  */
 export function FormatButtons({ editing, onFormat }: { editing: boolean; onFormat: (property: FormatProperty) => void }) {
   const button = (property: FormatProperty, label: string, letter: string) => (
@@ -47,9 +50,10 @@ export function FormatButtons({ editing, onFormat }: { editing: boolean; onForma
 }
 
 /**
- * The Edited panel header's revert buttons after the toggle, whether or not Editable is on: ↺ ¶
- * reverts the edits of one paragraph (the cursor's while editing, else the current change's), ↺ all
- * every edit. Each asks first (the App's confirmation); disabled only when there is nothing to revert.
+ * The Edited panel header's revert buttons (FR-25n) after the toggle, whether or not Editable is
+ * on: ↺ ¶ reverts the edits of one paragraph (the cursor's while editing, else the current
+ * change's), ↺ all every edit. Each asks first (the App's confirmation); disabled only when there
+ * is nothing to revert.
  */
 export function RevertButtons({ paragraphEdited, anyEdits, onRevertParagraph, onRevertAll }: {
   paragraphEdited: boolean;

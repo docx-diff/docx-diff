@@ -1,7 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { usePopoverDismiss } from './usePopoverDismiss';
 
-/** What editing the Edited text does and doesn't do (PRD-33b): in the general Help and the Edited header's popover. */
+/**
+ * What editing the Edited text does and doesn't do (FR-25r): in the general Help and the Edited
+ * header's popover.
+ */
 export function EditingHelp() {
   return (
     <ul className="editing-help">

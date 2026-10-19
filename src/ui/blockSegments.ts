@@ -1,7 +1,7 @@
-// A rendered block as the segments of the paragraph edit model (`src/model/paragraphEdit.ts`),
-// read from the decorated HTML, and segments rendered back into a block's markup
-// (docs/architecture.md, "Inline edits"). Offsets agree with the redline paragraph's, as the
-// export's patch needs (`src/engine/applyEdits.ts`): what isn't document text is skipped as
+// A rendered block as the segments of the paragraph edit model (`src/model/paragraphEdit.ts`), read
+// from the decorated HTML, and segments rendered back into a block's markup (docs/architecture.md,
+// "Inline edits"); which blocks can be edited (FR-25f). Offsets agree with the redline paragraph's,
+// as the export's patch needs (`src/engine/applyEdits.ts`): what isn't document text is skipped as
 // `DocIndex` does, and each inline object is one placeholder.
 import { revisionIdFromAuthor } from '../engine/tagRedline';
 import { NOT_TEXT } from '../model/docIndex';
