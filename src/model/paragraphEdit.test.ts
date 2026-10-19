@@ -122,6 +122,26 @@ describe('applyTextEdit', () => {
     expect(show(edit([eq('a '), ins('ouse', 'x'), eq(' b')], 'a house b', 0, 3).segments)).toBe('a [+house:x+] b');
   });
 
+  it('joins text typed next to an item an earlier edit created to that item, keeping its ids', () => {
+    // A space, then after a pause (an update) the word: one change.
+    const space = edit([eq('kellékek bölcs')], 'kellékek  bölcs', 0, 9);
+    expect(show(space.segments)).toBe('kellékek[+ :eb.0+] bölcs');
+    const word = edit(space.segments, 'kellékek igen bölcs', space.nextId, 13);
+    expect(show(word.segments)).toBe('kellékek[+ igen:eb.0+] bölcs');
+    expect(word.createdItemIds).toEqual([]);
+    expect(word.nextId).toBe(1);
+    // A word deleted, then its replacement typed: one Replaced change, under the deletion's id.
+    const deleted = edit([eq('a nagy ház')], 'a  ház', 0, 2);
+    expect(show(deleted.segments)).toBe('a [-nagy:eb.0-] ház');
+    const replaced = edit(deleted.segments, 'a kis ház', deleted.nextId, 5);
+    expect(show(replaced.segments)).toBe('a [-nagy:eb.0-][+kis:eb.0/eb.1+] ház');
+    expect(replaced.createdItemIds).toEqual([]);
+  });
+
+  it('keeps text typed after a space ending one of the comparison’s insertions a new change', () => {
+    expect(show(edit([eq('a '), ins('big ', 'x'), eq('house')], 'a big red house', 0, 10).segments)).toBe('a [+big :x+][+red :eb.0+]house');
+  });
+
   it('never changes the other items of the paragraph (the [big] red [house] example)', () => {
     const segments = [eq('the '), ins('big', 'a'), eq(' red '), ins('house', 'h')];
     const result = edit(segments, 'the big blue house');

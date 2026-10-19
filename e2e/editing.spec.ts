@@ -91,6 +91,21 @@ test.describe('two columns', () => {
     await expect(paragraph(page, 'right', 'Second paragraph.')).not.toHaveAttribute('contenteditable');
   });
 
+  test('a space typed, then after an update a word, is one change', async ({ page }) => {
+    await openAndCompare(page, minimalDocx(['The quick brown fox.', 'Second paragraph.']), minimalDocx(['The quick red fox.', 'Second paragraph.']));
+    await startEditing(page);
+    await cursorAtEnd(page, 'Second paragraph');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(' ');
+    await expect(cards(page)).toHaveCount(2);
+    await page.waitForTimeout(600);
+    await page.keyboard.type('long');
+    await expect(cards(page).nth(1)).toContainText('long');
+    await expect(cards(page)).toHaveCount(2);
+    await expect(page.getByTestId('panel-right').locator('.edit-revert')).toHaveCount(1);
+    expect(await shown(page, 'right', 'Second')).toBe('Second paragraph long.');
+  });
+
   test('fixing a typo inside an insertion keeps the change and its decision', async ({ page }) => {
     await openAndCompare(page, minimalDocx(['We saw it.']), minimalDocx(['We saw it clearlly.']));
     await expect(cards(page)).toHaveCount(1);
@@ -229,7 +244,9 @@ test.describe('two columns', () => {
     await cursorAtEnd(page, 'Second paragraph.');
     await page.keyboard.type(' Bb');
     await paragraph(page, 'right', 'The quick').click();
-    await expect(cards(page)).toHaveCount(3);
+    // Typed on right after the earlier edit's insertion: the same change.
+    await expect(cards(page).nth(1)).toContainText('Aa Bb');
+    await expect(cards(page)).toHaveCount(2);
     expect(await shown(page, 'right', 'Second paragraph.')).toBe('Second paragraph. Aa Bb');
 
     // Two places in one paragraph within the update's delay: both edits are kept.
@@ -238,7 +255,7 @@ test.describe('two columns', () => {
     await page.keyboard.press('Control+Home');
     await page.keyboard.type('Dd ');
     await expect.poll(() => shown(page, 'right', 'fox.')).toBe('Dd The quick red fox. Cc');
-    await expect(cards(page)).toHaveCount(5);
+    await expect(cards(page)).toHaveCount(4);
     // The editor's change between them is untouched (one span would have replaced it).
     await expect(cards(page).filter({ hasText: 'brown' })).toHaveCount(1);
     await expect(cards(page).filter({ hasText: 'brown' })).toContainText('red');

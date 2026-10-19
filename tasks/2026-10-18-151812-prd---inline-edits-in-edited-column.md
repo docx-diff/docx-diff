@@ -143,7 +143,10 @@ have to leave the tool, and the comparison doesn't slow down.
     - everything else the edit adds or removes (typed text outside existing changes, deleted text
       that was unchanged before) forms a **new** change, **accepted** by default. A new deletion and
       a new insertion that touch form one new **Replaced** change (FR-8);
-    - a new change is never joined with an existing one, even when they touch. Example: the Edited
+    - a change the reviewer's own earlier edits made grows with what is typed or deleted touching
+      it (2026-10-19, user report: a space typed, then after a pause the word, gave two changes):
+      typing on after a pause continues the same change, which keeps its id, decision and comment;
+    - a new change is never joined with an existing change of the comparison's, even when they touch. Example: the Edited
       panel shows `the [big] red [house]`, two insertions by the editor, "big" accepted and "house"
       rejected. The reviewer changes "red" to "blue". Result: three changes, `[big]` (still
       accepted), `red → blue` (new, accepted) and `[house]` (still rejected), each decided

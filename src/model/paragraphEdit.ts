@@ -129,6 +129,8 @@ interface Unit {
   /** Changed by this edit, or next to a character it removed from an item. */
   touched?: boolean;
   removed?: boolean;
+  /** A character of an item an earlier edit created, joined to this edit's new piece: it keeps its ids. */
+  kept?: { itemId: string; revisionId: string };
 }
 
 const isChange = (unit: Unit) => unit.kind === 'del' || unit.kind === 'ins' || unit.kind === 'newDel' || unit.kind === 'newIns';
@@ -174,7 +176,8 @@ export interface TextEditResult {
  * - typed text inside an insertion, or continuing one of its words with no space between, joins
  *   that insertion's item; other typed text is a new insertion;
  * - new pieces widen to whole words, and touching new deletions and insertions form one new item
- *   (a Replaced one when it has both); a new piece never joins an existing item;
+ *   (a Replaced one when it has both); a new piece touching an item earlier edits created joins it
+ *   (typing on after a pause continues the same change), but never one of the comparison's;
  * - a run of changes the edit touched whose Original and Edited text are the same (typed back)
  *   becomes unchanged text again: its items lose those segments, and disappear without any.
  * Objects can't be deleted or typed: such an edit throws.
@@ -252,7 +255,7 @@ export function applyTextEdit(
   }
   if (!deletedLast && !right) placed.push(...fresh);
 
-  const widened = widenToWords(placed);
+  const widened = widenToWords(joinEditedItems(placed, ids.unid));
   const cancelled = cancelTypedBack(widened);
   return toSegments(cancelled, ids.unid, ids.nextId);
 }
@@ -295,6 +298,25 @@ function widenToWords(units: Unit[]): Unit[] {
   return ordered;
 }
 
+/**
+ * The characters of items that earlier edits of the block created, where they touch this edit's new
+ * pieces, become new pieces again (`kept`: their ids), so that they form one item with them: a word
+ * typed after a pause, after the space typed before it, is one change with it.
+ */
+function joinEditedItems(units: Unit[], unid: string): Unit[] {
+  const isEdited = (unit: Unit) => (unit.kind === 'del' || unit.kind === 'ins') && isEditIdOf(unid, unit.itemId!);
+  for (const [start, end] of runs(units, (unit) => isNew(unit) || isEdited(unit))) {
+    const run = units.slice(start, end);
+    if (!run.some(isNew)) continue;
+    for (const unit of run) {
+      if (!isEdited(unit)) continue;
+      unit.kept = { itemId: unit.itemId!, revisionId: unit.revisionId! };
+      unit.kind = unit.kind === 'del' ? 'newDel' : 'newIns';
+    }
+  }
+  return units;
+}
+
 /** A touched run of changes whose deleted and inserted text are the same is unchanged text. */
 function cancelTypedBack(units: Unit[]): Unit[] {
   for (const [start, end] of runs(units, isChange).reverse()) {
@@ -321,16 +343,22 @@ function runs(units: readonly Unit[], test: (unit: Unit) => boolean): [number, n
   return found;
 }
 
-/** Gives each run of new changes its item (deletion id first) and merges units into segments. */
+/**
+ * Gives each run of new changes its item (deletion id first) and merges units into segments. A run
+ * with characters of an item an earlier edit created keeps that item's id (the first such item's,
+ * so its decision and comment) and the ids of its revisions.
+ */
 function toSegments(units: Unit[], unid: string, firstId: number): TextEditResult {
   let nextId = firstId;
   const createdItemIds: string[] = [];
   for (const [start, end] of runs(units, isNew)) {
     const run = units.slice(start, end);
-    const delId = run.some((unit) => unit.kind === 'newDel') ? editId(unid, nextId++) : undefined;
-    const insId = run.some((unit) => unit.kind === 'newIns') ? editId(unid, nextId++) : undefined;
-    const itemId = (delId ?? insId)!;
-    createdItemIds.push(itemId);
+    const keptId = (kind: Unit['kind']) => run.find((unit) => unit.kind === kind && unit.kept)?.kept!.revisionId;
+    const delId = run.some((unit) => unit.kind === 'newDel') ? (keptId('newDel') ?? editId(unid, nextId++)) : undefined;
+    const insId = run.some((unit) => unit.kind === 'newIns') ? (keptId('newIns') ?? editId(unid, nextId++)) : undefined;
+    const kept = run.find((unit) => unit.kept)?.kept!.itemId;
+    const itemId = kept ?? (delId ?? insId)!;
+    if (!kept) createdItemIds.push(itemId);
     for (const unit of run) {
       unit.itemId = itemId;
       unit.revisionId = unit.kind === 'newDel' ? delId : insId;

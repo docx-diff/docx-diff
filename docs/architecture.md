@@ -374,6 +374,12 @@ segments leaves everything outside it as it was:
 - **A new piece never joins an existing item**, even when they touch: decisions are deliberate, so
   an edit never moves text between items. Example: `the [big] red [house]`, "red" changed to
   "blue" gives three items, the editor's two with their decisions and a new Replaced one.
+  An item an earlier edit of the block created is different: new pieces touching it join it
+  (`joinEditedItems`: its characters become new pieces again, remembering their ids), so a word
+  typed after a pause, after the space typed before it, is one change, and a deleted word followed
+  by its replacement is one Replaced change. The joined item keeps its id (the first one's, when
+  the new piece touches two) and its revisions' ids, so its decision and comment stay, and it isn't
+  counted as created (not accepted again).
 - **Normalisation, around the edit only:** a run of new pieces widens to whole words (FR-7; when
   its first or last character, deleted or inserted, is a word character next to an unchanged one,
   that word's unchanged characters join both sides; a side with no text continues with the

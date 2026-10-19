@@ -595,6 +595,11 @@ not Editable is on. PRD-21–23 rewritten, PRD-22a added.)
 - Item ids in `review.decisions`/`comments` aren't touched by a revert: a reverted created item's
   entries stay unused (ids are never reused); a restored comparison item finds its own again.
 - `docs/architecture.md` "Inline edits" has the reverts and guards; FR numbers for them come in task 8.2.
+- **Changed after task 5's commit (2026-10-19, user report: a space typed, then after a pause the
+  word, gave two changes):** new pieces touching an item an earlier edit of the block created join
+  it (`joinEditedItems` in `paragraphEdit.ts`; its id, revision ids, decision and comment kept, not
+  counted as created); the comparison's items are still never joined. PRD-16 and
+  `docs/architecture.md` updated; tests in `paragraphEdit.test.ts` and `e2e/editing.spec.ts`.
 
 ### 6.0 Saving and resuming edits
 
